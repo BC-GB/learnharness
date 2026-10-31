@@ -32,8 +32,9 @@ try{
    set(value){for(const option of this.options)option.selected=option.value===value}
   });
   const routes=[];const context={document,location:{hash:'#'+token,pathname:'/'},history:{replaceState(){}},setInterval(){},fetch:async(route,options)=>{
-   routes.push(route);assert.ok(['/app','/control'].includes(route));assert.equal(options.headers['x-view-token'],token);
+   routes.push(route);assert.ok(['/app','/control','/subscription'].includes(route));assert.equal(options.headers['x-view-token'],token);
    const request=JSON.parse(options.body);let value;
+   if(request.op==='status')value={mode:'mock'};
    if(request.op==='models')value=[{id:'mock',name:attack}];
    if(request.op==='chats')value=[{id:'chat1',title:attack}];
    if(request.op==='list')value=[];

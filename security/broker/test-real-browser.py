@@ -1,9 +1,10 @@
 """Real Chromium test of the restricted mock-only interface. No personal profile."""
-import argparse,json,os,subprocess,time,uuid,tempfile,socket,threading
+import argparse,json,os,subprocess,time,uuid,tempfile,socket,threading,base64,shutil
+from urllib.parse import urlparse,parse_qs,urlencode
 from pathlib import Path
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 from playwright.sync_api import sync_playwright,expect
-p=argparse.ArgumentParser();p.add_argument('--docker',default='docker');p.add_argument('--app-image',required=True);p.add_argument('--node-image',required=True);p.add_argument('--firewall-image',required=True);p.add_argument('--chromium',required=True);p.add_argument('--evidence-dir',required=True);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--docker',default='docker');p.add_argument('--app-image',required=True);p.add_argument('--node-image',required=True);p.add_argument('--firewall-image',required=True);p.add_argument('--chromium',required=True);p.add_argument('--evidence-dir',required=True);p.add_argument('--subscription-fixture',action='store_true');a=p.parse_args()
 assert a.app_image.startswith('sha256:') and '@sha256:' in a.node_image
 root=Path(__file__).resolve().parent;evidence=Path(a.evidence_dir).resolve();evidence.mkdir(parents=True,exist_ok=True)
 project='lh-browser-fixture-'+uuid.uuid4().hex[:10];tag=project+':broker';nettag=project+':network';netbase=project+':network-base';events=[];checks=[];token='';errors=[];outside=[];canary_hits=[]
@@ -24,9 +25,15 @@ with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
 origin=f'http://127.0.0.1:{port}'
 with tempfile.TemporaryDirectory(prefix='fixture-',dir=evidence) as tmp:
  override=Path(tmp)/'browser.yaml';override.write_text(f'services:\n  view-net:\n    ports: !override ["127.0.0.1:{port}:8080"]\n  view:\n    environment:\n      LH_VIEW_HOST: "127.0.0.1:{port}"\n',encoding='utf-8')
+ if a.subscription_fixture:
+  with override.open('a',encoding='utf-8') as f:f.write('  broker:\n    command: [node, mock-subscription.mjs]\n    volumes: [subscription:/subscription, policy:/policy]\nvolumes:\n  subscription:\n  policy:\n')
  base=['compose','--project-name',project,'--file',str(root/'compose.mock.yaml'),'--file',str(override)]
  try:
   run(['build','--network','none','--pull=false','--build-arg','NODE_IMAGE='+a.node_image,'--tag',tag,str(root)])
+  if a.subscription_fixture:
+   shutil.copyfile(root/'mock-subscription.mjs',Path(tmp)/'mock-subscription.mjs')
+   (Path(tmp)/'Dockerfile').write_text('FROM '+tag+'\nCOPY mock-subscription.mjs ./\n',encoding='utf-8')
+   run(['build','--network','none','--pull=false','--tag',tag,tmp])
   assert json.loads(run(['image','inspect',a.firewall_image]).stdout)[0]['Id']==a.firewall_image
   run(['tag',a.firewall_image,netbase])
   run(['build','--network','none','--pull=false','--build-arg','FIREWALL_IMAGE='+netbase,'--file',str(root/'Dockerfile.network'),'--tag',nettag,str(root)])
@@ -57,12 +64,39 @@ with tempfile.TemporaryDirectory(prefix='fixture-',dir=evidence) as tmp:
     assert '#' not in page.url
     assert page.evaluate('localStorage.length===0 && sessionStorage.length===0')
     assert not context.cookies();checks.append('capability removed from URL; no cookie or persistent browser storage')
+    if a.subscription_fixture:
+     run(base+['stop','app'])
+     setup=context.new_page();setup.on('pageerror',lambda e:errors.append(str(e)));setup.goto(origin+'/account.html#'+token)
+     expect(setup.locator('#status')).to_contain_text('Sign-in required')
+     setup.locator('#signin').click();expect(setup.locator('#authorize-link')).to_be_visible()
+     auth=parse_qs(urlparse(setup.locator('#authorize-link').get_attribute('href')).query)
+     assert auth['client_id']==['dynamic_agent_client'] and auth['code_challenge_method']==['S256']
+     code=base64.urlsafe_b64encode(auth['nonce'][0].encode()).decode().rstrip('=')
+     callback=context.new_page();callback.goto(origin+'/auth/callback?'+urlencode({'code':code,'state':auth['state'][0],'client_id':'oaiapp_browser_fixture'}));callback.close()
+     expect(setup.locator('#status')).to_contain_text('Signed in.',timeout=10000)
+     cid=run(base+['ps','-a','-q','app']).stdout.strip()
+     state=json.loads(run(['inspect',cid]).stdout)[0]
+     assert state['State']['Status']=='exited'
+     assert not any(m['Destination'] in ['/subscription','/policy','/egress','/control','/view-secret'] for m in state['Mounts'])
+     assert setup.evaluate('localStorage.length===0 && sessionStorage.length===0') and not context.cookies()
+     setup.screenshot(path=str(evidence/'account-setup.png'),full_page=True);setup.close()
+     run(base+['up','-d','--wait','app'])
+     expect(page.locator('#account-status')).to_contain_text('Signed in with ChatGPT plan permission',timeout=10000)
+     expect(page.locator('#send')).to_be_disabled();expect(page.locator('#spending-status')).to_contain_text('Inference locked')
+     assert 'mock-received' not in run(base+['logs','--no-log-prefix','mock']).stdout
+     # Trusted operator fixture writes a SYNTHETIC policy; there is no UI/app unlock route.
+     unlock="const fs=require('fs');const db=JSON.parse(fs.readFileSync('/subscription/accounts/accounts.json','utf8'));fs.writeFileSync('/policy/plan-only.json',JSON.stringify({version:1,accountKey:db.active,paidCreditsDisabled:true,evidenceSha256:'a'.repeat(64),verifiedAt:Date.now(),expiresAt:Date.now()+3600000}),{mode:384});"
+     run(base+['exec','-T','broker','node','-e',unlock])
+     expect(page.locator('#send')).to_be_enabled(timeout=10000)
+     expect(page.locator('#models option')).to_have_count(1)
+     assert page.locator('#models').input_value()=='gpt-4'
+     checks.append('account-only page signs in while app is stopped; no credential mounts/storage; spending stays locked until separate fixture policy; account-specific model shown')
     page.locator('#create').click();expect(page.locator('#status')).to_have_text('Lesson ready')
     first=page.locator('#chats').input_value();assert first.startswith('chat_')
     page.locator('#message').fill('SYNTHETIC_BROKER_INTEGRATION Explain random assignment.')
     page.locator('#send').click();expect(page.locator('#pending option')).to_have_count(1,timeout=20000)
     assert 'mock-received' not in run(base+['logs','--no-log-prefix','mock']).stdout
-    page.locator('#review').click();expect(page.locator('#destination')).to_contain_text('isolated mock provider')
+    page.locator('#review').click();expect(page.locator('#destination')).to_contain_text('ChatGPT plan' if a.subscription_fixture else 'isolated mock provider')
     expect(page.locator('#payload')).to_contain_text('SYNTHETIC_BROKER_INTEGRATION');expect(page.locator('#approve')).to_be_disabled()
     page.locator('#checked').check();page.locator('#approve').click()
     expect(page.locator('#lesson')).to_contain_text('Synthetic lesson: random assignment',timeout=20000)
@@ -138,6 +172,16 @@ with tempfile.TemporaryDirectory(prefix='fixture-',dir=evidence) as tmp:
      page.locator('#review').click();expect(page.locator('#reject')).to_be_enabled();page.locator('#reject').click();expect(page.locator('#pending option')).to_have_count(remaining,timeout=10000)
     assert run(base+['logs','--no-log-prefix','mock']).stdout.count('mock-received')==1
     checks.append('switching pending requests clears prior review/consent; rejected requests never dispatch')
+    if a.subscription_fixture:
+     page.locator('#signout').click();expect(page.locator('#account-status')).to_contain_text('Sign-in required',timeout=10000)
+     expect(page.locator('#send')).to_be_disabled();expect(page.locator('#status')).to_contain_text('revoked')
+     assert page.evaluate('localStorage.length===0 && sessionStorage.length===0') and not context.cookies()
+     assert 'SYNTHETIC_BROKER_ONLY' not in page.content() and 'synthetic-refresh-only' not in page.content()
+     checks.append('browser logout revokes fake session, removes credentials and disables sending; tokens never enter browser storage')
+   except Exception:
+    events.append({'browserFailureState':page.evaluate("({status:document.querySelector('#status')?.textContent,account:document.querySelector('#account-status')?.textContent,models:document.querySelector('#models')?.textContent})")})
+    page.screenshot(path=str(evidence/'failed-scenario.png'),full_page=True)
+    raise
    finally:context.close();browser.close()
   fail=Path(tmp)/'fail-init.yaml';fail.write_text('services:\n  view-net:\n    environment:\n      LH_VIEW_FAIL_INIT: "1"\n',encoding='utf-8')
   failed=run(base+['--file',str(fail),'up','-d','--force-recreate','view'],False)
