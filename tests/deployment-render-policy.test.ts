@@ -6,7 +6,7 @@ import test from "node:test";
 test("disabled browser/PDF policies stop execution before native imports and preserve static SVG",async()=>{
  const names=["LH_BROWSER_ENGINE","LH_DISABLE_PDF_RENDERING","LH_DISABLE_PDF_PROCESSING"] as const;
  const previous=Object.fromEntries(names.map(name=>[name,process.env[name]]));
- process.env.LH_BROWSER_ENGINE="disabled";process.env.LH_DISABLE_PDF_RENDERING="1";process.env.LH_DISABLE_PDF_PROCESSING="1";
+ delete process.env.LH_BROWSER_ENGINE;delete process.env.LH_DISABLE_PDF_RENDERING;delete process.env.LH_DISABLE_PDF_PROCESSING;
  let launches=0,pdfImports=0;const original=childProcess.spawn;
  childProcess.spawn=((..._args: unknown[])=>{launches++;throw new Error("unexpected browser launch");}) as typeof childProcess.spawn;
  syncBuiltinESMExports();

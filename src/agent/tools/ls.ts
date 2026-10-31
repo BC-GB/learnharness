@@ -17,7 +17,7 @@ const DEFAULT_LIMIT = 500;
 
 const lsInput = Type.Object({
 	path: Type.Optional(
-		Type.String({ description: "Directory to list (default: the learner's home directory)" }),
+		Type.String({ description: "Directory to list (default: the approved source root)" }),
 	),
 	limit: Type.Optional(
 		Type.Integer({ description: "Maximum number of entries to return (default: 500)" }),

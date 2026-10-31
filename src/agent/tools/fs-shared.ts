@@ -1,25 +1,9 @@
 import * as fs from "node:fs/promises";
 import { realpathSync } from "node:fs";
-import * as os from "node:os";
+
 import * as path from "node:path";
 
-/**
- * Shared plumbing for the learner-filesystem tools (ls / find / grep) —
- * sources v1 (2026-09-19): the agent locates and reads the learner's files
- * itself, so paths need no UI affordance (user decision: no attachments —
- * the learner references files in messages; the agent finds them).
- *
- * Safety posture (user-locked): READ-ONLY by construction — no shell-out,
- * no user-controlled process args, no mutation APIs anywhere here. The one
- * deliberate scope widening vs pi: relative paths and default roots resolve
- * against the LEARNER'S HOME, not a project cwd — the harness has no
- * meaningful working directory, and "find my notes" should just work.
- *
- * Ported behaviors (mirroring pi's dist/core/tools/{ls,find,grep}.js): the
- * schemas, descriptions, output formats, and truncation notices are copied
- * verbatim except where semantics differ (home default, no .gitignore —
- * replaced by hard noise exclusions).
- */
+/** Read-only model tools confined to an explicitly approved source library. */
 
 /** 50KB — pi's DEFAULT_MAX_BYTES, the output ceiling for every fs tool. */
 export const MAX_OUTPUT_BYTES = 50 * 1024;
@@ -36,15 +20,10 @@ export const WALK_TIMEOUT_MS = 10_000;
  */
 const EXCLUDED_DIR_NAMES = new Set(["node_modules", ".git", "Library", ".Trash"]);
 
-/** Resolve a tool path argument: absolute stays, relative/absent → home.
- *  (pi resolves against the project cwd; the harness's "project" is the
- *  learner's life, so the home directory is the anchor.) */
+/** Require a configured root and reject lexical or canonical path escapes. */
 export function resolveSourcePath(p?: string): string {
 	const configuredRoot = process.env.LH_SOURCE_ROOT;
-	if (!configuredRoot) {
-		if (!p) return os.homedir();
-		return path.isAbsolute(p) ? p : path.join(os.homedir(), p);
-	}
+	if (!configuredRoot) throw new Error("Source access requires an explicitly configured LH_SOURCE_ROOT.");
 	// Both the lexical path and real target must stay within the read-only
 	// course snapshot. This excludes traversal, prefix collisions and symlinks.
 	const root = realpathSync(configuredRoot);
@@ -78,6 +57,7 @@ export function capOutput(lines: string[]): { content: string; truncated: boolea
  *  Nested braces are out of scope (pi's fd handles them; models rarely
  *  emit them — a non-expanding literal match is the graceful fallback). */
 export function expandBraces(pattern: string): string[] {
+	if (pattern.length > 256 || (pattern.match(/\{/g) ?? []).length > 1) throw new Error("Glob is too complex.");
 	const open = pattern.indexOf("{");
 	if (open === -1) return [pattern];
 	const close = pattern.indexOf("}", open);
@@ -91,27 +71,32 @@ export function expandBraces(pattern: string): string[] {
 	return alts;
 }
 
-/** Glob → anchored RegExp. '*' stays within a segment, '**' crosses '/',
- *  '?' is one char, everything else literal. */
-export function globToRegex(glob: string): RegExp {
-	let re = "";
-	for (let i = 0; i < glob.length; i++) {
-		const c = glob[i]!;
-		if (c === "*") {
-			if (glob[i + 1] === "*") {
-				re += "[\\s\\S]*";
-				i++;
-				if (glob[i + 1] === "/") i++; // '**/' also eats the slash
-			} else {
-				re += "[^/]*";
-			}
-		} else if (c === "?") {
-			re += "[^/]";
-		} else {
-			re += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		}
-	}
-	return new RegExp(`^${re}$`);
+/** Bounded dynamic-programming glob matcher; no regex backtracking. */
+export function globToRegex(glob: string): { test(value: string): boolean } {
+ if (glob.length > 256) throw new Error("Glob is too complex.");
+ const tokens: { char?: string; star?: boolean; cross?: boolean; any?: boolean }[] = [];
+ for (let i = 0; i < glob.length; i++) {
+  if (glob[i] === "*") {
+   const cross = glob[i + 1] === "*";
+   if (cross) { i++; if (glob[i + 1] === "/") i++; }
+   tokens.push({ star: true, cross });
+  } else if (glob[i] === "?") tokens.push({ any: true });
+  else tokens.push({ char: glob[i] });
+ }
+ return { test(value) {
+  if (value.length > 32768) return false;
+  let previous = new Uint8Array(value.length + 1); previous[0] = 1;
+  for (const token of tokens) {
+   const next = new Uint8Array(value.length + 1);
+   if (token.star) next[0] = previous[0]!;
+   for (let i = 1; i <= value.length; i++) {
+    if (token.star) next[i] = previous[i]! || ((token.cross || value[i - 1] !== "/") ? next[i - 1]! : 0);
+    else next[i] = previous[i - 1]! && (token.any ? value[i - 1] !== "/" : value[i - 1] === token.char) ? 1 : 0;
+   }
+   previous = next;
+  }
+  return previous[value.length] === 1;
+ } };
 }
 
 /**

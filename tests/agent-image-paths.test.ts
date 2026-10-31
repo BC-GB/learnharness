@@ -1,3 +1,4 @@
+import { SOURCE_NOTICE } from "../src/agent/tools/untrusted-source.ts";
 /** Offline integration contracts at the provider boundary: real shared image
  * processing, faux model streams, synthetic rasters, and fake headless I/O.
  * No real browser, provider, learner data, or ambient credentials are used. */
@@ -27,7 +28,7 @@ const originalEnv = process.env;
 const originalFetch = globalThis.fetch;
 fs.mkdirSync(path.join(scratch, "home"));
 fs.writeFileSync(path.join(scratch, "auth.json"), "{}");
-process.env = {
+process.env = { LH_SOURCE_ROOT: scratch,
 	...(originalEnv.NODE_TEST_CONTEXT ? { NODE_TEST_CONTEXT: originalEnv.NODE_TEST_CONTEXT } : {}),
 	...(originalEnv.NODE_OPTIONS ? { NODE_OPTIONS: originalEnv.NODE_OPTIONS } : {}),
 	NODE_ENV: "test",
@@ -231,67 +232,22 @@ for (const [role, resize, expected] of [
 		const selected = requests[2]!.messages.find((message) => message.role === "toolResult" && message.toolCallId === "registry-text");
 		assert.ok(selected && selected.role === "toolResult");
 		assert.equal(selected.isError, false);
-		assert.deepEqual(selected.content, [{ type: "text", text: "second\nthird\n\n[2 more lines in file. Use offset=4 to continue.]" }]);
+		assert.deepEqual(selected.content, [{ type: "text", text: SOURCE_NOTICE + "second\nthird\n\n[2 more lines in file. Use offset=4 to continue.]" }]);
 		assert.equal(readTool.execute, originalExecute, "role construction did not mutate the shared tool");
 	});
 }
 
-test("PDF reader preserves both processed image outputs from multiple render calls in one batch", async () => {
-	const wide = png(4800, 120);
-	const tall = png(120, 4800);
-	const { headless, pdfCalls } = fakeHeadless((page) => page === 1 ? wide : tall);
-	const { engine, requests } = scripted([
-		fauxAssistantMessage([
-			fauxToolCall("pdf_render", { pages: "1", dpi: 150 }, { id: "batch-render-1" }),
-			fauxToolCall("pdf_render", { pages: "2", dpi: 150 }, { id: "batch-render-2" }),
-		], { stopReason: "toolUse" }),
-		fauxAssistantMessage([fauxText("Both rendered pages are visible (p. 1, p. 2). Pages consulted: 1, 2")]),
-	]);
-	const result = await runPdfReaderAgent({ path: PDF, question: "Compare the two figures." }, { engine, headless });
-	assert.equal(requests.length, 2);
-	assert.deepEqual(pdfCalls, [[1], [2]]);
-	const visible = requests[1]!;
-	const parts = images(visible);
-	assert.equal(parts.length, 2, "the second render call must not overwrite the first call's images");
-	assert.deepEqual(parts.map(dimensions), [{ width: 2000, height: 50 }, { width: 50, height: 2000 }]);
-	for (let i = 0; i < parts.length; i++) {
-		assert.ok(parts[i]!.data.length < 4.5 * 1024 * 1024);
-		assert.notEqual(parts[i]!.data, [wide, tall][i]!.toString("base64"));
-	}
-	assert.deepEqual(visible.messages.slice(-3).map((message) => message.role), ["toolResult", "toolResult", "user"]);
-	const pageMessage = visible.messages.at(-1)!;
-	assert.ok(Array.isArray(pageMessage.content));
-	assert.deepEqual(pageMessage.content.filter((part) => part.type === "text").map((part) => part.text.split("\n")[0]), [
-		"The rendered page(s), in order (p1, p2):", "Page 1", "Page 2",
-	]);
-	assert.deepEqual(result.pagesRead, [1, 2]);
-	assert.deepEqual(result.pagesConsulted, [1, 2]);
+test("disabled PDF reader sends no document images or model requests", async () => {
+ const { engine, requests } = scripted([]);
+ const result = await runPdfReaderAgent({ path: PDF, question: "Inspect" }, { engine });
+ assert.match(result.brief, /disabled/);
+ assert.equal(requests.length, 0);
 });
 
 for (const [label, resize, expected] of [
 	["native defaults", undefined, { width: 2000, height: 50 }],
 	["active-model overrides", CUSTOM_RESIZE, { width: 320, height: 8 }],
 ] as const) {
-	test(`PDF reader sends processed renders using ${label}; failed page is not counted`, async () => {
-		const bytes = png(4800, 120);
-		const { headless, pdfCalls } = fakeHeadless((page) => page === 1 ? bytes : Buffer.from("invalid rendered page"));
-		const { engine, requests } = scripted([
-			fauxAssistantMessage([fauxToolCall("pdf_render", { pages: "1-2", dpi: 150 }, { id: "render-1" })], { stopReason: "toolUse" }),
-			fauxAssistantMessage([fauxText("The visible figure is on page 1 (p. 1). Pages consulted: 1")]),
-		], resize);
-		const result = await runPdfReaderAgent({ path: PDF, question: "Inspect the page figure." }, { engine, headless });
-		assert.equal(requests.length, 2);
-		assert.deepEqual(pdfCalls, [[1, 2]]);
-		assertProcessedImage(requests[1]!, expected, bytes);
-		assert.match(text(requests[1]!), /Page 2: \[Image omitted:/);
-		assert.deepEqual(result.pagesRead, [1]);
-		assert.deepEqual(result.pagesConsulted, [1]);
-		assert.match(result.brief, /visible figure/);
-		const visible = requests[1]!.messages;
-		assert.equal(visible.at(-2)!.role, "toolResult");
-		assert.equal(visible.at(-1)!.role, "user", "processed page images ride the user message after tool results");
-	});
-
 	for (const forced of [false, true]) {
 		test(`visual maker ${forced ? "forced-final" : "explicit render_svg"} path processes images using ${label}`, async () => {
 			const bytes = png(4800, 120);

@@ -23,8 +23,8 @@ function withPayload(test: (fixture: {
 	};
 	try {
 		write("server.js", "// fixture");
-		write("node_modules/puppeteer-core/package.json", JSON.stringify({ name: "puppeteer-core", type: "module", main: "lib/index.js" }));
-		write("node_modules/puppeteer-core/lib/index.js", 'import "./browser-data/browser-data.js"; export default { connect() {} };');
+		write("node_modules/@resvg/resvg-js/package.json", JSON.stringify({ name: "@resvg/resvg-js", type: "module", main: "lib/index.js" }));
+		write("node_modules/@resvg/resvg-js/lib/index.js", 'import "./renderer-data/renderer-data.js"; export class Resvg { render() { return { asPng() { return Buffer.from("89504e470d0a1a0a", "hex"); } }; } }');
 		test({ root, write, run: () => spawnSync(process.execPath, [script, "--standalone", root], {
 			encoding: "utf8", timeout: 10_000,
 		}) });
@@ -36,11 +36,11 @@ function withPayload(test: (fixture: {
 describe("demo standalone dependency gate", () => {
 	it("imports a complete payload and does not change it", () => {
 		withPayload(({ root, write, run }) => {
-			write("node_modules/puppeteer-core/lib/browser-data/browser-data.js", "export const fixture = true;");
+			write("node_modules/@resvg/resvg-js/lib/renderer-data/renderer-data.js", "export const fixture = true;");
 			const before = fs.readdirSync(root, { recursive: true });
 			const result = run();
 			assert.equal(result.status, 0, String(result.stderr));
-			assert.match(String(result.stdout), /puppeteer-core import ok/);
+			assert.match(String(result.stdout), /static SVG runtime ok/);
 			assert.deepEqual(fs.readdirSync(root, { recursive: true }), before);
 		});
 	});
@@ -51,7 +51,7 @@ describe("demo standalone dependency gate", () => {
 			const result = run();
 			assert.equal(result.status, 1);
 			assert.match(String(result.stderr), /ERR_MODULE_NOT_FOUND/);
-			assert.match(String(result.stderr), /browser-data/);
+			assert.match(String(result.stderr), /renderer-data/);
 			assert.deepEqual(fs.readdirSync(root, { recursive: true }), before);
 		});
 	});
@@ -63,7 +63,7 @@ describe("demo standalone dependency gate", () => {
 			try {
 				const external = path.join(sibling, "dependency.mjs");
 				fs.writeFileSync(external, "export const outside = true;");
-				write("node_modules/puppeteer-core/lib/index.js", `import ${JSON.stringify(pathToFileURL(external).href)}; export default { connect() {} };`);
+				write("node_modules/@resvg/resvg-js/lib/index.js", `import ${JSON.stringify(pathToFileURL(external).href)}; export class Resvg { render() { return { asPng() { return Buffer.from("89504e470d0a1a0a", "hex"); } }; } }`);
 				const result = run();
 				assert.equal(result.status, 1);
 				assert.match(String(result.stderr), /dependency escaped standalone payload/);
@@ -71,7 +71,7 @@ describe("demo standalone dependency gate", () => {
 		});
 	});
 
-	it("cannot substitute the checkout's Puppeteer for an absent payload package", () => {
+	it("cannot substitute the checkout's renderer for an absent payload package", () => {
 		withPayload(({ root, run }) => {
 			fs.rmSync(path.join(root, "node_modules"), { recursive: true });
 			const result = run();

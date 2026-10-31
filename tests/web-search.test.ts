@@ -1,3 +1,5 @@
+import { SOURCE_NOTICE } from "../src/agent/tools/untrusted-source.ts";
+import { fakePublicFetch } from "./public-fetch-fixture.ts";
 /** Keyless research availability + the injected search port.
  * No network, no shared data files — the jobStore fake below is in-memory.
  * A missing search key is a recoverable tool result, not a dispatch gate.
@@ -87,11 +89,11 @@ describe("web_search on the injected port (web.ts)", () => {
 		// so the happy path runs hermetically: a VALID url must REACH the
 		// fetch stage.
 		const { web_fetch } = createWebTools(() => null);
-		const realFetch = globalThis.fetch;
-		globalThis.fetch = (async () =>
+
+		const restoreFetch = fakePublicFetch(async () =>
 			new Response("A plain text page with enough content to matter for the test.", {
 				headers: { "content-type": "text/plain" },
-			})) as typeof fetch;
+			}));
 		try {
 			const ok = await web_fetch!.execute!("c-ok", { url: "https://example.com/page" });
 			assert.ok(
@@ -99,11 +101,12 @@ describe("web_search on the injected port (web.ts)", () => {
 				"a valid https URL passes the protocol gate and reaches fetch",
 			);
 			assert.match(String(ok.details), /plain text page/);
+			assert.ok(String(ok.details).startsWith(SOURCE_NOTICE));
 
 			const ftp = await web_fetch!.execute!("c-ftp", { url: "ftp://example.com/file" });
 			assert.match(String(ftp.details), /invalid URL/, "non-http(s) schemes still rejected");
 		} finally {
-			globalThis.fetch = realFetch;
+			restoreFetch();
 		}
 	});
 });
@@ -163,13 +166,13 @@ describe("keyless researcher loop", () => {
 			});
 			const faux = createFauxCore({});
 			faux.setResponses(steps);
-			const realFetch = globalThis.fetch;
+
 			const fetched: string[] = [];
-			globalThis.fetch = (async (input) => {
+			const restoreFetch = fakePublicFetch(async (input) => {
 				fetched.push(String(input));
 				assert.equal(String(input), url, "only the supplied URL is fetched");
 				return new Response("Synthetic verified source content", { headers: { "content-type": "text/plain" } });
-			}) as typeof fetch;
+			});
 			try {
 				assert.equal(await runResearcherAgent(`Verify ${url}`, {
 					engine: { model: faux.getModel(), streamFn: faux.streamSimple },
@@ -177,7 +180,7 @@ describe("keyless researcher loop", () => {
 				}), brief);
 				assert.deepEqual(fetched, [url]);
 			} finally {
-				globalThis.fetch = realFetch;
+				restoreFetch();
 			}
 		});
 	}

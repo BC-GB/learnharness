@@ -21,13 +21,12 @@ function fixture() {
 	return { mainFrame, contents, win, details };
 }
 
-test("desktop capability injects only trusted app mainframe exact-origin API requests and strips every other case", () => {
+test("desktop capability injects only trusted app mainframe exact-origin requests and strips every other case", () => {
 	const { details, win, mainFrame, contents } = fixture();
 	assert.equal(desktopAPIHeaders(details, origin, secret, [win])[HEADER], secret);
 	for (const mutation of [
 		{ url: "https://thirdparty.invalid/api/settings" },
 		{ url: "http://127.0.0.1:12346/api/settings" },
-		{ url: `${origin}/chat/new` },
 		{ frame: { url: `${origin}/chat/new` } }, // forged frame identity
 		{ frame: { url: "about:srcdoc", parent: mainFrame } },
 		{ frame: null },
@@ -45,15 +44,14 @@ test("desktop capability injects only trusted app mainframe exact-origin API req
 	assert.equal(desktopAPIHeaders(details, origin, null, [win])[HEADER], undefined, "externally launched desktop dev receives no packaged capability");
 });
 
-test("all methods fail closed for desktop missing/wrong secret; API-only matcher covers SSE/settings/spending", () => {
-	assert(desktopAPIAuthorized(new Headers(), {}), "browser-only API-key mode unchanged");
+test("all methods fail closed for desktop missing/wrong secret; matcher covers pages, RSC, SSE/settings/spending", () => {
+	assert(!desktopAPIAuthorized(new Headers(), {}), "web API must fail closed without a capability");
 	assert(!desktopAPIAuthorized(new Headers({ [HEADER]: secret }), { LH_DESKTOP_SERVER: "1" }), "missing server secret must not disable authorization");
 	for (const value of [undefined, "", "wrong", secret + ", " + secret]) {
 		assert(!desktopAPIAuthorized(new Headers(value === undefined ? {} : { [HEADER]: value }), { LH_DESKTOP_SERVER: "1", LH_DESKTOP_API_SECRET: secret }));
 	}
 	assert(desktopAPIAuthorized(new Headers({ [HEADER]: secret }), { LH_DESKTOP_SERVER: "1", LH_DESKTOP_API_SECRET: secret }));
-	for (const pathname of ["/api/events", "/api/chat", "/api/settings/models", "/api/chats/scratch/markdown"]) assert(unstable_doesProxyMatch({ config, nextConfig: {}, url: origin + pathname }));
-	assert(!unstable_doesProxyMatch({ config, nextConfig: {}, url: origin + "/chat/new" }));
+	for (const pathname of ["/", "/chat/new", "/chat/private-id?_rsc=example", "/api/events", "/api/chat", "/api/settings/models", "/api/chats/scratch/markdown"]) assert(unstable_doesProxyMatch({ config, nextConfig: {}, url: origin + pathname }));
 	const originalMarker = process.env.LH_DESKTOP_SERVER;
 	const originalSecret = process.env.LH_DESKTOP_API_SECRET;
 	try {
@@ -91,4 +89,21 @@ test("renderer controls have no lease or general token bridge, and require the t
 	mainFrame.url = "https://thirdparty.invalid/";
 	assert(!trustedSender({ sender: contents, senderFrame: mainFrame }, origin, BrowserWindow));
 	assert.equal(browserServiceSpawnEnv({ LH_DESKTOP_API_SECRET: secret, LH_DESKTOP_SERVER: "1" }).LH_DESKTOP_API_SECRET, undefined);
+});
+
+
+test("only a registered native main frame can bootstrap the root document", () => {
+	const { details, win, mainFrame } = fixture();
+	for (const url of ["", "about:blank"]) {
+		mainFrame.url = url;
+		const initial = { ...details, url: origin + "/", resourceType: "mainFrame", initiatorOrigin: undefined };
+		assert.equal(desktopAPIHeaders(initial, origin, secret, [win])[HEADER], secret);
+		for (const mutation of [
+			{ url: origin + "/api/settings" }, { resourceType: "xhr" },
+			{ initiatorOrigin: "https://thirdparty.invalid" }, { frame: { url } },
+			{ url: origin + "/?token=example" },
+		]) assert.equal(desktopAPIHeaders({ ...initial, ...mutation }, origin, secret, [win])[HEADER], undefined);
+	}
+	mainFrame.url = origin + "/chat/new";
+	assert.equal(desktopAPIHeaders({ ...details, url: origin + "/chat/private-id" }, origin, secret, [win])[HEADER], secret);
 });

@@ -1,3 +1,4 @@
+import { SOURCE_NOTICE } from "../src/agent/tools/untrusted-source.ts";
 /**
  * The read tool (sources v0) — a Node port of pi's read semantics:
  * truncation with continuation offsets, image mime detection, error paths.
@@ -15,7 +16,8 @@ import { createCanvas } from "@napi-rs/canvas";
 import { readTool } from "../src/agent/tools/read.ts";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "lh-read-test-"));
-after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+process.env.LH_SOURCE_ROOT = tmp;
+after(() => { delete process.env.LH_SOURCE_ROOT; fs.rmSync(tmp, { recursive: true, force: true }); });
 
 function write(name: string, content: string): string {
 	const file = path.join(tmp, name);
@@ -29,7 +31,9 @@ const run = (args: { path: string; offset?: number; limit?: number }) =>
 		assert.ok(r.content.length >= 1);
 		const first = r.content[0]!;
 		assert.equal(first.type, "text");
-		return { text: (first as { type: "text"; text: string }).text, details: r.details };
+		const framed = (first as { type: "text"; text: string }).text;
+		assert(framed.startsWith(SOURCE_NOTICE));
+		return { text: framed.slice(SOURCE_NOTICE.length), details: typeof r.details === "string" ? r.details.slice(SOURCE_NOTICE.length) : r.details };
 	});
 
 describe("read tool — text semantics", () => {
@@ -40,12 +44,12 @@ describe("read tool — text semantics", () => {
 		assert.equal(details, "hello\nworld", "the record part output carries the string verbatim");
 	});
 
-	it("resolves relative paths against the learner's home (sources v1 anchoring)", async () => {
+	it("resolves relative paths against the approved source directory", async () => {
 		// sources v1: the harness has no meaningful cwd — "find my notes" must
 		// work from a bare relative path, so the home directory is the anchor
 		// (fs-shared resolveSourcePath). Scratch file in home, cleaned up.
 		const rel = `lh-read-rel-test-${process.pid}.txt`;
-		const homeFile = path.join(os.homedir(), rel);
+		const homeFile = path.join(tmp, rel);
 		fs.writeFileSync(homeFile, "rel", "utf-8");
 		try {
 			assert.equal((await run({ path: rel })).text, "rel");
@@ -112,6 +116,7 @@ describe("read tool — image semantics (native content parts)", () => {
 		const textPart = parts[0]!;
 		const imagePart = parts[1]!;
 		assert.equal(textPart.type, "text");
+		assert.ok(textPart.text!.startsWith(SOURCE_NOTICE));
 		assert.match(textPart.text!, /Read image file \[image\/png\]/);
 		assert.equal(imagePart.type, "image");
 		assert.equal(imagePart.mimeType, "image/png");
@@ -124,6 +129,6 @@ describe("read tool — image semantics (native content parts)", () => {
 		const result = await readTool.execute!("test", { path: file });
 		assert.equal(result.content.length, 1);
 		assert.equal(result.content[0]!.type, "text");
-		assert.equal((result.content[0] as { type: "text"; text: string }).text, "body");
+		assert.equal((result.content[0] as { type: "text"; text: string }).text, SOURCE_NOTICE + "body");
 	});
 });

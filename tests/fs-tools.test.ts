@@ -1,3 +1,4 @@
+import { SOURCE_NOTICE } from "../src/agent/tools/untrusted-source.ts";
 import assert from "node:assert";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -35,11 +36,14 @@ async function runText(tool: AgentTool<any>, params: unknown, signal?: AbortSign
 	const result = await tool.execute!("c", params, signal);
 	const first = result.content[0];
 	assert.ok(first !== undefined && first.type === "text", "first content part is text");
-	return (first as { type: "text"; text: string }).text;
+	const text = (first as { type: "text"; text: string }).text;
+	if (tool.name === "read" || (tool.name === "grep" && /:\d+:/.test(text))) assert.ok(text.startsWith(SOURCE_NOTICE), "source matches must be framed as untrusted");
+	return text.startsWith(SOURCE_NOTICE) ? text.slice(SOURCE_NOTICE.length) : text;
 }
 
 async function setup(): Promise<string> {
 	const root = await fs.mkdtemp(path.join(os.tmpdir(), "lh-fs-"));
+	process.env.LH_SOURCE_ROOT = root;
 	await fs.mkdir(path.join(root, "notes", "sub"), { recursive: true });
 	await fs.mkdir(path.join(root, "code"), { recursive: true });
 	await fs.mkdir(path.join(root, "node_modules"), { recursive: true });
@@ -105,7 +109,7 @@ describe("ls (pi port)", () => {
 	});
 
 	it("missing path and non-directory throw (the model sees the error)", async () => {
-		await assert.rejects(async () => lsTool.execute!("c", { path: "/nonexistent/xyz" }), /Path not found/);
+		await assert.rejects(async () => lsTool.execute!("c", { path: "/nonexistent/xyz" }), /Path not found|restricted|ENOENT/);
 		await assert.rejects(
 			async () => lsTool.execute!("c", { path: path.join(FIXTURE, "binary.bin") }),
 			/Not a directory/,
@@ -238,6 +242,7 @@ describe("abort plumbing (the 2026-09-19 cascade fix)", () => {
 		// abort lands in, the tool returns promptly with an abort notice —
 		// never "No matches found", never a hang.
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "lh-fs-midabort-"));
+		process.env.LH_SOURCE_ROOT = root;
 		await fs.mkdir(path.join(root, "deep"), { recursive: true });
 		for (let i = 0; i < 200; i++) {
 			await fs.writeFile(path.join(root, i % 2 ? `f${i}.txt` : `deep/f${i}.txt`), "needle line\n");

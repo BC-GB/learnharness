@@ -24,6 +24,7 @@
  * leaked server holds its port against the next run (learned the hard
  * way, same day).
  */
+import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import { probeEnv, verifyDemoRuntime } from "./smoke-demo-runtime.mjs";
 import { verifyProviderRuntime } from "./smoke-provider-runtime.mjs";
@@ -64,9 +65,9 @@ function freePort() {
 }
 
 /** One GET; resolves the status code (0 = connection refused/failed). */
-function get(url) {
+function get(url, capability) {
 	return new Promise((resolve) => {
-		const req = http.get(url, (res) => {
+		const req = http.get(url, { headers: capability ? { "x-learnharness-desktop": capability } : {} }, (res) => {
 			res.resume();
 			resolve(res.statusCode ?? 0);
 		});
@@ -86,6 +87,7 @@ async function main() {
 	verifyProviderRuntime(STANDALONE, RUNTIME);
 	// A plain GET without Accept-Encoding never exercises gzip backpressure.
 	verifyCompressionRuntime(STANDALONE, RUNTIME);
+	const capability = randomBytes(32).toString("hex");
 	const port = await freePort();
 	const url = `http://127.0.0.1:${port}`;
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "lh-smoke-"));
@@ -121,6 +123,7 @@ async function main() {
 			HOSTNAME: "127.0.0.1",
 			LH_DATA_DIR: dataDir,
 			LH_AUTH_FILE: authFile,
+			LH_DESKTOP_API_SECRET: capability,
 		},
 		stdio: ["ignore", "pipe", "pipe"],
 	});
@@ -156,16 +159,25 @@ async function main() {
 		const deadline = Date.now() + BOOT_TIMEOUT_MS;
 		while (Date.now() < deadline) {
 			if (exited) throw new Error(`server exited before answering on ${url}`);
-			boot = await get(url);
+			boot = await get(url, capability);
 			if (boot === 200) break;
 			await new Promise((r) => setTimeout(r, POLL_MS));
 		}
 		if (boot !== 200) throw new Error(`server never answered 200 on ${url} (last status: ${boot})`);
 		console.log(`[smoke-server] boot ok: GET / → 200 (${url})`);
 
+		// Anonymous page/RSC and API requests must be rejected before reading state.
+		for (const route of ["/", "/chat/private-fixture", "/chat/private-fixture?_rsc=probe", ...PROBES]) {
+			for (const supplied of [undefined, "wrong"]) {
+				const status = await get(url + route, supplied);
+				if (status !== 403) throw new Error(`Unauthorized GET ${route} returned ${status}`);
+			}
+		}
+		console.log("[smoke-server] anonymous/wrong-capability pages and APIs denied");
+
 		// 2) API surface: every probe must be 200.
 		for (const route of PROBES) {
-			const status = await get(url + route);
+			const status = await get(url + route, capability);
 			if (status !== 200) throw new Error(`GET ${route} → ${status} (expected 200)`);
 			console.log(`[smoke-server] GET ${route} → 200`);
 		}

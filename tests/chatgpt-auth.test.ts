@@ -1,3 +1,4 @@
+import http from "node:http";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -681,4 +682,24 @@ test("private leases bind active account, authority revision and raw visible mod
 		for (const mutation of [{ expectedAccountId: "another" }, { expectedAuthorityRevision: catalog.authorityRevision - 1 }, { selectedModelId: "hidden" }]) await assert.rejects(f.rawLease(false, { ...expected, ...mutation }));
 		assert.equal((await f.rawLease(false, expected)).accountId, catalog.accountId);
 	} finally { f.service.close(); }
+});
+
+test("OAuth callback cannot be rebound to a network interface through environment", async () => {
+ const previous = process.env.LH_CALLBACK_BIND;
+ process.env.LH_CALLBACK_BIND = "0.0.0.0";
+ const original = http.Server.prototype.listen;
+ const hosts: unknown[] = [];
+ http.Server.prototype.listen = function(this: http.Server, ...args: unknown[]) {
+  hosts.push(args[1]);
+  return Reflect.apply(original, this, args);
+ } as typeof original;
+ const f = fixture();
+ try {
+  await f.service.login();
+  assert.deepEqual(hosts, ["127.0.0.1"]);
+  assert.equal(f.requests.length, 0, "opening the mock flow does not exchange credentials");
+ } finally {
+  f.service.close(); http.Server.prototype.listen = original;
+  if (previous === undefined) delete process.env.LH_CALLBACK_BIND; else process.env.LH_CALLBACK_BIND = previous;
+ }
 });
