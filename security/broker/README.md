@@ -188,7 +188,35 @@ credit controls, live model/tool compatibility and a completed real lesson remai
 explicit deployment gates. See the official [account/security guide](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)
 and [preview restrictions](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
 
-### Separate API-key mode
+### Subscription relay network boundary
+
+The subscription overlay requires `EGRESS_NET_IMAGE`, `LH_AUTH_IPV4` and
+`LH_API_IPV4`. Build the firewall using `Dockerfile.egress-network` and a verified
+cached firewall base. Resolve public provider addresses with the operator-side
+`node security/broker/resolve-egress-pins.mjs`; persist the returned values in the
+trusted deployment environment, not in app-controlled state. Validate public
+OpenAI discovery over the finished TLS tunnel before using new pins.
+
+The relay shares a separate firewall namespace with no capabilities of its own.
+Only the two pinned IPv4 addresses on TCP 443 are allowed. Private/reserved ranges
+are denied before the allow rules; DNS and IPv6 have no exceptions. The initializer
+drops its capability bounding set after installing the rules. Missing or malformed
+pins fail startup. Provider IP rotation causes connection failure; refreshing pins
+requires operator verification and recreation of the relay and its namespace.
+Do not automatically widen the allowlist when a connection fails.
+
+This constrains arbitrary relay code, including delayed malicious behaviour, rather
+than trusting that it always calls the allowlist helper. It is an IP/port boundary:
+shared provider/CDN addresses can host other services. The broker still verifies
+TLS names and permitted HTTP endpoints. A compromised broker or host is a separate
+trust-boundary failure; this firewall does not prove those components harmless.
+
+`test-egress-network.py` runs deliberately hostile raw socket tests before and
+after restart, including DNS/IPv6 and initialization failures. It uses disposable
+containers without credentials or user mounts. Its positive control makes a TCP
+connection to public Cloudflare DNS service port 443, without sending app data.
+
+### Separate API-key mode (explicit opt-in)
 
 Default upstream is the isolated mock. Live mode requires both `LH_BROKER_UPSTREAM=live`
 and the explicit `LH_BROKER_ALLOW_LIVE=I_AUTHORIZE_BILLABLE_OPENAI_REQUESTS` deployment
