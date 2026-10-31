@@ -77,6 +77,7 @@ function dispatch(
 	ack: string,
 	input: ResearchInput | DemoInput | VisualInput | PdfInput,
 ): string {
+	if (kind === "research" && process.env.LH_DISABLE_RESEARCH === "1") return "Web research is disabled by deployment policy.";
 	const existing = ctx.jobStore.findJobByToolCallId(ctx.chatId, toolCallId);
 	const job = existing ?? ctx.jobStore.createJob({ kind, chatId: ctx.chatId, toolCallId, input });
 	if (!existing) ctx.spawn(job, input);

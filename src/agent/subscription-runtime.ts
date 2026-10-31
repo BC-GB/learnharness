@@ -12,7 +12,9 @@ function runtime(): Runtime {
 	return global[KEY] ??= { listeners: new Map() };
 }
 export function configureWebSubscriptionRuntime(request: NonNullable<Runtime["request"]>): void { runtime().request = request; }
+export function subscriptionAuthDisabled(): boolean { return process.env.LH_DISABLE_SUBSCRIPTION_AUTH === "1"; }
 export function webSubscriptionsEnabled(): boolean {
+	if (subscriptionAuthDisabled()) return false;
 	return process.env.LH_DESKTOP_SERVER !== "1" && !process.env.LH_DESKTOP_API_SECRET && !!runtime().request;
 }
 export function onWebSubscriptionPacket(channel: SubscriptionRuntimeChannel, listener: (packet: SubscriptionRuntimePacket) => void): void {

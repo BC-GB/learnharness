@@ -130,7 +130,7 @@ describe("generated SVG image boundary", () => {
 	});
 });
 
-it("the fullscreen button opens the same SVG image and inversion; download keeps original bytes", async () => {
+it("the fullscreen button opens the same SVG image and inversion; raw SVG download is unavailable", async () => {
 	const originalSvg = FIGURE.replace(' xmlns="http://www.w3.org/2000/svg"', '').replace("θ &amp; φ", "θ&nbsp;&amp; φ");
 	const displaySvg = FIGURE.replace("θ &amp; φ", "θ&#160;&amp; φ");
 	const dom = parseHTML("<html><body></body></html>");
@@ -148,10 +148,8 @@ it("the fullscreen button opens the same SVG image and inversion; download keeps
 	const root = createRoot(host);
 	const originalCreateUrl = URL.createObjectURL;
 	const originalRevokeUrl = URL.revokeObjectURL;
-	const originalCreateElement = dom.document.createElement;
 	let downloaded: Blob | undefined;
 	let revoked: string | undefined;
-	let clicked: { name: string; href: string } | undefined;
 	URL.createObjectURL = (blob) => {
 		assert.ok(blob instanceof Blob);
 		downloaded = blob;
@@ -176,27 +174,15 @@ it("the fullscreen button opens the same SVG image and inversion; download keeps
 		assert.equal(fullscreen.getAttribute("src"), inline.getAttribute("src"));
 		assert.match(overlayHolder.getAttribute("style")!, /invert\(1\) hue-rotate\(180deg\)/);
 
-		// Intercept only the download anchor; never navigate or write a real file.
-		dom.document.createElement = ((...args: Parameters<typeof originalCreateElement>) => {
-			const element = originalCreateElement.apply(dom.document, args);
-			if (args[0] === "a") {
-				element.click = () => { clicked = { name: element.getAttribute("download")!, href: element.getAttribute("href")! }; };
-			}
-			return element;
-		}) as typeof originalCreateElement;
-		await act(async () => { host.querySelector('[data-testid="visual-download"]')!.dispatchEvent(new dom.window.Event("click", { bubbles: true })); });
-		assert.ok(downloaded);
-		assert.equal(await downloaded.text(), originalSvg);
-		assert.equal(downloaded.type, "image/svg+xml");
-		assert.deepEqual(clicked, { name: "figure.svg", href: "blob:figure-test" });
-		assert.equal(revoked, "blob:figure-test");
+		assert.equal(host.querySelector('[data-testid="visual-download"]'), null);
+		assert.equal(downloaded, undefined);
+		assert.equal(revoked, undefined);
 	} finally {
 		try {
 			await act(async () => root.unmount());
 		} finally {
 			URL.createObjectURL = originalCreateUrl;
 			URL.revokeObjectURL = originalRevokeUrl;
-			dom.document.createElement = originalCreateElement;
 			host.remove();
 			for (const [i, name] of names.entries()) {
 				if (originals[i]) Object.defineProperty(globalThis, name, originals[i]!);

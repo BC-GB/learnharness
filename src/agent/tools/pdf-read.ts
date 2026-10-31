@@ -103,6 +103,7 @@ export function createPdfReadTools(dir: string): Record<string, AgentTool<any>> 
 				"Then read it with pdf_extract / pdf_search. Use when web_fetch reports a URL is a PDF.",
 			parameters: pdfFetchInput,
 			execute: serverExecute("web_fetch_pdf", pdfFetchInput, async ({ url }): Promise<PdfFetchSummary | string> => {
+				if (process.env.LH_DISABLE_RESEARCH === "1") return "Web research is disabled by deployment policy.";
 				try {
 					const parsed = new URL(url);
 					if (parsed.protocol !== "http:" && parsed.protocol !== "https:")

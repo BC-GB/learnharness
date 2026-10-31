@@ -487,8 +487,8 @@ describe("steer card rendering (the delivered artifact)", () => {
 });
 
 
-describe("artifact chrome — scrollbar, invert toggles, downloads (release polish 2026-10-07)", () => {
-	it("demo iframe: scrolling OFF (the bridge auto-sizes; a scrollable iframe traps the wheel) and the invert + download buttons render", () => {
+describe("artifact chrome — scrollbar, invert toggles, disabled active-document downloads", () => {
+	it("demo iframe: scrolling OFF (the bridge auto-sizes; a scrollable iframe traps the wheel) and inversion remains without a raw HTML download", () => {
 		const steer = buildSubagentSteer(
 			{ id: "jd3", kind: "demo", toolCallId: "cd3" },
 			{ title: "Wave interference", html: DEMO_HTML, tested: true },
@@ -496,17 +496,17 @@ describe("artifact chrome — scrollbar, invert toggles, downloads (release poli
 		const html = renderToStaticMarkup(<SubagentSteerCard message={projectNative([steer])[0] as never} />);
 		assert.match(html, /scrolling="no"/, "no internal scrollbar — the wheel chains to the session");
 		assert.match(html, /toggle-invert-demo-brightness/, "the invert switch (house Toggle)");
-		assert.match(html, /data-testid="demo-download"/);
+		assert.doesNotMatch(html, /data-testid="demo-download"/);
 		assert.ok(!html.includes("hue-rotate"), "inversion is OFF by default — a manual toggle only");
 		assert.match(html, /interactive demo/, "the kind label lives in the caption header");
 		assert.match(html, /Wave interference/, "the title rides beside the kind label");
 	});
 
-	it("figure card: invert + download buttons; NO fullscreen button without a chat page (the context is null there)", () => {
+	it("figure card: invert remains, raw download disabled; NO fullscreen button without a chat page (the context is null there)", () => {
 		const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><circle cx="50" cy="50" r="20"/></svg>';
 		const html = renderToStaticMarkup(<VisualOutputCard output={{ svg }} />);
 		assert.match(html, /toggle-invert-figure-brightness/, "the invert switch (house Toggle)");
-		assert.match(html, /data-testid="visual-download"/);
+		assert.doesNotMatch(html, /data-testid="visual-download"/);
 		assert.ok(!html.includes('data-testid="visual-open"'), "fullscreen needs the session overlay context");
 		assert.ok(!html.includes("hue-rotate"), "inversion OFF by default");
 	});
@@ -522,7 +522,7 @@ describe("artifact chrome — scrollbar, invert toggles, downloads (release poli
 		const svgAt = html.indexOf('data-testid="visual-svg"');
 		const captionAt = html.indexOf(">Figure<");
 		assert.ok(svgAt !== -1 && captionAt !== -1 && svgAt < captionAt, "the caption row sits below the image");
-		assert.ok(captionAt < html.indexOf("visual-download"), "the controls ride the caption row");
+		assert.ok(captionAt < html.indexOf("toggle-invert-figure-brightness"), "the controls ride the caption row");
 		// The invert affordance: the contrast-circle disc + the tooltip.
 		assert.ok(html.includes("size-3"), "the icon disc");
 		assert.ok(html.includes('title="Invert colors"'), "the tooltip names the toggle");
@@ -755,10 +755,18 @@ describe("visual maker (fake model + fake headless)", () => {
 		assert.match(result.notes ?? "", /^FAILED: the maker never wrote an SVG/);
 	});
 
-	it("fails with a clear message when no Chrome is available", async () => {
-		const result = await runVisualMaker({ brief: "b" }, { engine: scriptedModel([{ text: "x" }]), headless: noChromeHeadless() });
-		assert.equal(result.svg, "");
-		assert.match(result.notes ?? "", /^FAILED: .*Chrome/);
+	it("renders static SVG when a browser is unavailable", async () => {
+		const headless = fakeHeadless();
+		headless.available = () => false;
+		headless.unavailableReason = () => "Browser disabled by deployment policy";
+		const model = scriptedModel([
+			{ toolCalls: [{ toolCallId: "w1", toolName: "write_svg", input: { svg: SVG_1 } }] },
+			{ toolCalls: [{ toolCallId: "r1", toolName: "render_svg", input: {} }] },
+			{ text: "A static figure." },
+		]);
+		const result = await runVisualMaker({ brief: "b" }, { engine: model, headless });
+		assert.equal(result.svg, SVG_1);
+		assert.equal(headless.svgRenders.length, 1);
 	});
 });
 

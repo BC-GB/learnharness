@@ -144,6 +144,7 @@ export function createWebTools(search: () => SearchProvider | null): Record<stri
 				"Returns an array of results with title, url, and snippet.",
 			parameters: webSearchInput,
 			execute: serverExecute("web_search", webSearchInput, async ({ query, count }): Promise<WebSearchResult[] | string> => {
+				if (process.env.LH_DISABLE_RESEARCH === "1") return "Web research is disabled by deployment policy.";
 				const provider = search();
 				if (!provider) {
 					return (
@@ -167,6 +168,7 @@ export function createWebTools(search: () => SearchProvider | null): Record<stri
 				"Handles HTML pages and plain text; JS-rendered pages fall back to a reader service.",
 			parameters: webFetchInput,
 			execute: serverExecute("web_fetch", webFetchInput, async ({ url }): Promise<string> => {
+				if (process.env.LH_DISABLE_RESEARCH === "1") return "Web research is disabled by deployment policy.";
 				try {
 					const parsed = new URL(url);
 					// URL.protocol carries a TRAILING COLON ("https:", WHATWG) — the

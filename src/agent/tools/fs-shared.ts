@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -39,8 +40,20 @@ const EXCLUDED_DIR_NAMES = new Set(["node_modules", ".git", "Library", ".Trash"]
  *  (pi resolves against the project cwd; the harness's "project" is the
  *  learner's life, so the home directory is the anchor.) */
 export function resolveSourcePath(p?: string): string {
-	if (!p) return os.homedir();
-	return path.isAbsolute(p) ? p : path.join(os.homedir(), p);
+	const configuredRoot = process.env.LH_SOURCE_ROOT;
+	if (!configuredRoot) {
+		if (!p) return os.homedir();
+		return path.isAbsolute(p) ? p : path.join(os.homedir(), p);
+	}
+	// Both the lexical path and real target must stay within the read-only
+	// course snapshot. This excludes traversal, prefix collisions and symlinks.
+	const root = realpathSync(configuredRoot);
+	const candidate = path.resolve(root, p || '.');
+	const within = (value: string) => value === root || value.startsWith(root + path.sep);
+	if (!within(candidate)) throw new Error('Source access is restricted to the course library.');
+	const resolved = realpathSync(candidate);
+	if (!within(resolved)) throw new Error('Source access is restricted to the course library.');
+	return resolved;
 }
 
 /** pi's formatSize idiom (50KB prints as "50.0KB"). */

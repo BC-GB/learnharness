@@ -12,7 +12,7 @@ import { subscriptionControl } from "../../electron/subscription-ipc.cjs";
 import { emit } from "../core/events.ts";
 import type { ChatGPTStatus } from "../core/contracts/chatgpt.ts";
 import type { NativeSubscriptionSnapshot } from "../core/contracts/subscriptions.ts";
-import { configureWebSubscriptionRuntime, publishWebSubscriptionPacket, webSubscriptionsEnabled, type SubscriptionRuntimeChannel as Channel, type SubscriptionRuntimePacket as Packet } from "../agent/subscription-runtime.ts";
+import { configureWebSubscriptionRuntime, publishWebSubscriptionPacket, webSubscriptionsEnabled, subscriptionAuthDisabled, type SubscriptionRuntimeChannel as Channel, type SubscriptionRuntimePacket as Packet } from "../agent/subscription-runtime.ts";
 export { webSubscriptionsEnabled } from "../agent/subscription-runtime.ts";
 interface BrowserAction { target: string; origin: string; scope: string; expires: number; current(): Promise<boolean> }
 const KEY = Symbol.for("lh.webSubscriptions");
@@ -43,6 +43,7 @@ export function createWebSubscriptionOwner(options: {
 	sdk?: unknown;
 	onPacket?: (channel: Channel, packet: Packet) => void;
 } ) {
+	if (subscriptionAuthDisabled()) throw new Error("Subscription account sign-in is disabled by deployment policy.");
 	const notify = options.onPacket ?? (() => {});
 	const launches = new AsyncLocalStorage<string[]>();
 	const actions = new Map<string, BrowserAction>();
@@ -64,6 +65,7 @@ export function createWebSubscriptionOwner(options: {
 	return {
 		chatgpt, native,
 		async control(providerId: string, command: Record<string, unknown>, origin: string) {
+			if (subscriptionAuthDisabled()) throw new Error("Subscription account sign-in is disabled by deployment policy.");
 			const targets: string[] = [];
 			const value = await launches.run(targets, () => providerId === "chatgpt"
 				? chatGPTControl(command, chatgpt)
@@ -84,6 +86,7 @@ export function createWebSubscriptionOwner(options: {
 			return { value, ...(browserAction ? { browserAction } : {}) };
 		},
 		async takeBrowserAction(id: string, origin: string): Promise<string | undefined> {
+			if (subscriptionAuthDisabled()) return undefined;
 			const action = actions.get(id);
 			if (!action || action.origin !== origin) return;
 			actions.delete(id);

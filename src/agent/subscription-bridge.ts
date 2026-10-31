@@ -1,5 +1,5 @@
 import type { Api, Model, ModelAuth } from "@earendil-works/pi-ai";
-import { onWebSubscriptionPacket, webSubscriptionRequest, webSubscriptionsEnabled } from "./subscription-runtime.ts";
+import { onWebSubscriptionPacket, webSubscriptionRequest, webSubscriptionsEnabled, subscriptionAuthDisabled } from "./subscription-runtime.ts";
 import { NATIVE_SUBSCRIPTIONS, type NativeSubscriptionProviderId, type NativeSubscriptionScope, type NativeSubscriptionSnapshot, type NativeSubscriptionStatus } from "../core/contracts/subscriptions.ts";
 import type { AdmissionScope, NoDispatchKind } from "./chatgpt-request-cycle.ts";
 
@@ -17,6 +17,7 @@ export function nativeSubscriptionId(logicalId: string): NativeSubscriptionProvi
 	return NATIVE_SUBSCRIPTIONS.find((entry) => entry.logicalId === logicalId)?.providerId;
 }
 function desktopConnected(): boolean {
+	if (subscriptionAuthDisabled()) return false;
 	return process.env.LH_DESKTOP_SERVER === "1" && (process.env.LH_DESKTOP_API_SECRET?.length ?? 0) >= 64 && typeof process.send === "function" && process.connected === true;
 }
 function runtimeConnected(): boolean { return desktopConnected() || webSubscriptionsEnabled(); }
