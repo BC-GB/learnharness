@@ -20,12 +20,17 @@ services:
     <<: *restricted
     image: ${APP_IMAGE:?Pinned app image required}
     command: [node, --import, tsx, security/broker/app-ipc.mjs]
+    healthcheck:
+      test: [CMD, node, -e, "process.exit(require('fs').existsSync('/app-ipc/app.sock')?0:1)"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
     network_mode: none
     mem_limit: 2g
     pids_limit: 256
     depends_on:
       init: {condition: service_completed_successfully}
-      broker: {condition: service_started}
+      broker: {condition: service_healthy}
     volumes: [socket:/broker:ro, app-ipc:/app-ipc, app-state:/state, course:/course:ro]
     tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=128m,uid=1000,gid=1000"]
     environment:
@@ -43,19 +48,39 @@ services:
     networks: [mock-only]
     volumes: [socket:/broker, control:/control, ledger:/state]
     environment: {LH_BROKER_UPSTREAM: mock}
+    healthcheck:
+      test: [CMD, node, -e, "const fs=require('fs');process.exit(fs.existsSync('/broker/request.sock')&&fs.existsSync('/control/admin.sock')?0:1)"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
   mock:
     <<: *restricted
     image: ${BROKER_IMAGE:?Pinned broker image required}
     command: [node, mock.mjs]
     networks: [mock-only]
+  view-net:
+    <<: *restricted
+    image: ${VIEW_NET_IMAGE:?Pinned inbound-only network image required}
+    user: "0:0"
+    cap_add: [NET_ADMIN, SETPCAP]
+    networks: [view-only]
+    ports: [127.0.0.1:3188:8080]
+    tmpfs: ["/run:rw,noexec,nosuid,nodev,size=1m"]
   view:
     <<: *restricted
     image: ${BROKER_IMAGE:?Pinned broker image required}
     command: [node, view.mjs]
+    healthcheck:
+      test: [CMD, node, -e, "require('http').get('http://127.0.0.1:8080/',{headers:{host:process.env.LH_VIEW_HOST}},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
     depends_on:
       init: {condition: service_completed_successfully}
-    networks: [view-only]
-    ports: [127.0.0.1:3188:8080]
+      view-net: {condition: service_healthy}
+      app: {condition: service_healthy}
+      broker: {condition: service_healthy}
+    network_mode: service:view-net
     volumes: [control:/control:ro, app-ipc:/app-ipc:ro, view-secret:/view-secret:ro]
     environment: {LH_VIEW_HOST: "127.0.0.1:3188"}
 volumes:
@@ -70,6 +95,5 @@ networks:
   mock-only:
     internal: true
     driver_opts: {com.docker.network.bridge.gateway_mode_ipv4: isolated}
-  view-only:
-    internal: true
-    driver_opts: {com.docker.network.bridge.gateway_mode_ipv4: isolated}
+  # The dedicated namespace firewall denies outbound traffic before the view starts.
+  view-only: {}

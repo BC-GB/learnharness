@@ -26,6 +26,11 @@ try{
  });
  await test('actual view script renders malicious app output as text, never executable DOM',async()=>{
   const {document}=parseHTML(fs.readFileSync(new URL('./index.html',import.meta.url),'utf8'));
+  // LinkeDOM lacks the native select.value setter; Chromium tests cover the real control.
+  for(const select of document.querySelectorAll('select'))Object.defineProperty(select,'value',{
+   get(){return [...this.options].find(o=>o.selected)?.value??this.options[0]?.value??''},
+   set(value){for(const option of this.options)option.selected=option.value===value}
+  });
   const routes=[];const context={document,location:{hash:'#'+token,pathname:'/'},history:{replaceState(){}},setInterval(){},fetch:async(route,options)=>{
    routes.push(route);assert.ok(['/app','/control'].includes(route));assert.equal(options.headers['x-view-token'],token);
    const request=JSON.parse(options.body);let value;
@@ -33,12 +38,24 @@ try{
    if(request.op==='chats')value=[{id:'chat1',title:attack}];
    if(request.op==='list')value=[];
    if(request.op==='create')value={id:'chat1'};
-   if(request.op==='chat')value={messages:[{role:'assistant',content:attack}]};
+   if(request.op==='chat')value={messages:[{role:'assistant',content:[{type:'text',text:attack,textSignature:'PRIVATE_METADATA'}]}]};
    return {ok:true,json:async()=>value};
   }};
   vm.runInNewContext(fs.readFileSync(new URL('./client.js',import.meta.url),'utf8'),context);
   await new Promise(r=>setTimeout(r,20));await document.getElementById('create').onclick();
-  assert.ok(document.getElementById('lesson').textContent.includes(attack));
+  assert.ok(document.getElementById('lesson').textContent.includes(attack));assert.ok(!document.getElementById('lesson').textContent.includes('PRIVATE_METADATA'));
   assert.equal(document.querySelectorAll('img,iframe,object').length,0);assert.equal(document.querySelectorAll('script').length,1);assert.equal(context.compromised,undefined);assert.ok(routes.length>=4);
+ });
+ await test('initial transient failures retry reads, but access denial does not retry',async()=>{
+  for(const status of [502,403]){
+   const {document}=parseHTML(fs.readFileSync(new URL('./index.html',import.meta.url),'utf8'));
+   const timers=[],events={};let attempts=0,reloads=0;
+   const context={document,location:{hash:'#'+token,pathname:'/',reload(){reloads++}},history:{replaceState(){}},setInterval(){},setTimeout(fn){timers.push(fn)},addEventListener(name,fn){events[name]=fn},fetch:async()=>{attempts++;return {ok:false,status,json:async()=>({error:'fixture failure'})}}};
+   vm.runInNewContext(fs.readFileSync(new URL('./client.js',import.meta.url),'utf8'),context);
+   await new Promise(r=>setTimeout(r,10));
+   assert.equal(attempts,1);assert.equal(timers.length,status===502?1:0);
+   context.location.hash='';events.hashchange();assert.equal(reloads,0);
+   context.location.hash='#new-private-link';events.hashchange();assert.equal(reloads,1);
+  }
  });
 }finally{view.closeAllConnections();await new Promise(r=>view.close(r));await new Promise(r=>ipc.close(r))}
