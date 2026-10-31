@@ -408,7 +408,7 @@ const ZOOM_LADDER = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
  * inside the .app bundle Squirrel is about to replace (extraResources),
  * and before-quit alone would race the swap. */
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
-let autoUpdater = null; // electron-updater's, packaged builds only
+const autoUpdater = null; // Remote updates are disabled in this fork.
 // Observational only: this snapshot NEVER gates a check, download or install.
 // The revision lets late subscribers reject an older in-flight IPC snapshot.
 let updateState = { status: "idle", version: null, revision: 0 };
@@ -430,89 +430,12 @@ function reportUpdateStatus(status, version = null) {
 	}
 }
 
-/** Read the SAME data directory passed to the packaged server. Only an
- * explicit false opts out; absent/corrupt/unreadable settings keep updates ON.
- * Re-read for each automatic check so saving the toggle needs no restart. */
-function automaticUpdatesEnabled() {
-	try {
-		const settings = JSON.parse(fs.readFileSync(path.join(DATA_DIR(), "settings.json"), "utf8"));
-		return settings?.general?.autoUpdate !== false;
-	} catch {
-		return true;
-	}
-}
-
-function checkForUpdates({ manual = false } = {}) {
-	if (!autoUpdater) return;
-	if (!manual && !automaticUpdatesEnabled()) {
-		log("auto-update: automatic check skipped (turned off in Settings)");
-		return;
-	}
-	// Do not gate on display state: a stale spinner/error must never disable
-	// future background checks. electron-updater owns its in-flight work.
-	autoUpdater
-		.checkForUpdates()
-		.then((result) => {
-			// A declined check (e.g. an unsupported package) establishes no
-			// latest-version claim. Real results arrive through updater events.
-			if (!result) reportUpdateStatus("idle");
-		})
-		.catch((err) => {
-			log(`update check failed: ${err?.message ?? err}`);
-			reportUpdateStatus("error");
-		});
-}
-
-function installUpdateNow() {
-	// Kill the server BEFORE the quit-and-install (see block comment).
-	try {
-		killServer();
-	} catch {
-		/* already dead */
-	}
-	autoUpdater?.quitAndInstall();
-}
-
-function setupAutoUpdater() {
-	if (!app.isPackaged) {
-		log("auto-update: dev build — updater disabled");
-		reportUpdateStatus("disabled");
-		return;
-	}
-	try {
-		autoUpdater = require("electron-updater").autoUpdater;
-	} catch (err) {
-		log(`auto-update: electron-updater unavailable (${err?.message ?? err}) — updates disabled`);
-		reportUpdateStatus("disabled");
-		return;
-	}
-	const feed = process.env.LH_UPDATE_FEED;
-	if (feed) {
-		autoUpdater.setFeedURL({ provider: "generic", url: feed });
-		log(`auto-update: LH_UPDATE_FEED override → ${feed}`);
-	}
-	autoUpdater.autoDownload = true;
-	autoUpdater.autoInstallOnAppQuit = true;
-	// Route every updater log line through the shell's own log (userData/
-	// logs/main.log) — feed failures must be diagnosable after the fact.
-	autoUpdater.logger = {
-		info: (m) => log(`updater: ${m}`),
-		warn: (m) => log(`updater warn: ${m}`),
-		debug: (m) => {}, // too chatty for the persistent log
-		error: (m) => log(`updater error: ${m}`),
-	};
-	autoUpdater.on("checking-for-update", () => reportUpdateStatus("checking"));
-	autoUpdater.on("update-available", (info) => reportUpdateStatus("downloading", info?.version));
-	autoUpdater.on("update-not-available", () => reportUpdateStatus("up-to-date"));
-	autoUpdater.on("update-downloaded", (info) => {
-		log(`update downloaded: ${info?.version} — banner shown`);
-		reportUpdateStatus("downloaded", info?.version);
-	});
-	autoUpdater.on("error", (err) => {
-		log(`updater error: ${err?.message ?? err}`);
-		reportUpdateStatus("error");
-	});
-}
+/** This fork must never replace reviewed source with an upstream binary.
+ * Updates require a separately reviewed build; preferences and feed overrides
+ * cannot re-enable downloading, installing, or checking a remote feed. */
+function checkForUpdates() { reportUpdateStatus("disabled"); }
+function installUpdateNow() { reportUpdateStatus("disabled"); }
+function setupAutoUpdater() { reportUpdateStatus("disabled"); }
 
 /** One result surface for manual checks. Preload buffers the navigation
  * request until React subscribes, including when all macOS windows closed. */

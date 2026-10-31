@@ -36,3 +36,9 @@ Raw provider-event recording requires exactly `LH_PROVIDER_EVENTS=1`. Leave it u
 ## Limits
 
 These changes address specific application attack paths, not arbitrary malicious code running with the app's permissions. Use non-root execution, a read-only filesystem, no Docker socket, resource limits and independent network restrictions. Allowed provider requests can contain conversation history and approved document text. Only provide credentials and documents intended for that provider. Passing tests does not certify that the application or its dependencies are malware-free.
+
+## Upstream compatibility
+
+The 0.4.1 source/folder organization, bounded multipart imports, question recovery and cache preferences retain these restrictions. PDF imports are refused before extraction and source registration, including PDFs renamed as text. Leading home (`~`) paths are explicitly rejected; use the approved source root. Background diagnostic captures remain off unless `LH_BACKGROUND_CAPTURE` selects a role or `all`; enabling them stores conversation content locally and does not enable PDF processing. Leave this variable unset.
+
+Remote desktop update checks, downloads and installations are disabled, including manual checks and `LH_UPDATE_FEED` overrides. Updating this fork requires another audited source merge and build; upstream release binaries must not overwrite its protections.
