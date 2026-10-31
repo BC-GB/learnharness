@@ -6,7 +6,7 @@ import test from "node:test";
 import { desktopAPIAuthorized } from "../src/server/desktop-access.ts";
 import { resolveSourcePath } from "../src/agent/tools/fs-shared.ts";
 import { readBoundedFile } from "../src/agent/tools/bounded-file.ts";
-import { compileSafePattern } from "../src/agent/tools/safe-pattern.ts";
+import { compileSafePattern, validateSafeRegex, literalPattern } from "../src/agent/tools/safe-pattern.ts";
 import { publicIPv4, publicURL } from "../src/agent/tools/public-fetch.ts";
 
 test("all launch modes fail closed without a capability", () => {
@@ -42,9 +42,10 @@ test("bounded reads reject oversized files, directories and links", async () => 
 
 test("dangerous regex syntax is rejected before matching", () => {
 	for (const pattern of ["(a+)+$", "(a|aa)+$", "a*a*a*b", "(a)\\1", "a{1000000}"])
-		assert.throws(() => compileSafePattern(pattern, false, false), /unsupported/);
+		assert.throws(() => validateSafeRegex(pattern), /unsupported/);
+	assert.throws(() => compileSafePattern("(ab)", false, false), /unsupported/);
 	assert(compileSafePattern("^hello$", false, true).test("HELLO"));
-	assert(compileSafePattern("(a+)+$", true, false).test("literal (a+)+$"));
+	assert(literalPattern("(a+)+$", false).test("literal (a+)+$"));
 });
 
 test("non-public and ambiguous research destinations are rejected", () => {

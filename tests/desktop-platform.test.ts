@@ -207,7 +207,7 @@ describe("release build authority", () => {
   const workflow = yaml.load(source);
   assert.deepEqual(Object.keys(workflow.on), ["workflow_dispatch"]);
   assert.deepEqual(workflow.permissions, { contents: "read" });
-  assert.doesNotMatch(source, /secrets\.|contents: write|GH_TOKEN|--publish always|createRelease/);
+  assert.doesNotMatch(JSON.stringify(workflow), /secrets\.|contents: write|GH_TOKEN|--publish always|createRelease/);
   for (const job of Object.values(workflow.jobs) as any[]) {
    assert.notEqual(job.permissions?.contents, "write");
    for (const step of job.steps) {

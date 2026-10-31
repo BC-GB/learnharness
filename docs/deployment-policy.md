@@ -1,6 +1,9 @@
 # Secure deployment defaults
 
-All API routes require a server capability. A missing or short `LH_DESKTOP_API_SECRET` denies access, including `next dev` and `next start`. Packaged desktop supplies its existing random per-launch capability. Web deployment requires an independently authenticated HTTPS gateway that strips any client-supplied `x-learnharness-desktop` header and injects the server capability only after authentication. Generate at least 32 random bytes, represented as 64 hexadecimal characters. Keep the secret server-side; never put it in client code or a URL. The server must not be reachable around that gateway. Default npm web commands bind only to 127.0.0.1.
+All page, asset and API routes require a server capability. A missing or short `LH_DESKTOP_API_SECRET` denies access, including `next dev` and `next start`. Packaged desktop supplies its existing random per-launch capability. Web deployment requires an independently authenticated HTTPS gateway that strips any client-supplied `x-learnharness-desktop` header and injects the server capability only after authentication. Generate at least 32 random bytes, represented as 64 hexadecimal characters. Keep the secret server-side; never put it in client code or a URL. The server must not be reachable around that gateway. Default npm web commands bind only to 127.0.0.1.
+
+All page and asset routes require the capability too, including server-rendered chat data and RSC requests. The desktop shell supplies it only for its registered native main frame on the exact app origin; the first root navigation has a narrowly scoped bootstrap rule. A browser deployment needs an authenticated gateway that injects the capability after authenticating the user. Do not put the capability in URLs or browser JavaScript.
+
 
 The OAuth callback always binds to 127.0.0.1. `LH_CALLBACK_BIND` is no longer supported. `LH_CALLBACK_PORT` can select a port; otherwise it is ephemeral. Remote subscription sign-in requires a separate supported authentication design; do not expose a plaintext callback.
 

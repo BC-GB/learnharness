@@ -1,13 +1,10 @@
 /**
- * Import the demo dependency graph from ONLY a standalone payload. With --browser,
- * also drive the packaged app's own --browser-service (never system Chrome).
- * No server, model, keys, installed app UI, or production diagnostic route needed.
- *
- * node scripts/smoke-demo-runtime.mjs --standalone <dir> --runtime <electron binary> [--browser]
- * --runtime defaults to host Node for the import-only gate.
+ * Verify the static SVG renderer from the standalone payload, without models,
+ * credentials, server browser execution, or the installed app.
+ * node scripts/smoke-demo-runtime.mjs --standalone <dir> --runtime <node binary>
  */
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import { createRequire, registerHooks } from "node:module";
 import * as os from "node:os";
@@ -72,7 +69,7 @@ async function importPayload(standalone) {
 			`dependency escaped standalone payload: ${file}`);
 	};
 	const require = createRequire(path.join(root, "server.js"));
-	const entry = require.resolve("puppeteer-core");
+	const entry = require.resolve("@resvg/resvg-js");
 	inside(entry); // require.resolve must not silently fall back to checkout node_modules.
 	const loaded = new Set();
 	const hooks = registerHooks({
@@ -88,10 +85,11 @@ async function importPayload(standalone) {
 		},
 	});
 	try {
-		const { default: puppeteer } = await import(pathToFileURL(entry).href);
-		assert.equal(typeof puppeteer.connect, "function");
-		console.log(`[smoke-demo-runtime] puppeteer-core import ok; ${loaded.size} modules confined to ${root}`);
-		return { puppeteer, hooks };
+		const { Resvg } = await import(pathToFileURL(entry).href);
+		const png = new Resvg('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="blue"/></svg>').render().asPng();
+		assert.equal(Buffer.from(png).subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+		console.log(`[smoke-demo-runtime] static SVG runtime ok; ${loaded.size} modules confined to ${root}`);
+		return { hooks };
 	} catch (error) {
 		hooks.deregister();
 		throw error;
@@ -138,85 +136,12 @@ export async function stopBrowserService(helper) {
 	}
 }
 
-async function browserProbe(puppeteer) {
-	assert.ok(process.versions.electron, "--browser requires a packaged Electron --runtime binary");
-	const home = process.env.HOME;
-	const env = { ...process.env };
-	delete env.ELECTRON_RUN_AS_NODE;
-	delete env.LH_DEV_URL;
-	const helper = spawn(process.execPath, [
-		"--browser-service", `--user-data-dir=${path.join(home, "browser-profile")}`,
-		"--disable-background-networking", "--disable-component-update", "--no-proxy-server",
-		// Hosted Linux runners disallow Chromium's unprivileged sandbox.
-		...(process.platform === "linux" ? ["--no-sandbox"] : []),
-	], { cwd: home, env, stdio: ["ignore", "pipe", "pipe", "ipc"] });
-	let output = "";
-	let errors = "";
-	helper.stderr.on("data", (chunk) => { errors = (errors + chunk).slice(-16_000); });
-	let browser;
-	let failed = false;
-	try {
-		const port = await new Promise((resolve, reject) => {
-			const timer = setTimeout(() => reject(new Error("browser-service handshake timed out")), 15_000);
-			helper.once("error", (err) => { clearTimeout(timer); reject(err); });
-			helper.once("exit", (code) => { clearTimeout(timer); reject(new Error(`browser-service exited early: ${code}`)); });
-			helper.stdout.on("data", (chunk) => {
-				output = (output + chunk).slice(-16_000);
-				const match = output.match(/^BROWSER_SERVICE_CDP (\d+)\r?$/m);
-				if (match) { clearTimeout(timer); resolve(Number(match[1])); }
-			});
-		});
-		const info = await (await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(5000) })).json();
-		browser = await puppeteer.connect({ browserWSEndpoint: info.webSocketDebuggerUrl, defaultViewport: null, protocolTimeout: 10_000 });
-		// Electron CDP has no Target.createTarget: use the helper's existing page.
-		const pages = await browser.pages();
-		const page = pages.find((candidate) => candidate.target().type() === "page");
-		assert.ok(page, "browser-service has no page target");
-		const failures = [];
-		page.on("console", (msg) => { if (msg.type() === "error") failures.push(msg.text()); });
-		page.on("pageerror", (err) => failures.push(String(err)));
-		page.on("requestfailed", (req) => failures.push(`failed request: ${req.url()}`));
-		await page.setRequestInterception(true);
-		page.on("request", (req) => {
-			if (/^(file:|about:|data:)/.test(req.url())) void req.continue();
-			else { failures.push(`unexpected network request: ${req.url()}`); void req.abort(); }
-		});
-		const html = path.join(home, "demo.html");
-		fs.writeFileSync(html, '<!doctype html><meta charset="utf-8"><button id="increment">Increment</button><output id="count">0</output><script>document.querySelector("#increment").onclick = () => { document.querySelector("#count").textContent = "1"; };</script>');
-		await page.goto(pathToFileURL(html).href, { waitUntil: "load", timeout: 10_000 });
-		assert.equal(await page.$eval("#count", (element) => element.textContent), "0");
-		await page.click("#increment");
-		assert.equal(await page.$eval("#count", (element) => element.textContent), "1");
-		await page.goto("about:blank");
-		assert.equal(await page.$("#increment"), null, "page state was not cleared");
-		assert.deepEqual(failures, [], "demo console/page/network errors");
-		console.log("[smoke-demo-runtime] packaged browser-service: JS button 0 → 1, clean console/page, page reset ok (no Chrome fallback)");
-	} catch (err) {
-		failed = true;
-		throw new Error(`browser-service probe failed at local CDP/browser interaction\n--- browser-service output ---\n${output}\n${errors}`, { cause: err });
-	} finally {
-		browser?.disconnect();
-		try {
-			const { code, signal, requested } = await stopBrowserService(helper);
-			if (requested) console.log(`[smoke-demo-runtime] observed helper exit after requested IPC disconnect: code=${code}, signal=${signal} (no resident helper)`);
-			else console.log(`[smoke-demo-runtime] helper already exited/disconnected before cleanup: code=${code}, signal=${signal}; no shutdown requested`);
-			if (!failed) {
-				assert.ok(requested, "browser-service exited/disconnected before requested cleanup");
-				assert.deepEqual({ code, signal }, { code: 0, signal: null }, "browser-service shutdown failed");
-			}
-		} catch (error) {
-			if (!failed) throw error;
-			console.error(`[smoke-demo-runtime] cleanup also failed: ${formatProbeError(error)}`);
-		}
-	}
-}
-
 async function main() {
 	const args = process.argv.slice(2);
 	if (args[0] === "--probe") {
-		const { puppeteer, hooks } = await importPayload(args[1]);
+		const { hooks } = await importPayload(args[1]);
 		try {
-			if (args.includes("--browser")) await browserProbe(puppeteer);
+			if (args.includes("--browser")) throw new Error("Browser verification is disabled in this build.");
 		} finally { hooks.deregister(); }
 		return;
 	}
