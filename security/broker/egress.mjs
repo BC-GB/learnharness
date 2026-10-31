@@ -8,7 +8,7 @@ const allowed=new Set(['auth.openai.com','api.openai.com']);
 const blocked=new net.BlockList();
 for(const [ip,prefix] of [['0.0.0.0',8],['10.0.0.0',8],['100.64.0.0',10],['127.0.0.0',8],['169.254.0.0',16],['172.16.0.0',12],['192.0.0.0',24],['192.0.2.0',24],['192.168.0.0',16],['198.18.0.0',15],['198.51.100.0',24],['203.0.113.0',24],['224.0.0.0',4],['240.0.0.0',4]])blocked.addSubnet(ip,prefix,'ipv4');
 export const publicAddress=ip=>net.isIPv4(ip)&&!blocked.check(ip,'ipv4');
-export async function startEgress({socketPath='/egress/tunnel.sock',lookup=host=>dns.resolve4(host),connect=options=>net.connect(options)}={}){
+export async function startEgress({socketPath='/egress/tunnel.sock',lookup=async host=>process.env.LH_EGRESS_PINNED==='1'?[host==='auth.openai.com'?process.env.LH_AUTH_IPV4:process.env.LH_API_IPV4]:dns.resolve4(host),connect=options=>net.connect(options)}={}){
   fs.mkdirSync(path.dirname(socketPath),{recursive:true,mode:0o700});
   if(fs.existsSync(socketPath)){if(!fs.lstatSync(socketPath).isSocket())throw Error('Occupied egress socket');fs.unlinkSync(socketPath)}
   const clients=new Set();

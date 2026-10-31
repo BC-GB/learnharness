@@ -1,0 +1,5 @@
+ARG FIREWALL_IMAGE
+FROM ${FIREWALL_IMAGE}
+COPY --chmod=0555 egress-network.sh /usr/local/bin/egress-network
+ENTRYPOINT ["/usr/local/bin/egress-network"]
+HEALTHCHECK --interval=1s --timeout=1s --retries=3 CMD test -f /run/fw-ready && grep -q 'CapBnd:[[:space:]]*0000000000000000' /proc/1/status

@@ -25,13 +25,35 @@ services:
     pull_policy: never
     pids_limit: 32
     mem_limit: 128m
-    networks: [provider-egress]
+    network_mode: service:egress-net
+    depends_on:
+      egress-net: {condition: service_healthy}
+    environment:
+      LH_EGRESS_PINNED: "1"
+      LH_AUTH_IPV4: ${LH_AUTH_IPV4:?Verified public authentication IPv4 required}
+      LH_API_IPV4: ${LH_API_IPV4:?Verified public API IPv4 required}
     volumes: [egress-socket:/egress]
     healthcheck:
       test: [CMD, node, -e, "process.exit(require('fs').existsSync('/egress/tunnel.sock')?0:1)"]
       interval: 1s
       timeout: 2s
       retries: 20
+  egress-net:
+    image: ${EGRESS_NET_IMAGE:?Pinned egress firewall image required}
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, SETPCAP]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    pull_policy: never
+    pids_limit: 32
+    mem_limit: 64m
+    networks: [provider-egress]
+    tmpfs: ["/run:rw,noexec,nosuid,nodev,size=1m"]
+    environment:
+      LH_AUTH_IPV4: ${LH_AUTH_IPV4:?Verified public authentication IPv4 required}
+      LH_API_IPV4: ${LH_API_IPV4:?Verified public API IPv4 required}
 volumes:
   subscription:
   policy:
