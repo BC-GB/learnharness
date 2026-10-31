@@ -11,11 +11,13 @@ The OAuth callback always binds to 127.0.0.1. `LH_CALLBACK_BIND` is no longer su
 
 Set `LH_SOURCE_ROOT` to a dedicated read-only directory containing only approved learning materials. Without it, model file tools deny access. Relative paths resolve inside that directory; traversal and real-path escapes are rejected. Do not use a home directory or credential directory as the library. Keep it immutable while the app runs: these application checks are not an OS boundary against another process changing files. Use a read-only container mount and do not mount unrelated host folders.
 
+Read and grep results mark source material as untrusted data. This is model guidance, not a guarantee against prompt injection; permissions and isolation must hold even if the model follows hostile instructions.
+
 Reads are limited before buffering to 8 MiB and regular files only. Grep has a 2 MiB input limit. File growth cannot bypass the byte cap. Regex search supports anchors, character classes and alternatives; repetition, groups and backreferences are rejected explicitly. Literal search supports all characters. Globs have length and complexity limits.
 
 ## Network research
 
-Research page retrieval accepts HTTPS on port 443 only, without URL credentials. It rejects non-public IPv4 addresses, IPv6 literals, private DNS results and mixed public/private answers. DNS results are pinned to the socket while TLS still verifies the original hostname. Each redirect is checked again; at most three redirects are followed. Actual streamed bodies are capped at 5 MiB regardless of Content-Length. Compressed responses and third-party reader fallback are unsupported. IPv6-only destinations are currently unsupported.
+Page retrieval is denied unless the server sets `LH_RESEARCH_ALLOWED_HOSTS` to a comma-separated list of approved exact hostnames. Wildcards and implicit subdomain grants are not supported; redirects require their own host grant. Approved hosts can still receive data in URLs, so grant only destinations intended to receive learning context. Research page retrieval accepts HTTPS on port 443 only, without URL credentials. It rejects non-public IPv4 addresses, IPv6 literals, private DNS results and mixed public/private answers. DNS results are pinned to the socket while TLS still verifies the original hostname. Each redirect is checked again; at most three redirects are followed. Actual streamed bodies are capped at 5 MiB regardless of Content-Length. Compressed responses and third-party reader fallback are unsupported. IPv6-only destinations are currently unsupported.
 
 `LH_DISABLE_RESEARCH=1` additionally disables search and research jobs. Search-provider API calls remain separate from page retrieval; configure only trusted providers.
 

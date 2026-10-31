@@ -1,3 +1,4 @@
+import { untrustedSource } from "./untrusted-source.ts";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Type } from "typebox";
@@ -35,7 +36,7 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const grepInput = Type.Object({
 	pattern: Type.String({ minLength: 1, description: "Search pattern (regex or literal string)" }),
 	path: Type.Optional(
-		Type.String({ description: "Directory or file to search (default: the learner's home directory)" }),
+		Type.String({ description: "Directory or file to search (default: the approved source root)" }),
 	),
 	glob: Type.Optional(Type.String({ description: "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'" })),
 	ignoreCase: Type.Optional(Type.Boolean({ description: "Case-insensitive search (default: false)" })),
@@ -122,7 +123,7 @@ export const grepTool: AgentTool<typeof grepInput> = {
 			} catch {
 				continue;
 			}
-			if (fileStat.size > MAX_FILE_BYTES) continue; // rg-style silent skip of huge files
+			if (!fileStat.isFile() || fileStat.size > MAX_FILE_BYTES) continue; // rg-style silent skip of huge files
 			if (await isBinaryFile(filePath).catch(() => true)) continue;
 
 			let content: string;
@@ -172,6 +173,6 @@ export const grepTool: AgentTool<typeof grepInput> = {
 		if (linesTruncated) notices.push(`Some lines truncated to ${GREP_MAX_LINE_LENGTH} chars. Use read tool to see full lines`);
 		if (truncated) notices.push(`${formatSize(MAX_OUTPUT_BYTES)} limit reached`);
 		if (timedOut || scanTimedOut) notices.push("search timed out after 10s — partial results, narrow the directory");
-		return notices.length > 0 ? `${content}\n\n[${notices.join(". ")}]` : content;
+		return untrustedSource(notices.length > 0 ? `${content}\n\n[${notices.join(". ")}]` : content);
 	}),
 };

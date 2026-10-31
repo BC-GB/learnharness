@@ -6,6 +6,8 @@ import { syncBuiltinESMExports } from "node:module";
 
 /** Synthetic transport for integration tests; never opens a socket. */
 export function fakePublicFetch(respond: (url: string) => Response | Promise<Response>): () => void {
+	const originalHosts = process.env.LH_RESEARCH_ALLOWED_HOSTS;
+	process.env.LH_RESEARCH_ALLOWED_HOSTS = "example.com";
 	const originalLookup = dns.lookup, originalRequest = https.request;
 	dns.lookup = (async () => [{ address: "8.8.8.8", family: 4 }]) as unknown as typeof dns.lookup;
 	https.request = ((url: URL, _options: unknown, callback: (response: Readable) => void) => {
@@ -19,5 +21,5 @@ export function fakePublicFetch(respond: (url: string) => Response | Promise<Res
 		return req;
 	}) as unknown as typeof https.request;
 	syncBuiltinESMExports();
-	return () => { dns.lookup = originalLookup; https.request = originalRequest; syncBuiltinESMExports(); };
+	return () => { if (originalHosts === undefined) delete process.env.LH_RESEARCH_ALLOWED_HOSTS; else process.env.LH_RESEARCH_ALLOWED_HOSTS = originalHosts; dns.lookup = originalLookup; https.request = originalRequest; syncBuiltinESMExports(); };
 }

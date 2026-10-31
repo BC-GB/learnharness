@@ -12,12 +12,16 @@ export function publicIPv4(address: string): boolean {
 		(a === 203 && b === 0 && c === 113));
 }
 
-export function publicURL(value: string): URL {
+export function publicURL(value: string, allowedHosts = process.env.LH_RESEARCH_ALLOWED_HOSTS ?? ""): URL {
 	const url = new URL(value);
 	if (url.protocol !== "https:" || (url.port && url.port !== "443") || url.username || url.password)
 		throw new Error("Research requires HTTPS on port 443 without URL credentials.");
 	if (url.hostname === "localhost" || url.hostname.endsWith(".localhost") || url.hostname.endsWith(".local") || url.hostname.startsWith("[") ||
 		(isIP(url.hostname) && !publicIPv4(url.hostname))) throw new Error("Non-public destination denied.");
+	// Exact hostnames only; an empty deployment policy denies all page fetching.
+	// This policy is server-owned, never accepted as a model/tool argument.
+	const allowed = allowedHosts.split(",").map(host => host.trim().toLowerCase()).filter(Boolean);
+	if (!allowed.includes(url.hostname)) throw new Error("Research destination is not in LH_RESEARCH_ALLOWED_HOSTS.");
 	return url;
 }
 

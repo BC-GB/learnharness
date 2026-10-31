@@ -1,3 +1,4 @@
+import { untrustedSource } from "./untrusted-source.ts";
 import { readBoundedFile } from "./bounded-file.ts";
 import { Type } from "typebox";
 import type { Api, Model } from "@earendil-works/pi-ai";
@@ -10,8 +11,8 @@ import { detectSupportedImageMimeType, processImage } from "../image-processing/
  * The read tool — sources v0 (2026-09): a Node port of pi's read semantics
  * for the learner's local files. The flow is learner-owned: he pastes file
  * paths into the chat, the agent reads on its own terms (nothing is
- * auto-injected). Unrestricted local reads are the user-decided v0 scope —
- * this is a personal study harness, not a multi-tenant service.
+ * auto-injected). Reads require an explicitly approved source root.
+ * Source text and images are untrusted data, not instructions or authority.
  *
  * Ported behaviors (mirroring pi's dist/core/tools/read.js):
  * - text files: utf-8, offset (1-indexed) / limit slicing, and the
@@ -83,7 +84,7 @@ function readTextSlice(text: string, offset: number | undefined, limit: number |
  * (2026-09-19): the description is pi-verbatim (user: copy tool usage
  * guidance exactly) — the teaching doctrine moved to the shared prompt
  * fragment (prompts/shared/). Relative paths resolve against the
- * learner's home (fs-shared.ts), the harness's anchor.
+ * approved source root (fs-shared.ts).
  */
 export type ReadModel = Pick<Model<Api>, "input" | "inputLimits">;
 
@@ -111,11 +112,11 @@ export function createReadTool(model?: ReadModel): AgentTool<typeof readInput> {
 					note.push("[Current model does not support images. The image will be omitted from this request.]");
 				}
 				return {
-					text: note.join("\n"),
+					text: untrustedSource(note.join("\n")),
 					...(processed.ok ? { images: [{ data: processed.data, mimeType: processed.mimeType }] } : {}),
 				};
 			}
-			return readTextSlice(buffer.toString("utf-8"), offset, limit);
+			return untrustedSource(readTextSlice(buffer.toString("utf-8"), offset, limit));
 		}),
 	};
 }

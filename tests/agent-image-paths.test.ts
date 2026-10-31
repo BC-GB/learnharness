@@ -1,3 +1,4 @@
+import { SOURCE_NOTICE } from "../src/agent/tools/untrusted-source.ts";
 /** Offline integration contracts at the provider boundary: real shared image
  * processing, faux model streams, synthetic rasters, and fake headless I/O.
  * No real browser, provider, learner data, or ambient credentials are used. */
@@ -231,7 +232,7 @@ for (const [role, resize, expected] of [
 		const selected = requests[2]!.messages.find((message) => message.role === "toolResult" && message.toolCallId === "registry-text");
 		assert.ok(selected && selected.role === "toolResult");
 		assert.equal(selected.isError, false);
-		assert.deepEqual(selected.content, [{ type: "text", text: "second\nthird\n\n[2 more lines in file. Use offset=4 to continue.]" }]);
+		assert.deepEqual(selected.content, [{ type: "text", text: SOURCE_NOTICE + "second\nthird\n\n[2 more lines in file. Use offset=4 to continue.]" }]);
 		assert.equal(readTool.execute, originalExecute, "role construction did not mutate the shared tool");
 	});
 }

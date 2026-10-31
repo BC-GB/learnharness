@@ -1,3 +1,4 @@
+import { SOURCE_NOTICE } from "../src/agent/tools/untrusted-source.ts";
 import assert from "node:assert";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -35,7 +36,9 @@ async function runText(tool: AgentTool<any>, params: unknown, signal?: AbortSign
 	const result = await tool.execute!("c", params, signal);
 	const first = result.content[0];
 	assert.ok(first !== undefined && first.type === "text", "first content part is text");
-	return (first as { type: "text"; text: string }).text;
+	const text = (first as { type: "text"; text: string }).text;
+	if (tool.name === "read" || (tool.name === "grep" && /:\d+:/.test(text))) assert.ok(text.startsWith(SOURCE_NOTICE), "source matches must be framed as untrusted");
+	return text.startsWith(SOURCE_NOTICE) ? text.slice(SOURCE_NOTICE.length) : text;
 }
 
 async function setup(): Promise<string> {

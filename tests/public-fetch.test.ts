@@ -7,6 +7,8 @@ import { syncBuiltinESMExports } from "node:module";
 import test from "node:test";
 
 test("research transport pins DNS, rechecks redirects and bounds streamed bodies", async () => {
+	const originalHosts = process.env.LH_RESEARCH_ALLOWED_HOSTS;
+	process.env.LH_RESEARCH_ALLOWED_HOSTS = "example.com";
 	const originalLookup = dns.lookup, originalRequest = https.request;
 	let addresses = ["8.8.8.8"], calls = 0;
 	let status = 200, headers: Record<string, string> = {}, chunks = [Buffer.from("ok")];
@@ -30,6 +32,12 @@ test("research transport pins DNS, rechecks redirects and bounds streamed bodies
 		const { fetchPublic } = await import("../src/agent/tools/public-fetch.ts");
 		assert.equal((await fetchPublic("https://example.com", 4)).bytes.toString(), "ok");
 		assert.equal(calls, 1);
+		await assert.rejects(fetchPublic("https://attacker.example", 4), /LH_RESEARCH_ALLOWED_HOSTS/);
+		assert.equal(calls, 1, "unapproved public destinations must never open a socket");
+		status = 302; headers = { location: "https://attacker.example/collect" };
+		await assert.rejects(fetchPublic("https://example.com", 4), /LH_RESEARCH_ALLOWED_HOSTS/);
+		assert.equal(calls, 2, "redirect destination must also be approved");
+		calls = 1; status = 200; headers = {};
 		addresses = ["8.8.8.8", "127.0.0.1"];
 		await assert.rejects(fetchPublic("https://example.com", 4), /Non-public/);
 		assert.equal(calls, 1, "mixed private DNS must never open a socket");
@@ -46,6 +54,7 @@ test("research transport pins DNS, rechecks redirects and bounds streamed bodies
 		status = 302; headers = { location: "/loop" };
 		await assert.rejects(fetchPublic("https://example.com", 4), /redirects/);
 	} finally {
+		if (originalHosts === undefined) delete process.env.LH_RESEARCH_ALLOWED_HOSTS; else process.env.LH_RESEARCH_ALLOWED_HOSTS = originalHosts;
 		dns.lookup = originalLookup; https.request = originalRequest; syncBuiltinESMExports();
 	}
 });
