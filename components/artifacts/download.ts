@@ -1,8 +1,7 @@
 /**
  * Artifact download helpers (release polish, 2026-10-07): the tiny
  * save-a-blob seam shared by the demo + figure cards, plus the filename
- * slug. The slug is pure (test-pinned); downloadFile touches the DOM and
- * only runs on click.
+ * slug. The slug is pure; downloadFile rejects active-document exports.
  */
 
 /** Slugify a demo title into a filename stem — lowercase, accents folded,
@@ -19,14 +18,7 @@ export function slugFilename(title: string): string {
 	return slug || "demo";
 }
 
-/** Save text as a downloaded file. The blob URL is revoked right after the
- *  click — Chromium keeps the download alive past the revoke. */
-export function downloadFile(name: string, text: string, mime: string): void {
-	const blob = new Blob([text], { type: mime });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement("a");
-	a.href = url;
-	a.download = name;
-	a.click();
-	URL.revokeObjectURL(url);
+/** Hardened browser deployment: generated active documents must not be exported. */
+export function downloadFile(_name: string, _text: string, _mime: string): void {
+	throw new Error("Generated artifact downloads are disabled in this deployment.");
 }

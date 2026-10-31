@@ -92,6 +92,7 @@ export interface ResearcherRunOptions {
  * the loop scripted.
  */
 export async function runResearcherAgent(prompt: string, opts: ResearcherRunOptions = {}): Promise<string> {
+	if (process.env.LH_DISABLE_RESEARCH === "1") throw new Error("Web research is disabled by deployment policy.");
 	const tools = Object.values(createWebTools(opts.search ?? (() => null)));
 	if (opts.pdfDir) tools.push(...Object.values(createPdfReadTools(opts.pdfDir)));
 	const { text } = await runSubagent(tools, {

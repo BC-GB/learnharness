@@ -147,6 +147,9 @@ export function browserServiceSpawnEnv(
  *  ELECTRON_RUN_AS_NODE so process.execPath IS the app binary; in dev
  *  (plain node) the electron package resolves to the dev binary path. */
 export function browserServiceBinary(): string | null {
+	if (process.env.LH_BROWSER_ENGINE === "disabled") return null;
+	// Browser-only deployment: do not load the self-downloading Electron package.
+	if (process.env.LH_BROWSER_ENGINE === "system") return null;
 	if (process.versions.electron) return process.execPath;
 	try {
 		const req = createRequire(import.meta.url);
@@ -234,7 +237,13 @@ async function connectBrowserService(): Promise<import("puppeteer-core").Browser
  *  so concurrent jobs queue here instead of fighting over one webContents. */
 let helperPageChain: Promise<unknown> = Promise.resolve();
 
+const BROWSER_DISABLED_MESSAGE = "Browser execution is disabled by deployment policy.";
+
+function requireBrowserExecution(): void {
+	if (process.env.LH_BROWSER_ENGINE === "disabled") throw new Error(BROWSER_DISABLED_MESSAGE);
+}
 async function withBrowserPage<T>(fn: (page: import("puppeteer-core").Page) => Promise<T>): Promise<T> {
+	requireBrowserExecution();
 	// Helper first (owner ruling 2026-10-10: the app's own Chromium primary,
 	// system Chrome fallback) — deterministic across users, zero install.
 	const helper = await connectBrowserService();
@@ -281,6 +290,7 @@ function tempDir(prefix: string): string {
 // ─── Demo execution ──────────────────────────────────────────────────────────
 
 async function runDemo(html: string, opts: RunDemoOptions = {}): Promise<DemoRunResult> {
+	requireBrowserExecution();
 	const settleMs = opts.settleMs ?? 2000;
 	const dir = tempDir("lh-demo-");
 	const file = path.join(dir, "demo.html");
@@ -431,7 +441,7 @@ async function renderSvg(svg: string, opts: RenderSvgOptions = {}): Promise<Buff
 		});
 		return providerSafePng(resvg.render().asPng());
 	} catch {
-		/* fall through to the browser path */
+		requireBrowserExecution(); // No browser fallback when deployment policy disables it.
 	}
 	const dir = tempDir("lh-visual-");
 	const file = path.join(dir, "figure.html");
@@ -522,6 +532,7 @@ async function renderPdfPages(
 	pages: number[],
 	opts: RenderPdfOptions = {},
 ): Promise<RenderedPdfPage[]> {
+	if (process.env.LH_DISABLE_PDF_RENDERING === "1" || process.env.LH_DISABLE_PDF_PROCESSING === "1") throw new Error("PDF rasterization is disabled by deployment policy.");
 	const dpi = opts.dpi ?? 150;
 	if (!Number.isFinite(dpi) || dpi <= 0 || dpi / 72 === 0) {
 		throw new Error("PDF render DPI must be finite and positive");
@@ -575,11 +586,13 @@ async function renderPdfPages(
 
 export const realHeadless: HeadlessApi = {
 	available() {
+		if (process.env.LH_BROWSER_ENGINE === "disabled") return false;
 		// The helper binary exists by construction in the packaged app; in dev
 		// it resolves via the electron package. System Chrome widens coverage.
 		return browserServiceBinary() !== null || resolveChromeExecutablePath() !== null;
 	},
 	unavailableReason() {
+		if (process.env.LH_BROWSER_ENGINE === "disabled") return BROWSER_DISABLED_MESSAGE;
 		return browserServiceBinary() === null && resolveChromeExecutablePath() === null ? NO_CHROME_MESSAGE : null;
 	},
 	runDemo,

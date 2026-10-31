@@ -39,6 +39,7 @@ export interface PdfInfo {
 
 /** Load the legacy pdfjs build (runs headless in plain node, no worker). */
 async function loadPdfjs() {
+	if (process.env.LH_DISABLE_PDF_PROCESSING === "1") throw new Error("PDF processing is disabled by deployment policy. Use the prepared course text and images.");
 	const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
 	return pdfjs;
 }

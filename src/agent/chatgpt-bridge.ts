@@ -1,5 +1,5 @@
 import type { Model } from "@earendil-works/pi-ai";
-import { onWebSubscriptionPacket, webSubscriptionRequest, webSubscriptionsEnabled } from "./subscription-runtime.ts";
+import { onWebSubscriptionPacket, webSubscriptionRequest, webSubscriptionsEnabled, subscriptionAuthDisabled } from "./subscription-runtime.ts";
 import type { ChatGPTStatus } from "../core/contracts/chatgpt.ts";
 import type { AdmissionScope, NoDispatchKind } from "./chatgpt-request-cycle.ts";
 export type { ChatGPTStatus } from "../core/contracts/chatgpt.ts";
@@ -19,6 +19,7 @@ const validStamp = (s: Stamp) => s && [s.epoch, s.authorityRevision, s.revision]
  * transport: require the same launch markers set by Electron startServer.
  * These identify the transport, not a substitute for admission/lease checks. */
 function desktopIPCConnected(): boolean {
+ if (subscriptionAuthDisabled()) return false;
  return process.env.LH_DESKTOP_SERVER === "1" && (process.env.LH_DESKTOP_API_SECRET?.length ?? 0) >= 64 && typeof process.send === "function" && process.connected === true;
 }
 function runtimeConnected(): boolean { return desktopIPCConnected() || webSubscriptionsEnabled(); }
@@ -83,7 +84,7 @@ export function chatGPTStatus(): ChatGPTStatus { return bridge().status; }
 export function chatGPTConnected(): boolean { const s = chatGPTStatus(); return runtimeConnected() && s.available && s.accounts.some((a) => a.id === s.activeId && a.connected && a.planEnabled === true); }
 export function chatGPTBackgroundAllowed(): boolean { const s = chatGPTStatus(); return chatGPTConnected() && s.allowBackgroundUse === true; }
 export function onChatGPTChange(listener: () => void): () => void { bridge().listeners.add(listener); return () => { bridge().listeners.delete(listener); }; }
-export function chatGPTModels(): Model<"openai-responses">[] { return bridge().models; }
+export function chatGPTModels(): Model<"openai-responses">[] { return subscriptionAuthDisabled() ? [] : bridge().models; }
 export function chatGPTModel(id: string): Model<"openai-responses"> | undefined { return chatGPTModels().find((m) => m.id === id); }
 export function chatGPTScope(selectedModelId: string): AdmissionScope {
  const state = bridge();
