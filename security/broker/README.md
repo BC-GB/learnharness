@@ -63,6 +63,46 @@ After an explicitly authorized launch, the private URL is
 history on load and kept in page memory, not persistent browser storage. Refreshing
 requires the private link again. Do not share it.
 
+The view uses a dedicated `view-net` network namespace. Only its loopback-bound
+host port is published. Before the view starts, the namespace installs default
+DROP rules for IPv4 and IPv6; only inbound HTTP, its replies, and an internal
+HTTP health probe are allowed. DNS and new outbound connections are denied.
+The bootstrap drops its capabilities before becoming healthy. The view itself
+runs without capabilities. This does not modify the host's firewall.
+
+Build `Dockerfile.network` from an independently reviewed, cached Linux image
+containing `iptables`, `ip6tables`, `setpriv`, and `sleep`, using
+`--build-arg FIREWALL_IMAGE=LOCAL_REVIEWED_IMAGE`. Set `VIEW_NET_IMAGE` to the
+resulting image ID, alongside pinned `APP_IMAGE` and `BROKER_IMAGE`. No package
+installation or download occurs in that Dockerfile. A failed bootstrap blocks
+view startup. App, broker and view readiness checks avoid startup races.
+
+After restarting `view-net`, recreate the view to join its current namespace:
+`docker compose -f security/broker/compose.mock.yaml up -d --wait --force-recreate view`.
+Wait for healthy status before reopening the private link. Do not enable automatic
+restart for this fixture. Pending approvals are never automatically granted.
+
+## Real-browser regression test
+
+Use an existing Chromium executable and Python Playwright installation. The
+runner uses a fresh headless profile, synthetic volumes, the mock provider and
+unique temporary Docker resources; it never opens an existing browser profile.
+
+```text
+python security/broker/test-real-browser.py --app-image sha256:APP_ID --node-image node@sha256:NODE_DIGEST --firewall-image sha256:FIREWALL_ID --chromium /path/to/chrome --evidence-dir /private/path/browser-evidence
+```
+
+The test covers private access, approval/rejection, request switching, saved
+lessons, app and namespace restart, hostile app output, actual browser CSP and
+cross-origin enforcement, outbound denial and failed firewall initialization.
+A local canary is allowed through the test interceptor so CSP denial is tested
+by Chromium itself. Results and screenshots stay in the supplied evidence
+directory. These checks were run with Chromium 151; other browser engines and
+authenticated live-provider behavior are not covered.
+
+The lower-level HTTP integration runner uses the same reviewed images:
+`python security/broker/test-view-stack.py --app-image sha256:APP_ID --node-image node@sha256:NODE_DIGEST --firewall-image sha256:FIREWALL_ID --evidence /private/path/view-results.json`.
+
 ## Offline test
 
 Use only locally cached, reviewed image digests. No downloads, keys or billing

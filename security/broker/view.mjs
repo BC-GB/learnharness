@@ -44,7 +44,7 @@ export async function startView({token,port=8080,bind='127.0.0.1',host='127.0.0.
     }
    }
    const result=await socketJson(controlSocket,route,method,data);return reply(result.status,result.value);
-  }catch{if(!res.headersSent)reply(502,{error:'Request failed closed'});else res.destroy()}
+  }catch(error){console.warn('View request failed:',error?.code??error?.name??'Error');if(!res.headersSent)reply(502,{error:'Request failed closed'});else res.destroy()}
  });server.maxConnections=32;
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,bind,resolve)});return server;
 }
