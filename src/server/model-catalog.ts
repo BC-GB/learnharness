@@ -20,12 +20,14 @@
 import { clampThinkingLevel, getSupportedThinkingLevels, type Api, type Model } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { piModels } from "../agent/models.ts";
+import { brokerEnabled } from "../agent/broker-fetch.ts";
 import { customProviderAvailable } from "./custom-provider.ts";
 import { chatGPTConnected, chatGPTModel, chatGPTModels, refreshChatGPTModels } from "../agent/chatgpt-bridge.ts";
 import { NATIVE_SUBSCRIPTIONS } from "../core/contracts/subscriptions.ts";
 import { nativeSubscriptionId, nativeSubscriptionConnected, nativeSubscriptionModel, nativeSubscriptionModels, refreshSubscriptionModels } from "../agent/subscription-bridge.ts";
 
 export async function refreshConnectionCatalog(provider?: string): Promise<void> {
+	if (brokerEnabled()) return;
 	await Promise.all([
 		!provider || provider === "chatgpt" ? refreshChatGPTModels(piModels().getModels("openai").filter((m): m is Model<"openai-responses"> => m.api === "openai-responses")) : Promise.resolve(),
 		!provider || nativeSubscriptionId(provider) ? refreshSubscriptionModels() : Promise.resolve(),
@@ -35,7 +37,7 @@ function connectionModel(provider: string, id: string): Model<Api> | undefined {
 	if (provider === CLAUDE_CODE_PROVIDER && !claudeCodeAvailable()) return undefined;
 	return provider === "chatgpt" ? chatGPTModel(id) : nativeSubscriptionId(provider) ? nativeSubscriptionModel(provider, id) : piModels().getModel(provider, id);
 }
-function connectionProviderIds(): string[] { return [...piModels().getProviders().map((p) => p.id), "chatgpt", ...NATIVE_SUBSCRIPTIONS.map((p) => p.logicalId)]; }
+function connectionProviderIds(): string[] { return brokerEnabled() ? ["openai"] : [...piModels().getProviders().map((p) => p.id), "chatgpt", ...NATIVE_SUBSCRIPTIONS.map((p) => p.logicalId)]; }
 import { settingsStore } from "../store/settings.ts";
 import { effectiveSettings } from "./stores.ts";
 import { keyValue } from "./keys.ts";
@@ -147,6 +149,7 @@ export function catalogSlots(): SlotPins {
  *  with keyPresent read env-wins through the keys seam, fresh per call —
  *  saving a key immediately federates the provider into the picker. */
 export function catalogProviders(): CatalogProvider[] {
+	if (brokerEnabled()) return [{ id: "openai", envVar: "", keyPresent: true }];
 	piModels();
 	return AUTH_PROVIDER_KEYS.map((p) => ({
 		id: p.id,
@@ -222,9 +225,11 @@ export function modelCatalog(): ModelCatalogResponse {
 		.getProviders()
 		.filter((p) => keyed.has(p.id))
 		.flatMap((p) => piModels().getModels(p.id))
+		.filter(m => !brokerEnabled() || m.api === "openai-responses")
 		.map(toModelDto)
 		.sort((a, b) => (a.provider === b.provider ? a.id.localeCompare(b.id) : a.provider.localeCompare(b.provider)))
-		.concat([...chatGPTModels(), ...nativeSubscriptionModels()].map(toModelDto));
+		.concat(brokerEnabled() ? [] : [...chatGPTModels(), ...nativeSubscriptionModels()].map(toModelDto))
+		.filter(m => !brokerEnabled() || m.provider === "openai");
 	return {
 		models,
 		defaults: catalogDefaults(),

@@ -1,3 +1,4 @@
+import { brokerEnabled } from "../agent/broker-fetch.ts";
 /**
  * The auth/keys composition (auth-keys wave, 2026-09-19): the server-side
  * key manager behind GET/PUT/DELETE /api/keys.
@@ -197,6 +198,7 @@ export function keyValue(id: string): string | undefined {
  * (gate by what would run). Providers absent from AUTH_PROVIDER_KEYS take
  * no key at all: nothing to gate, present by definition. */
 export function providerKeyPresent(provider: string): boolean {
+	if (brokerEnabled()) return provider === "openai";
 	if (provider === CUSTOM_PROVIDER.id) return customProviderAvailable();
 	// Explicit opt-in + installation only, never authentication readiness.
 	// Consulted at admission, not inside already-running agent loops.
