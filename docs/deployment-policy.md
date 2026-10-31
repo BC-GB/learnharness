@@ -11,7 +11,7 @@ The OAuth callback always binds to 127.0.0.1. `LH_CALLBACK_BIND` is no longer su
 
 Set `LH_SOURCE_ROOT` to a dedicated read-only directory containing only approved learning materials. Without it, model file tools deny access. Relative paths resolve inside that directory; traversal and real-path escapes are rejected. Do not use a home directory or credential directory as the library. Keep it immutable while the app runs: these application checks are not an OS boundary against another process changing files. Use a read-only container mount and do not mount unrelated host folders.
 
-Read and grep results mark source material as untrusted data. This is model guidance, not a guarantee against prompt injection; permissions and isolation must hold even if the model follows hostile instructions.
+Read, grep, web-page and search results mark source material as untrusted data. This is model guidance, not a guarantee against prompt injection; permissions and isolation must hold even if the model follows hostile instructions.
 
 Reads are limited before buffering to 8 MiB and regular files only. Grep has a 2 MiB input limit. File growth cannot bypass the byte cap. Regex search supports anchors, character classes and alternatives; repetition, groups and backreferences are rejected explicitly. Literal search supports all characters. Globs have length and complexity limits.
 

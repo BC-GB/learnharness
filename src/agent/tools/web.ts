@@ -1,7 +1,8 @@
+import { untrustedSource } from "./untrusted-source.ts";
 import { fetchPublic } from "./public-fetch.ts";
 import { Type } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { serverExecute } from "../tool-execute.ts";
+import { serverExecute, type ImageFileResult } from "../tool-execute.ts";
 // The search-hit shape lives in the core port since the search wave
 // (2026-09-20); this alias keeps callers churn-free.
 import type { SearchHit as WebSearchResult, SearchProvider } from "../../core/search.ts";
@@ -71,12 +72,12 @@ async function fetchAndExtract(url: string): Promise<string> {
 		throw new Error(`Unsupported content type: ${contentType.split(";")[0]}`);
 	}
 	const text = resp.bytes.toString("utf-8");
-	if (!contentType.includes("html")) return `${sourceLine}\n\n${truncate(text)}`; // plain text / markdown / code
+	if (!contentType.includes("html")) return untrustedSource(`${sourceLine}\n\n${truncate(text)}`); // plain text / markdown / code
 
 	const extracted = htmlToMarkdown(text);
 	if (extracted) {
 		const header = extracted.title ? `# ${extracted.title}\n\n${sourceLine}\n\n---\n\n` : `${sourceLine}\n\n---\n\n`;
-		return header + truncate(extracted.content);
+		return untrustedSource(header + truncate(extracted.content));
 	}
 	throw new Error("Could not extract readable content (the page may be JavaScript-rendered)");
 }
@@ -102,7 +103,7 @@ export function createWebTools(search: () => SearchProvider | null): Record<stri
 			description: "Search the web. One search per call — use one call per search angle. " +
 				"Returns an array of results with title, url, and snippet.",
 			parameters: webSearchInput,
-			execute: serverExecute("web_search", webSearchInput, async ({ query, count }): Promise<WebSearchResult[] | string> => {
+			execute: serverExecute("web_search", webSearchInput, async ({ query, count }): Promise<ImageFileResult | string> => {
 				if (process.env.LH_DISABLE_RESEARCH === "1") return "Web research is disabled by deployment policy.";
 				const provider = search();
 				if (!provider) {
@@ -112,7 +113,8 @@ export function createWebTools(search: () => SearchProvider | null): Record<stri
 					);
 				}
 				try {
-					return await provider.search(query, count ?? 5);
+					const hits = await provider.search(query, count ?? 5);
+					return { text: untrustedSource(JSON.stringify(hits)), details: hits };
 				} catch (err) {
 					return `web_search failed: ${err instanceof Error ? err.message : String(err)}`;
 				}

@@ -1,3 +1,4 @@
+import { SOURCE_NOTICE } from "../src/agent/tools/untrusted-source.ts";
 import { fakePublicFetch } from "./public-fetch-fixture.ts";
 /** Keyless research availability + the injected search port.
  * No network, no shared data files — the jobStore fake below is in-memory.
@@ -100,6 +101,7 @@ describe("web_search on the injected port (web.ts)", () => {
 				"a valid https URL passes the protocol gate and reaches fetch",
 			);
 			assert.match(String(ok.details), /plain text page/);
+			assert.ok(String(ok.details).startsWith(SOURCE_NOTICE));
 
 			const ftp = await web_fetch!.execute!("c-ftp", { url: "ftp://example.com/file" });
 			assert.match(String(ftp.details), /invalid URL/, "non-http(s) schemes still rejected");
