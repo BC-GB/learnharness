@@ -64,3 +64,5 @@ export async function pdfProbe(_file: string): Promise<void> { throw new Error(D
 export async function pdfInfo(_file: string): Promise<PdfInfo> { throw new Error(DISABLED); }
 export async function pdfExtract(_file: string, _pages: string): Promise<string> { throw new Error(DISABLED); }
 export async function pdfSearch(_file: string, _query: string, _opts?: { contextLines?: number; literal?: boolean }): Promise<{ hits: PdfSearchHit[]; pageTexts: Map<number, string> }> { throw new Error(DISABLED); }
+
+export async function convertPdf(_data: Uint8Array, _maxPages: number): Promise<never> { throw new Error(DISABLED); }

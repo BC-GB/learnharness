@@ -22,6 +22,7 @@ const EXCLUDED_DIR_NAMES = new Set(["node_modules", ".git", "Library", ".Trash"]
 
 /** Require a configured root and reject lexical or canonical path escapes. */
 export function resolveSourcePath(p?: string): string {
+	if (p === "~" || p?.startsWith("~/") || p?.startsWith("~\\")) throw new Error("Home-directory expansion is disabled; use a path inside the approved source root.");
 	const configuredRoot = process.env.LH_SOURCE_ROOT;
 	if (!configuredRoot) throw new Error("Source access requires an explicitly configured LH_SOURCE_ROOT.");
 	// Both the lexical path and real target must stay within the read-only

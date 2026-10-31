@@ -51,7 +51,7 @@ test("all methods fail closed for desktop missing/wrong secret; matcher covers p
 		assert(!desktopAPIAuthorized(new Headers(value === undefined ? {} : { [HEADER]: value }), { LH_DESKTOP_SERVER: "1", LH_DESKTOP_API_SECRET: secret }));
 	}
 	assert(desktopAPIAuthorized(new Headers({ [HEADER]: secret }), { LH_DESKTOP_SERVER: "1", LH_DESKTOP_API_SECRET: secret }));
-	for (const pathname of ["/", "/chat/new", "/chat/private-id?_rsc=example", "/api/events", "/api/chat", "/api/settings/models", "/api/chats/scratch/markdown"]) assert(unstable_doesProxyMatch({ config, nextConfig: {}, url: origin + pathname }));
+	for (const pathname of ["/api/graph/sources", "/api/graph/import", "/", "/chat/new", "/chat/private-id?_rsc=example", "/api/events", "/api/chat", "/api/settings/models", "/api/chats/scratch/markdown"]) assert(unstable_doesProxyMatch({ config, nextConfig: {}, url: origin + pathname }));
 	const originalMarker = process.env.LH_DESKTOP_SERVER;
 	const originalSecret = process.env.LH_DESKTOP_API_SECRET;
 	try {

@@ -15,3 +15,9 @@ describe("PDF policy", () => {
 		assert.deepEqual(parsePageSpec(" 2 , 1 ", 3), [1, 2]);
 	});
 });
+
+
+it("upstream upload converter remains disabled", async () => {
+	const { convertPdf } = await import("../src/agent/subagents/pdf-ops.ts");
+	await assert.rejects(convertPdf(new Uint8Array([37, 80, 68, 70, 45]), 1000), /disabled/);
+});

@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { describe, it } from "node:test";
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { expandBraces, globToRegex, matchGlob, walkFiles } from "../src/agent/tools/fs-shared.ts";
+import { expandBraces, globToRegex, matchGlob, resolveSourcePath, walkFiles } from "../src/agent/tools/fs-shared.ts";
 import { findTool } from "../src/agent/tools/find.ts";
 import { grepTool } from "../src/agent/tools/grep.ts";
 import { lsTool } from "../src/agent/tools/ls.ts";
@@ -15,8 +15,8 @@ import { readTool } from "../src/agent/tools/read.ts";
 /**
  * The learner-filesystem tools (sources v1, 2026-09-19): ls/find/grep as
  * pure-Node pi ports, read re-anchored to the home directory. All calls go
- * through absolute paths — the tools' relative resolution targets the real
- * home, which tests must not touch.
+ * through absolute paths, except the tilde integration case which temporarily
+ * points home resolution at a throwaway fixture. Never touch the real home.
  *
  * Fixture tree (tmpdir):
  *   notes/calculus.md         "The derivative measures force…"
@@ -87,6 +87,19 @@ describe("glob helpers (fs-shared)", () => {
 		assert.equal(globToRegex("a?c").test("abc"), true);
 		assert.equal(globToRegex("a?c").test("ac"), false);
 		assert.equal(matchGlob("a.b.txt", "a.b*"), true, "the dot is literal, not any-char");
+	});
+});
+
+describe("source confinement survives upstream home-path support", () => {
+	it("read, ls, find and grep cannot expand tilde into a home directory", async () => {
+		const root = await setup();
+		try {
+			assert.equal(resolveSourcePath(), root);
+			assert.equal(resolveSourcePath("notes/calculus.md"), path.join(root, "notes/calculus.md"));
+			for (const tool of [readTool, lsTool, findTool, grepTool]) {
+				await assert.rejects(runText(tool, { path: "~/notes/calculus.md", pattern: "derivative" }), /Home-directory expansion/);
+			}
+		} finally { await fs.rm(root, { recursive: true, force: true }); }
 	});
 });
 
