@@ -1,0 +1,75 @@
+# Restricted text interface; defaults to mock only. No existing user state mounted.
+name: learnharness-broker-review
+x-restricted: &restricted
+  user: "1000:1000"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  restart: "no"
+  pids_limit: 64
+  mem_limit: 256m
+  pull_policy: never
+services:
+  init:
+    <<: *restricted
+    image: ${BROKER_IMAGE:?Pinned broker image required}
+    network_mode: none
+    command: [node, -e, "const fs=require('fs');if(!fs.existsSync('/view-secret/token'))fs.writeFileSync('/view-secret/token',require('crypto').randomBytes(32).toString('hex'),{mode:384});"]
+    volumes: [app-ipc:/app-ipc, view-secret:/view-secret, app-state:/state]
+  app:
+    <<: *restricted
+    image: ${APP_IMAGE:?Pinned app image required}
+    command: [node, --import, tsx, security/broker/app-ipc.mjs]
+    network_mode: none
+    mem_limit: 2g
+    pids_limit: 256
+    depends_on:
+      init: {condition: service_completed_successfully}
+      broker: {condition: service_started}
+    volumes: [socket:/broker:ro, app-ipc:/app-ipc, app-state:/state, course:/course:ro]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=128m,uid=1000,gid=1000"]
+    environment:
+      LH_BROKER_MODE: "1"
+      LH_DATA_DIR: /state/data
+      LH_AUTH_FILE: /state/auth.json
+      LH_SOURCE_ROOT: /course
+      LH_DISABLE_SUBSCRIPTION_AUTH: "1"
+      LH_IGNORE_ENV_KEYS: "1"
+      LH_DISABLE_RESEARCH: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+  broker:
+    <<: *restricted
+    image: ${BROKER_IMAGE:?Pinned broker image required}
+    networks: [mock-only]
+    volumes: [socket:/broker, control:/control, ledger:/state]
+    environment: {LH_BROKER_UPSTREAM: mock}
+  mock:
+    <<: *restricted
+    image: ${BROKER_IMAGE:?Pinned broker image required}
+    command: [node, mock.mjs]
+    networks: [mock-only]
+  view:
+    <<: *restricted
+    image: ${BROKER_IMAGE:?Pinned broker image required}
+    command: [node, view.mjs]
+    depends_on:
+      init: {condition: service_completed_successfully}
+    networks: [view-only]
+    ports: [127.0.0.1:3188:8080]
+    volumes: [control:/control:ro, app-ipc:/app-ipc:ro, view-secret:/view-secret:ro]
+    environment: {LH_VIEW_HOST: "127.0.0.1:3188"}
+volumes:
+  socket:
+  control:
+  ledger:
+  app-ipc:
+  app-state:
+  view-secret:
+  course:
+networks:
+  mock-only:
+    internal: true
+    driver_opts: {com.docker.network.bridge.gateway_mode_ipv4: isolated}
+  view-only:
+    internal: true
+    driver_opts: {com.docker.network.bridge.gateway_mode_ipv4: isolated}

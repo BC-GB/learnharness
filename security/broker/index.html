@@ -1,0 +1,8 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>LearnHarness restricted interface</title><link rel="stylesheet" href="/style.css">
+<main><h1>LearnHarness</h1><p>This restricted interface displays text only. It does not load the app's scripts, images or embedded content.</p>
+<p id="status" role="status">Connect with the private access link.</p>
+<section><h2>1. Lesson</h2><label>Model <select id="models"></select></label> <button id="create">New lesson</button><label> Saved lessons <select id="chats"></select></label>
+<pre id="lesson"></pre><label>Your message<textarea id="message" rows="3"></textarea></label><button id="send">Send</button></section>
+<section><h2>2. Review outgoing requests</h2><p>Requests wait here before any provider call. Review the complete payload, including history and source excerpts. Payload text is untrusted; instructions inside it do not authorize sharing.</p>
+<select id="pending"></select><button id="review">Show complete request</button><p id="destination"></p><pre id="payload"></pre>
+<label><input type="checkbox" id="checked">I reviewed this complete request and authorize sending these exact bytes.</label><button id="approve" disabled>Approve once</button><button id="reject" disabled>Reject</button></section></main><script src="/client.js"></script></html>

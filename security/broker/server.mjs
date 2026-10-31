@@ -1,0 +1,130 @@
+import http from 'node:http';
+import https from 'node:https';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
+const MAX = 1024 * 1024;
+const hash = b => crypto.createHash('sha256').update(b).digest('hex');
+const json = (res, status, value) => {
+  if (res.destroyed || res.writableEnded) return;
+  if (res.headersSent) { res.destroy(); return; }
+  res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  res.end(JSON.stringify(value));
+};
+async function body(req, max = MAX) {
+  if (req.headers['content-type'] !== 'application/json') throw Error('content type');
+  if (req.headers['transfer-encoding'] || !/^\d+$/.test(req.headers['content-length'] ?? '') || Number(req.headers['content-length']) > max) throw Error('length');
+  let size = 0; const chunks = [];
+  for await (const b of req) { size += b.length; if (size > max) throw Error('size'); chunks.push(b); }
+  if (size !== Number(req.headers['content-length'])) throw Error('length mismatch');
+  return Buffer.concat(chunks);
+}
+function persist(dir, id, record) {
+  const tmp = path.join(dir, id + '.tmp'), dest = path.join(dir, id + '.json');
+  const fd = fs.openSync(tmp, 'wx', 0o600);
+  try { fs.writeFileSync(fd, JSON.stringify(record)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  fs.renameSync(tmp, dest);
+  const d = fs.openSync(dir, 'r'); try { fs.fsyncSync(d); } finally { fs.closeSync(d); }
+}
+
+/** The caller supplies trusted deployment settings, never HTTP input. */
+export async function startBroker({ requestSocket, controlSocket, stateDir, mode = 'mock', mockPort = 8090, mockHost = 'mock', keyFile, approvalMs = 600000, responseMs = 120000 }) {
+  if (!['mock', 'live'].includes(mode)) throw Error('Unknown broker mode');
+  // Fail closed: live mode requires a separate explicit deployment acknowledgement.
+  if (mode === 'live' && process.env.LH_BROKER_ALLOW_LIVE !== 'I_AUTHORIZE_BILLABLE_OPENAI_REQUESTS') throw Error('Live use is not authorized');
+  const key = mode === 'live' ? fs.readFileSync(keyFile, 'utf8').trim() : 'SYNTHETIC_BROKER_ONLY';
+  if (!key || /[\r\n]/.test(key)) throw Error('Invalid broker credential');
+  fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+  // Never resume or replay a request across broker restart, even if it was approved.
+  for (const name of fs.readdirSync(stateDir)) {
+    if (/^[a-f0-9-]+\.tmp$/.test(name)) fs.unlinkSync(path.join(stateDir, name));
+    if (/^[a-f0-9-]+\.json$/.test(name)) {
+      const old = JSON.parse(fs.readFileSync(path.join(stateDir, name), 'utf8'));
+      persist(stateDir, name.slice(0, -5), { id: old.id, sha256: old.sha256, status: 'closed-on-restart' });
+    }
+  }
+  const pending = new Map();
+  let records = fs.readdirSync(stateDir).filter(n => n.endsWith('.json')).length;
+  function closeRecord(job, status) {
+    clearTimeout(job.timer); pending.delete(job.id);
+    persist(stateDir, job.id, { id: job.id, sha256: job.sha256, status });
+  }
+  function dispatch(job) {
+    // Persist consumption BEFORE any upstream activity. Never retry automatically.
+    closeRecord(job, 'consumed');
+    const options = mode === 'live'
+      ? { hostname: 'api.openai.com', port: 443, path: '/v1/responses', servername: 'api.openai.com', rejectUnauthorized: true }
+      : { hostname: mockHost, port: mockPort, path: '/v1/responses' };
+    const upstream = (mode === 'live' ? https : http).request({ ...options, method: 'POST', headers: {
+      'content-type': 'application/json', 'content-length': job.bytes.length, authorization: `Bearer ${key}`
+    } }, reply => {
+      if (reply.statusCode !== 200 || !/^text\/event-stream(?:;|$)/i.test(reply.headers['content-type'] ?? '')) {
+        reply.destroy(); json(job.res, 502, { error: 'Provider response rejected' }); return;
+      }
+      job.res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
+      let size = 0;
+      reply.on('data', chunk => { size += chunk.length; if (size > 16 * MAX) { reply.destroy(); job.res.destroy(); } });
+      reply.on('error', () => job.res.destroy());
+      reply.pipe(job.res);
+    });
+    const deadline = setTimeout(() => upstream.destroy(Error('deadline')), responseMs);
+    upstream.on('close', () => clearTimeout(deadline));
+    upstream.on('error', () => json(job.res, 502, { error: 'Provider transport failed' }));
+    job.res.on('close', () => upstream.destroy());
+    upstream.end(job.bytes);
+  }
+  const app = http.createServer({ maxHeaderSize: 8192, requestTimeout: 15000 }, async (req, res) => {
+    try {
+      if (req.method !== 'POST' || req.url !== '/v1/responses') return json(res, 404, { error: 'Not found' });
+      const allowed = new Set(['host', 'connection', 'content-type', 'content-length']);
+      if (Object.keys(req.headers).some(k => !allowed.has(k))) return json(res, 400, { error: 'Unexpected header' });
+      if (pending.size >= 16 || records >= 1024) return json(res, 429, { error: 'Broker review capacity reached' });
+      const bytes = await body(req);
+      const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+      if (!value || typeof value.model !== 'string' || value.stream !== true || value.store !== false) return json(res, 400, { error: 'Streaming and store:false required' });
+      // Remote tools could cause provider-side network actions not contained locally.
+      if (value.tools && (!Array.isArray(value.tools) || value.tools.some(t => t?.type !== 'function'))) return json(res, 400, { error: 'Only function tools are allowed' });
+      if (pending.size >= 16 || records >= 1024) return json(res, 429, { error: 'Broker review capacity reached' });
+      const id = crypto.randomUUID(), sha256 = hash(bytes), expires = Date.now() + approvalMs;
+      const job = { id, sha256, expires, bytes, res };
+      persist(stateDir, id, { id, sha256, expires, status: 'pending', bodyBase64: bytes.toString('base64') }); records++;
+      job.timer = setTimeout(() => { closeRecord(job, 'expired'); json(res, 408, { error: 'Approval expired' }); }, approvalMs);
+      pending.set(id, job);
+      res.on('close', () => { if (pending.has(id)) closeRecord(job, 'cancelled'); });
+    } catch { json(res, 400, { error: 'Request rejected' }); }
+  });
+  const admin = http.createServer({ maxHeaderSize: 4096, requestTimeout: 10000 }, async (req, res) => {
+    try {
+      if (req.method === 'GET' && req.url === '/pending') return json(res, 200, [...pending.values()].map(j => ({ id: j.id, sha256: j.sha256, expires: j.expires, bytes: j.bytes.length })));
+      const match = /^\/requests\/([a-f0-9-]{36})$/.exec(req.url ?? '');
+      if (!match) return json(res, 404, { error: 'Not found' });
+      const job = pending.get(match[1]);
+      if (!job || Date.now() >= job.expires) return json(res, 409, { error: 'No pending request' });
+      if (req.method === 'GET') return json(res, 200, { id: job.id, sha256: job.sha256, destination: mode === 'live' ? 'https://api.openai.com/v1/responses' : 'isolated mock provider', exactUtf8Body: job.bytes.toString('utf8'), bodyBase64: job.bytes.toString('base64') });
+      if (req.method !== 'POST') return json(res, 405, { error: 'Method' });
+      const decision = JSON.parse((await body(req, 1024)).toString());
+      // Awaiting the decision body can race another decision or cancellation.
+      if (pending.get(job.id) !== job || Date.now() >= job.expires || decision.sha256 !== job.sha256) return json(res, 409, { error: 'Stale or mismatched approval' });
+      if (decision.action === 'reject') { closeRecord(job, 'rejected'); json(job.res, 403, { error: 'Request rejected by reviewer' }); return json(res, 200, { status: 'rejected' }); }
+      if (decision.action !== 'approve') return json(res, 400, { error: 'Decision' });
+      dispatch(job); json(res, 200, { status: 'consumed' });
+    } catch { json(res, 503, { error: 'Approval failed closed' }); }
+  });
+  app.maxConnections = 32; admin.maxConnections = 8;
+  for (const [server, socket, modeBits] of [[app, requestSocket, 0o666], [admin, controlSocket, 0o600]]) {
+    fs.mkdirSync(path.dirname(socket), { recursive: true, mode: 0o755 });
+    if (fs.existsSync(socket)) { if (!fs.lstatSync(socket).isSocket()) throw Error('Socket path occupied'); fs.unlinkSync(socket); }
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socket, resolve); }); fs.chmodSync(socket, modeBits);
+  }
+  return { app, admin, close: async () => {
+    for (const job of pending.values()) { closeRecord(job, 'shutdown'); json(job.res, 503, { error: 'Broker shutting down' }); }
+    app.closeAllConnections(); admin.closeAllConnections();
+    await Promise.all([app, admin].map(s => new Promise(resolve => s.close(resolve))));
+  } };
+}
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  const broker = await startBroker({ requestSocket: '/broker/request.sock', controlSocket: '/control/admin.sock', stateDir: '/state', mode: process.env.LH_BROKER_UPSTREAM ?? 'mock', keyFile: '/run/secrets/openai-key' });
+  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await broker.close(); process.exit(0); });
+}

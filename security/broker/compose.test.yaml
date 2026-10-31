@@ -1,0 +1,65 @@
+name: learnharness-broker-test
+services:
+  broker:
+    image: ${BROKER_IMAGE:?Use an audited immutable broker image ID}
+    pull_policy: never
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    mem_limit: 128m
+    pids_limit: 32
+    networks: [mock-only]
+    volumes:
+      - socket:/broker
+      - control:/control
+      - ledger:/state
+    environment:
+      LH_BROKER_UPSTREAM: mock
+  mock:
+    image: ${BROKER_IMAGE:?Use an audited immutable broker image ID}
+    pull_policy: never
+    command: [node, mock.mjs]
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    mem_limit: 128m
+    pids_limit: 32
+    networks: [mock-only]
+  client:
+    image: ${APP_IMAGE:?Use an audited immutable app image ID}
+    pull_policy: never
+    command: [node, --import, tsx, security/broker/integration-client.mjs]
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    mem_limit: 512m
+    pids_limit: 64
+    network_mode: none
+    volumes:
+      - socket:/broker:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,uid=1000,gid=1000
+    environment:
+      LH_DATA_DIR: /tmp/synthetic-data
+      LH_AUTH_FILE: /tmp/synthetic-auth.json
+      NODE_ENV: test
+      LH_BROKER_MODE: "1"
+      LH_DISABLE_SUBSCRIPTION_AUTH: "1"
+      LH_DISABLE_RESEARCH: "1"
+      LH_IGNORE_ENV_KEYS: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+volumes:
+  socket:
+  control:
+  ledger:
+networks:
+  mock-only:
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated

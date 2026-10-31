@@ -30,6 +30,12 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - name: Approval broker and restricted-view tests (synthetic providers only)
+        run: |
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /broker
+          node --import tsx --test security/broker/*.test.mjs
+        env:
+          NODE_ENV: test
       - run: npm run lint
 
   standalone:

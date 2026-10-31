@@ -1,0 +1,22 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "broker-admission-"));
+process.env.LH_DATA_DIR = dir;
+process.env.LH_AUTH_FILE = path.join(dir, "auth.json");
+process.env.LH_IGNORE_ENV_KEYS = "1";
+process.env.LH_DISABLE_SUBSCRIPTION_AUTH = "1";
+process.env.LH_BROKER_MODE = "1";
+const { providerKeyPresent } = await import("../src/server/keys.ts");
+const { modelCatalog, validateChatSettings } = await import("../src/server/model-catalog.ts");
+test("broker admission works without an app credential and excludes all other providers", () => {
+ assert.equal(providerKeyPresent("openai"), true);
+ for (const id of ["chatgpt", "anthropic", "claude-code", "custom"]) assert.equal(providerKeyPresent(id), false);
+ const catalog = modelCatalog();
+ assert.ok(catalog.models.length > 0);
+ assert.ok(catalog.models.every(m => m.provider === "openai"));
+ assert.equal(validateChatSettings({ model: { provider: "anthropic", id: "anything" } }).ok, false);
+ assert.equal(fs.existsSync(path.join(dir, "auth.json")), false);
+});

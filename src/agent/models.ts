@@ -21,6 +21,7 @@ import type { ChatGPTDispatchLifecycle } from "./chatgpt-request-cycle.ts";
 import { createClaudeCodeProvider } from "./claude-code/provider.ts";
 import { streamClaudeCode } from "./claude-code/stream.ts";
 import { nativeSubscriptionId, nativeSubscriptionModel } from "./subscription-bridge.ts";
+import { brokerEnabled, brokerFetch } from "./broker-fetch.ts";
 import { nativeSubscriptionStream } from "./subscription-stream.ts";
 
 /** App identity is immutable and shared by Models and every native Agent.
@@ -141,6 +142,9 @@ export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (
 	if (!model) {
 		throw new Error(`${spec.provider} catalog has no model ${spec.id}`);
 	}
+	if (brokerEnabled() && (custom || spec.provider !== "openai" || model.api !== "openai-responses")) {
+		throw new Error("Approval broker mode permits only OpenAI Responses models");
+	}
 	// UNSET level → the baked default order (first entry the model
 	// supports); SET level → pi's native nearest-clamp (model swaps keep
 	// the user's intent and adapt honestly).
@@ -157,6 +161,10 @@ export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (
 		// = off on pi-ai's scale). Built-ins keep the factory clamp; custom
 		// requests re-resolve thinking against their current metadata below.
 		streamFn: (requestModel, context, options) => {
+			if (brokerEnabled()) {
+				if (custom || spec.provider !== "openai" || model.api !== "openai-responses") throw new Error("Provider blocked by approval broker");
+				return models.streamSimple(model, context, { ...options, apiKey: "broker-placeholder-not-a-key", fetch: brokerFetch, reasoning: level === "off" ? undefined : level });
+			}
 			// Read the slot preference for every operation, not just engine creation.
 			// Unset adds NOTHING: native defaults/env and explicit caller options survive.
 			const retention = cacheRetention?.();
