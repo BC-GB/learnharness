@@ -68,63 +68,18 @@ function helperFixture(connected = true, channel = true) {
 	};
 }
 
-describe("browser-service IPC-owned lifetime", () => {
-	it("ignores synthetic Windows stdin EOF while IPC remains connected", async () => {
-		const helper = helperFixture();
-		helper.stdin.resume();
-		await turn();
-		assert.equal(helper.stdin.readableEnded, true);
-		assert.equal(helper.state.stdinReads, 0);
-		assert.equal(helper.state.quits, 0);
-		helper.allowAppReady();
-		await turn();
-		assert.equal(helper.state.readinessCalls, 1);
-		assert.equal(helper.state.signal?.aborted, false);
-		helper.allowReadiness();
-		await turn();
-		assert.deepEqual(helper.logs, ["BROWSER_SERVICE_CDP 54321"]);
-		assert.deepEqual(helper.state.exits, []);
-		helper.disconnect();
-		assert.equal(helper.state.quits, 1);
-	});
-
-	it("disconnect during readiness aborts it, quits once, and never announces", async () => {
-		const helper = helperFixture();
-		helper.allowAppReady();
-		await turn();
-		assert.equal(helper.state.readinessCalls, 1);
-		helper.disconnect();
-		helper.disconnect();
-		await turn();
-		assert.equal(helper.state.signal?.aborted, true);
-		assert.equal(helper.state.quits, 1);
-		assert.deepEqual(helper.logs, []);
-		assert.deepEqual(helper.errors, []);
-		assert.deepEqual(helper.state.exits, []);
-		assert.equal(helper.state.stdinReads, 0);
-	});
-
-	it("owns disconnect before app.whenReady resolves", async () => {
-		const helper = helperFixture();
-		helper.disconnect();
-		await turn();
-		assert.equal(helper.state.quits, 1);
-		assert.equal(helper.state.windows, 0);
-		assert.deepEqual(helper.logs, []);
-	});
-
-	it("fails closed without both a connected IPC channel and connection state", async () => {
-		for (const [connected, channel] of [[false, false], [true, false], [false, true]]) {
-			const helper = helperFixture(connected, channel);
-			await turn();
-			assert.deepEqual(helper.state.exits, [1]);
-			assert.match(helper.errors.join("\n"), /requires connected parent IPC/);
-			assert.equal(helper.state.windows, 0);
-			assert.equal(helper.state.readinessCalls, 0);
-			assert.equal(helper.state.stdinReads, 0);
-			assert.equal(helper.process.listenerCount("disconnect"), 0);
-		}
-	});
+describe("browser-service entry is retired", () => {
+ for (const connected of [false, true]) for (const channel of [false, true]) {
+  it(`refuses execution with connected=${connected}, channel=${channel}`, async () => {
+   const helper = helperFixture(connected, channel);
+   helper.allowAppReady(); helper.allowReadiness(); await turn();
+   assert.deepEqual(helper.state.exits, [1]);
+   assert.equal(helper.state.windows, 0);
+   assert.equal(helper.state.readinessCalls, 0);
+   assert.deepEqual(helper.logs, []);
+   assert.match(helper.errors.join(" "), /disabled/);
+  });
+ }
 });
 
 describe("browser-service probe cleanup", () => {

@@ -1,6 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Type } from "typebox";
+import { readBoundedFile } from "./bounded-file.ts";
+import { compileSafePattern } from "./safe-pattern.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute } from "../tool-execute.ts";
 import {
@@ -63,10 +65,7 @@ export const grepTool: AgentTool<typeof grepInput> = {
 		}
 		const isDirectory = stat.isDirectory();
 
-		const regex = new RegExp(
-			input.literal ? input.pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : input.pattern,
-			input.ignoreCase ? "i" : undefined,
-		);
+		const regex = compileSafePattern(input.pattern, input.literal ?? false, input.ignoreCase ?? false);
 		const contextValue = input.context && input.context > 0 ? input.context : 0;
 		const effectiveLimit = Math.max(1, input.limit ?? DEFAULT_LIMIT);
 
@@ -128,7 +127,7 @@ export const grepTool: AgentTool<typeof grepInput> = {
 
 			let content: string;
 			try {
-				content = await fs.readFile(filePath, "utf-8");
+				content = (await readBoundedFile(resolveSourcePath(filePath), MAX_FILE_BYTES, ctx?.signal)).toString("utf-8");
 			} catch {
 				continue;
 			}

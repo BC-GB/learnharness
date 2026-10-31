@@ -1,10 +1,10 @@
-import * as fs from "node:fs/promises";
+import { readBoundedFile } from "./bounded-file.ts";
 import { Type } from "typebox";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute, type ImageFileResult } from "../tool-execute.ts";
 import { resolveSourcePath } from "./fs-shared.ts";
-import { detectSupportedImageMimeTypeFromFile, processImage } from "../image-processing/index.ts";
+import { detectSupportedImageMimeType, processImage } from "../image-processing/index.ts";
 
 /**
  * The read tool — sources v0 (2026-09): a Node port of pi's read semantics
@@ -99,8 +99,8 @@ export function createReadTool(model?: ReadModel): AgentTool<typeof readInput> {
 		parameters: readInput,
 		execute: serverExecute("read", readInput, async ({ path: rawPath, offset, limit }, { signal }): Promise<string | ImageFileResult> => {
 			const absolute = resolveSourcePath(rawPath);
-			const mime = await detectSupportedImageMimeTypeFromFile(absolute);
-			const buffer = await fs.readFile(absolute, { signal });
+			const buffer = await readBoundedFile(absolute, 8 * 1024 * 1024, signal);
+			const mime = detectSupportedImageMimeType(buffer);
 			if (mime) {
 				const processed = await processImage(buffer, mime, { resizeOptions: model?.inputLimits?.images?.resize });
 				signal?.throwIfAborted();

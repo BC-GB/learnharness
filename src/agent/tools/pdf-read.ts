@@ -1,9 +1,9 @@
-import * as fs from "node:fs/promises";
+function sizeClass(n: number): "short" | "medium" | "long" { return n <= 10 ? "short" : n <= 40 ? "medium" : "long"; }
 import * as path from "node:path";
 import { Type } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute } from "../tool-execute.ts";
-import { pdfExtract, pdfInfo, pdfProbe, pdfSearch } from "../subagents/pdf-ops.ts";
+import { pdfExtract, pdfInfo, pdfSearch } from "../subagents/pdf-ops.ts";
 
 /**
  * PDF reading tools for the RESEARCHER sub-agent (owner design B,
@@ -22,27 +22,6 @@ import { pdfExtract, pdfInfo, pdfProbe, pdfSearch } from "../subagents/pdf-ops.t
  * failure path returns a clear error STRING the researcher can adapt to.
  */
 
-const USER_AGENT =
-	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-const FETCH_TIMEOUT_MS = 60_000;
-/** PDFs run bigger than pages — arxiv papers routinely 5-20 MB. */
-const MAX_PDF_BYTES = 25 * 1024 * 1024;
-
-/** The pdf-reader doctrine's size classes, by page count. */
-function sizeClass(pageCount: number): "short" | "medium" | "long" {
-	if (pageCount <= 10) return "short";
-	if (pageCount <= 40) return "medium";
-	return "long";
-}
-
-/** Pages worth a look before any extraction — math- or image-heavy. */
-function flaggedPages(info: Awaited<ReturnType<typeof pdfInfo>>): number[] {
-	return info.pages
-		.filter((p) => p.math_density >= 0.03 || p.image_count > 0)
-		.slice(0, 30)
-		.map((p) => p.page);
-}
-
 /** Resolve a tool-supplied path and require it to live INSIDE the job's
  *  pdf dir — the researcher's filesystem ends at the temp dir's wall. */
 function scopedPath(dir: string, filePath: string): string | null {
@@ -50,19 +29,6 @@ function scopedPath(dir: string, filePath: string): string | null {
 	const resolved = path.resolve(dir, filePath);
 	if (!resolved.startsWith(root)) return null;
 	return resolved;
-}
-
-/** Filename for a downloaded PDF — slug from the URL's last segment plus a
- *  unique suffix (two PDFs from different URLs never collide). */
-function pdfFileName(url: string): string {
-	try {
-		const last = new URL(url).pathname.split("/").filter(Boolean).pop() ?? "document";
-		const slug = last.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(-80) || "document";
-		const stem = slug.replace(/\.pdf$/i, "");
-		return `${stem}-${Math.random().toString(36).slice(2, 8)}.pdf`;
-	} catch {
-		return `document-${Math.random().toString(36).slice(2, 8)}.pdf`;
-	}
 }
 
 /** The download + triage summary the researcher sees from web_fetch_pdf. */
@@ -103,53 +69,8 @@ export function createPdfReadTools(dir: string): Record<string, AgentTool<any>> 
 				"Then read it with pdf_extract / pdf_search. Use when web_fetch reports a URL is a PDF.",
 			parameters: pdfFetchInput,
 			execute: serverExecute("web_fetch_pdf", pdfFetchInput, async ({ url }): Promise<PdfFetchSummary | string> => {
-				if (process.env.LH_DISABLE_RESEARCH === "1") return "Web research is disabled by deployment policy.";
-				try {
-					const parsed = new URL(url);
-					if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
-						throw new Error("Only http(s) URLs are supported");
-				} catch {
-					return `web_fetch_pdf failed: invalid URL "${url}"`;
-				}
-				try {
-					const resp = await fetch(url, {
-						headers: {
-							"User-Agent": USER_AGENT,
-							Accept: "application/pdf,application/octet-stream,*/*",
-						},
-						signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-					});
-					if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-					const contentType = resp.headers.get("content-type") ?? "";
-					if (!/application\/pdf/i.test(contentType) && !/\.pdf(\?|$)/i.test(parsedPathname(url))) {
-						throw new Error(`Not a PDF (content-type ${contentType.split(";")[0] || "unknown"})`);
-					}
-					const declared = Number(resp.headers.get("content-length") ?? 0);
-					if (declared > MAX_PDF_BYTES) throw new Error("PDF too large (over 25 MB)");
-					const bytes = new Uint8Array(await resp.arrayBuffer());
-					if (bytes.length === 0) throw new Error("Empty response");
-					if (bytes.length > MAX_PDF_BYTES) throw new Error("PDF too large (over 25 MB)");
-					const filePath = path.join(dir, pdfFileName(url));
-					await fs.writeFile(filePath, bytes);
-					try {
-						await pdfProbe(filePath);
-					} catch {
-						await fs.rm(filePath, { force: true });
-						throw new Error("The download is not a readable PDF");
-					}
-					const info = await pdfInfo(filePath);
-					const summary: PdfFetchSummary = {
-						path: filePath,
-						url,
-						page_count: info.page_count,
-						size_class: sizeClass(info.page_count),
-						mean_text_length: info.mean_text_length,
-						flagged_pages: flaggedPages(info),
-					};
-					return summary;
-				} catch (err) {
-					return `web_fetch_pdf failed for ${url}: ${err instanceof Error ? err.message : String(err)}`;
-				}
+				void url;
+				return "PDF downloads and processing are disabled by deployment policy; an isolated parser is required.";
 			}),
 		},
 
@@ -211,12 +132,4 @@ export function createPdfReadTools(dir: string): Record<string, AgentTool<any>> 
 			}),
 		},
 	};
-}
-
-function parsedPathname(url: string): string {
-	try {
-		return new URL(url).pathname;
-	} catch {
-		return "";
-	}
 }

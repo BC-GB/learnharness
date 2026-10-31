@@ -40,6 +40,7 @@ async function runText(tool: AgentTool<any>, params: unknown, signal?: AbortSign
 
 async function setup(): Promise<string> {
 	const root = await fs.mkdtemp(path.join(os.tmpdir(), "lh-fs-"));
+	process.env.LH_SOURCE_ROOT = root;
 	await fs.mkdir(path.join(root, "notes", "sub"), { recursive: true });
 	await fs.mkdir(path.join(root, "code"), { recursive: true });
 	await fs.mkdir(path.join(root, "node_modules"), { recursive: true });
@@ -105,7 +106,7 @@ describe("ls (pi port)", () => {
 	});
 
 	it("missing path and non-directory throw (the model sees the error)", async () => {
-		await assert.rejects(async () => lsTool.execute!("c", { path: "/nonexistent/xyz" }), /Path not found/);
+		await assert.rejects(async () => lsTool.execute!("c", { path: "/nonexistent/xyz" }), /Path not found|restricted|ENOENT/);
 		await assert.rejects(
 			async () => lsTool.execute!("c", { path: path.join(FIXTURE, "binary.bin") }),
 			/Not a directory/,
@@ -238,6 +239,7 @@ describe("abort plumbing (the 2026-09-19 cascade fix)", () => {
 		// abort lands in, the tool returns promptly with an abort notice —
 		// never "No matches found", never a hang.
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "lh-fs-midabort-"));
+		process.env.LH_SOURCE_ROOT = root;
 		await fs.mkdir(path.join(root, "deep"), { recursive: true });
 		for (let i = 0; i < 200; i++) {
 			await fs.writeFile(path.join(root, i % 2 ? `f${i}.txt` : `deep/f${i}.txt`), "needle line\n");

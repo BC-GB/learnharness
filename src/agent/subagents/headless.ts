@@ -1,24 +1,3 @@
-import * as fs from "node:fs";
-import { createRequire } from "node:module";
-import * as os from "node:os";
-import * as path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { standardFontsDir } from "./pdf-ops";
-
-/**
- * Verification engines for sub-agents: demos use the app's own Electron
- * browser-service via puppeteer-core, with system Chrome as fallback.
- * SVGs use resvg (browser fallback); PDFs use pdfjs + Skia (no browser).
- * No extra Chromium is shipped or downloaded.
- *
- * Chrome fallback resolution: CHROME_PATH first, then common macOS,
- * Windows and Linux install paths. `available()` is a cheap executable
- * check; the helper must still prove it can launch/connect at job time.
- *
- * Test seam: `headlessOverride.current` replaces the whole API (tests inject
- * a fake; nothing here touches a real browser). Builders call `getHeadless()`.
- */
-
 export interface DemoRunResult {
 	/** console.error / console messages of type "error". */
 	consoleErrors: string[];
@@ -78,49 +57,6 @@ export function getHeadless(): HeadlessApi {
 
 // ─── Chrome resolution ───────────────────────────────────────────────────────
 
-const CHROME_CANDIDATES = [
-	...(process.platform === "win32" ? [
-		path.join(process.env.PROGRAMFILES ?? "C:\\Program Files", "Google", "Chrome", "Application", "chrome.exe"),
-		path.join(process.env["PROGRAMFILES(X86)"] ?? "C:\\Program Files (x86)", "Google", "Chrome", "Application", "chrome.exe"),
-		...(process.env.LOCALAPPDATA ? [path.join(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe")] : []),
-	] : []),
-	"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-	"/Applications/Chromium.app/Contents/MacOS/Chromium",
-	"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-	"/usr/bin/google-chrome",
-	"/usr/bin/google-chrome-stable",
-	"/usr/bin/chromium",
-	"/usr/bin/chromium-browser",
-];
-
-export function resolveChromeExecutablePath(): string | null {
-	const candidates = [process.env.CHROME_PATH, ...CHROME_CANDIDATES].filter(
-		(p): p is string => typeof p === "string" && p.length > 0,
-	);
-	for (const candidate of candidates) {
-		try {
-			if (fs.existsSync(candidate)) return candidate;
-		} catch {
-			/* not readable — try the next */
-		}
-	}
-	return null;
-}
-
-const NO_CHROME_MESSAGE =
-	"No render engine available: the app's own browser helper failed to start and no system Chrome/Chromium was found. " +
-	"Install Google Chrome or set CHROME_PATH to a Chrome executable. " +
-	"(Verification is mandatory — demos are never delivered untested.)";
-
-// ─── The app's own Chromium as a browser service (Wave E stage 3) ────────────
-// Demos execute JS and need a browser. PRIMARY: this very app's binary
-// spawned with --browser-service (main.cjs boots a hidden window with a CDP
-// port and prints "BROWSER_SERVICE_CDP <port>"). FALLBACK: system Chrome.
-// A Node IPC channel owns its lifetime: parent death/disconnect quits the
-// helper on every OS (Windows Electron stdin is synthetic EOF). No orphans.
-// PDFs and SVGs never come here (native now).
-
-/** Handshake line parser (pure; exported for tests). */
 export function parseBrowserServiceLine(line: string): number | null {
 	const m = line.match(/^BROWSER_SERVICE_CDP (\d+)$/);
 	if (!m) return null;
@@ -142,207 +78,6 @@ export function browserServiceSpawnEnv(
 	delete out.LH_DESKTOP_SERVER;
 	return out;
 }
-
-/** The helper binary: inside the packaged app the server runs under
- *  ELECTRON_RUN_AS_NODE so process.execPath IS the app binary; in dev
- *  (plain node) the electron package resolves to the dev binary path. */
-export function browserServiceBinary(): string | null {
-	if (process.env.LH_BROWSER_ENGINE === "disabled") return null;
-	// Browser-only deployment: do not load the self-downloading Electron package.
-	if (process.env.LH_BROWSER_ENGINE === "system") return null;
-	if (process.versions.electron) return process.execPath;
-	try {
-		const req = createRequire(import.meta.url);
-		const p = req("electron") as unknown as string;
-		return typeof p === "string" && p.length > 0 ? p : null;
-	} catch {
-		return null;
-	}
-}
-
-const BROWSER_SERVICE_TIMEOUT_MS = 15_000;
-let browserServiceProc: import("node:child_process").ChildProcess | null = null;
-
-async function connectBrowserService(): Promise<import("puppeteer-core").Browser | null> {
-	const puppeteer = (await import("puppeteer-core")).default;
-	const { spawn } = await import("node:child_process");
-	let port: number | null = null;
-
-	if (browserServiceProc && browserServiceProc.exitCode === null) {
-		// Helper alive from a previous run — reuse its endpoint.
-		port = (browserServiceProc as { __cdpPort?: number }).__cdpPort ?? null;
-	}
-	if (port === null) {
-		const binary = browserServiceBinary();
-		if (!binary) return null;
-		// Packaged: execPath runs the bundled app (flag reaches main.cjs).
-		// Dev: the bare electron binary needs the repo root as the app arg —
-		// flagless it would open Electron's default app instead of our shell.
-		const appArgs = process.versions.electron ? ["--browser-service"] : [
-			// src/agent/subagents → repo root
-			path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ".."),
-			"--browser-service",
-		];
-		const proc = spawn(binary, appArgs, {
-			// Cast: the sanitizer is pure over a loose record; NODE_ENV is
-			// always present in a real process.env.
-			env: browserServiceSpawnEnv(process.env) as NodeJS.ProcessEnv,
-			stdio: ["ignore", "pipe", "pipe", "ipc"] as const,
-		});
-		browserServiceProc = proc;
-		port = await new Promise<number | null>((resolve) => {
-			let buf = "";
-			const timer = setTimeout(() => {
-				proc.kill();
-				resolve(null);
-			}, BROWSER_SERVICE_TIMEOUT_MS);
-			const onData = (chunk: Buffer) => {
-				buf += chunk.toString("utf8");
-				const line = buf.split("\n").find((l) => parseBrowserServiceLine(l) !== null);
-				if (line !== undefined) {
-					clearTimeout(timer);
-					resolve(parseBrowserServiceLine(line));
-				}
-			};
-			proc.stdout!.on("data", onData);
-			proc.once("exit", () => {
-				clearTimeout(timer);
-				resolve(null);
-			});
-		});
-		if (port === null) {
-			browserServiceProc = null;
-			return null;
-		}
-		(proc as { __cdpPort?: number }).__cdpPort = port;
-	}
-
-	try {
-		const version = await fetch(`http://127.0.0.1:${port}/json/version`);
-		const info = (await version.json()) as { webSocketDebuggerUrl?: string };
-		if (!info.webSocketDebuggerUrl) return null;
-		// connect ≠ launch: browser.close() below merely disconnects — the
-		// helper stays resident for the next job (IPC-owned lifetime).
-		return await puppeteer.connect({
-			browserWSEndpoint: info.webSocketDebuggerUrl,
-			defaultViewport: null,
-		});
-	} catch {
-		return null;
-	}
-}
-
-/** Serialized helper-page use: the helper owns ONE page target (Electron's
- *  CDP has no Target.createTarget — pages must be windows the helper made),
- *  so concurrent jobs queue here instead of fighting over one webContents. */
-let helperPageChain: Promise<unknown> = Promise.resolve();
-
-const BROWSER_DISABLED_MESSAGE = "Browser execution is disabled by deployment policy.";
-
-function requireBrowserExecution(): void {
-	if (process.env.LH_BROWSER_ENGINE === "disabled") throw new Error(BROWSER_DISABLED_MESSAGE);
-}
-async function withBrowserPage<T>(fn: (page: import("puppeteer-core").Page) => Promise<T>): Promise<T> {
-	requireBrowserExecution();
-	// Helper first (owner ruling 2026-10-10: the app's own Chromium primary,
-	// system Chrome fallback) — deterministic across users, zero install.
-	const helper = await connectBrowserService();
-	if (helper) {
-		const run = async (): Promise<T> => {
-			const pages = await helper.pages();
-			const page = pages.find((p) => p.target().type() === "page");
-			if (!page) throw new Error("browser service: no page target");
-			try {
-				return await fn(page);
-			} finally {
-				// Drop all page state (JS heap, listeners) between jobs.
-				await page.goto("about:blank").catch(() => {});
-			}
-		};
-		const next = helperPageChain.then(run, run);
-		helperPageChain = next.catch(() => {});
-		return next;
-	}
-
-	// Chrome fallback: per-job launch, close on the way out (old semantics).
-	const puppeteer = (await import("puppeteer-core")).default;
-	const executablePath = resolveChromeExecutablePath();
-	const browser = await puppeteer.launch({
-		headless: true,
-		// Explicit path when we found one; otherwise let puppeteer resolve the
-		// system Chrome install itself via the "chrome" channel.
-		...(executablePath ? { executablePath } : { channel: "chrome" as const }),
-		args: ["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"],
-	});
-	try {
-		const page = await browser.newPage();
-		return await fn(page);
-	} finally {
-		await browser.close().catch(() => {});
-	}
-}
-
-/** A temp dir per invocation; removed in finally. */
-function tempDir(prefix: string): string {
-	return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-}
-
-// ─── Demo execution ──────────────────────────────────────────────────────────
-
-async function runDemo(html: string, opts: RunDemoOptions = {}): Promise<DemoRunResult> {
-	requireBrowserExecution();
-	const settleMs = opts.settleMs ?? 2000;
-	const dir = tempDir("lh-demo-");
-	const file = path.join(dir, "demo.html");
-	fs.writeFileSync(file, html, "utf-8");
-
-	const consoleErrors: string[] = [];
-	const pageErrors: string[] = [];
-	const failedRequests: string[] = [];
-	let probeResult: unknown;
-	let probed = false;
-
-	try {
-		await withBrowserPage(async (page) => {
-		page.on("console", (msg) => {
-			if (msg.type() === "error") consoleErrors.push(msg.text());
-		});
-		page.on("pageerror", (err) => pageErrors.push(err instanceof Error ? err.message : String(err)));
-		page.on("requestfailed", (req) => failedRequests.push(`${req.url()} (${req.failure()?.errorText ?? "failed"})`));
-
-		try {
-			await page.goto(pathToFileURL(file).href, { waitUntil: "load", timeout: 30_000 });
-			await new Promise((resolve) => setTimeout(resolve, settleMs));
-			if (opts.probe) {
-				try {
-					probeResult = await page.evaluate(opts.probe);
-				} catch (err) {
-					pageErrors.push(`probe failed: ${err instanceof Error ? err.message : String(err)}`);
-				}
-				probed = true;
-			}
-		} catch (err) {
-			pageErrors.push(err instanceof Error ? err.message : String(err));
-		}
-		});
-	} finally {
-		try {
-			fs.rmSync(dir, { recursive: true, force: true });
-		} catch {
-			/* best-effort cleanup */
-		}
-	}
-
-	return {
-		consoleErrors,
-		pageErrors,
-		failedRequests,
-		...(probed ? { probeResult } : {}),
-		ok: consoleErrors.length === 0 && pageErrors.length === 0 && failedRequests.length === 0,
-	};
-}
-
-// ─── SVG rasterization ───────────────────────────────────────────────────────
 
 function svgViewport(svg: string, opts: RenderSvgOptions): { width: number; height: number } {
 	if (opts.width && opts.height) return { width: opts.width, height: opts.height };
@@ -422,57 +157,6 @@ function crc32(buf: Buffer): number {
 	return ~c >>> 0;
 }
 
-async function renderSvg(svg: string, opts: RenderSvgOptions = {}): Promise<Buffer> {
-	// NATIVE FIRST (Wave E stage 2, owner 2026-10-10): resvg rasterizes
-	// static SVG in-process — visual-maker SVGs never execute script, so a
-	// browser adds nothing but a process. White background mirrors the old
-	// Chrome page (html,body{background:#fff}); fitTo width mirrors
-	// svgViewport semantics (attrs win, viewBox-only gets the 900 default,
-	// opts override). The browser path below stays as the fallback for
-	// exotic-SVG features resvg cannot parse — failures there used to be
-	// the ONLY path, so nothing regresses.
-	const { width } = svgViewport(svg, opts);
-	try {
-		const { Resvg } = await import("@resvg/resvg-js");
-		const resvg = new Resvg(svg, {
-			fitTo: { mode: "width", value: width },
-			font: { loadSystemFonts: true },
-			background: "#ffffff",
-		});
-		return providerSafePng(resvg.render().asPng());
-	} catch {
-		requireBrowserExecution(); // No browser fallback when deployment policy disables it.
-	}
-	const dir = tempDir("lh-visual-");
-	const file = path.join(dir, "figure.html");
-	fs.writeFileSync(
-		file,
-		`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;background:#fff}svg{display:block}</style></head><body>${svg}</body></html>`,
-		"utf-8",
-	);
-
-	return withBrowserPage(async (page) => {
-		const { width, height } = svgViewport(svg, opts);
-		await page.setViewport({ width, height });
-		await page.goto(pathToFileURL(file).href, { waitUntil: "load", timeout: 30_000 });
-		const shot = (await page.screenshot({ fullPage: true, type: "png" })) as Buffer;
-		// Chrome's raw split-IDAT PNG is canonicalized before it reaches a
-		// provider (see providerSafePng) — the visual-maker feeds this exact
-		// buffer back to the vision model as its only way to "look".
-		return providerSafePng(Buffer.from(shot));
-	}).finally(() => {
-		try {
-			fs.rmSync(dir, { recursive: true, force: true });
-		} catch {
-			/* best-effort cleanup */
-		}
-	});
-}
-
-// ─── PDF page rasterization (pdfjs paints, Skia hosts) ─────────────────
-
-/** Decimal megapixels: at four bytes per pixel this is about 61 MiB per
- *  page canvas, before pdfjs/Skia's other working memory. */
 export const MAX_PDF_CANVAS_PIXELS = 16_000_000;
 export const MAX_PDF_CANVAS_SIDE = 8192;
 
@@ -527,75 +211,30 @@ export function pdfCanvasGeometry(baseWidth: number, baseHeight: number, dpi: nu
  *  E, 2026-10-10). The paint engine never changed; only the canvas host:
  *  Skia in-process via pdfjs-dist v6's own Node integration. No browser,
  *  no temp files, no base64 hop. */
-async function renderPdfPages(
-	pdfPath: string,
-	pages: number[],
-	opts: RenderPdfOptions = {},
-): Promise<RenderedPdfPage[]> {
-	if (process.env.LH_DISABLE_PDF_RENDERING === "1" || process.env.LH_DISABLE_PDF_PROCESSING === "1") throw new Error("PDF rasterization is disabled by deployment policy.");
-	const dpi = opts.dpi ?? 150;
-	if (!Number.isFinite(dpi) || dpi <= 0 || dpi / 72 === 0) {
-		throw new Error("PDF render DPI must be finite and positive");
-	}
-	// NATIVE CANVAS (Wave E, owner 2026-10-10): pdfjs paints into
-	// @napi-rs/canvas in this process — no browser involved. pdfjs-dist v6's
-	// own Node integration IS @napi-rs/canvas (its optionalDependency: the
-	// NodeCanvasFactory requires it), so the paint engine is the exact code
-	// that used to run in the Chrome shim tab; only the canvas host changed
-	// (Skia in-process instead of a DOM canvas). Text-side pdf tools never
-	// needed a browser; now renders don't either.
-	const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-	const { createCanvas } = await import("@napi-rs/canvas");
-	const data = new Uint8Array(fs.readFileSync(path.resolve(pdfPath)));
-	// Standard-font data as a directory path (live-smoke finding 2026-09-19:
-	// without it pdfjs renders non-embedded standard fonts via fallback);
-	// verbosity 0 = errors only (JBIG2 noise on scanned PDFs).
-	const loadingTask = pdfjs.getDocument({ data, standardFontDataUrl: standardFontsDir(), verbosity: 0 });
-	const doc = await loadingTask.promise;
-	try {
-		const out: RenderedPdfPage[] = [];
-		for (const pageNo of pages) {
-			if (pageNo < 1 || pageNo > doc.numPages) continue;
-			const pg = await doc.getPage(pageNo);
-			const base = pg.getViewport({ scale: 1 });
-			const geometry = pdfCanvasGeometry(base.width, base.height, dpi);
-			const vp = pg.getViewport({ scale: geometry.scale });
-			const canvas = createCanvas(geometry.width, geometry.height);
-			const ctx = canvas.getContext("2d");
-			// pdfjs's render types speak the DOM context; @napi-rs/canvas's
-			// context is the same 2D API implemented over Skia.
-			await pg.render({
-				canvasContext: ctx as unknown as CanvasRenderingContext2D,
-				canvas: canvas as unknown as HTMLCanvasElement,
-				viewport: vp,
-			}).promise;
-			out.push({
-				page: pageNo,
-				// Skia-encoded PNG → providerSafePng for the same single-IDAT
-				// canonical form every other vision-model image gets.
-				png: providerSafePng(canvas.toBuffer("image/png")),
-			});
-		}
-		return out;
-	} finally {
-		await loadingTask.destroy().catch(() => {});
-	}
+
+const BROWSER_DISABLED_MESSAGE = "Browser execution is disabled by deployment policy.";
+export function browserServiceBinary(): string | null { return null; }
+export function resolveChromeExecutablePath(): string | null { return null; }
+async function runDemo(_html: string, _opts: RunDemoOptions = {}): Promise<DemoRunResult> {
+ throw new Error(BROWSER_DISABLED_MESSAGE);
 }
-
-// ─── the real API ────────────────────────────────────────────────────────────
-
+async function renderPdfPages(_file: string, _pages: number[], _opts: RenderPdfOptions = {}): Promise<RenderedPdfPage[]> {
+ throw new Error("PDF rasterization is disabled: an isolated parser is required.");
+}
+async function renderSvg(svg: string, opts: RenderSvgOptions = {}): Promise<Buffer> {
+ if (Buffer.byteLength(svg) > 1024 * 1024) throw new Error("SVG input too large.");
+ if (/(?:href\s*=|url\s*\(|<!ENTITY|<!DOCTYPE)/i.test(svg)) throw new Error("External or embedded SVG resources are unsupported.");
+ const { width, height } = svgViewport(svg, opts);
+ if (![width,height].every(n => Number.isFinite(n) && n > 0 && n <= 4096) || width * height > 16000000) throw new Error("SVG dimensions exceed limits.");
+ try {
+  const { Resvg } = await import("@resvg/resvg-js");
+  const resvg = new Resvg(svg, { fitTo: { mode: "width", value: width }, background: "white", font: { loadSystemFonts: true } });
+  if (resvg.width > 4096 || resvg.height > 4096 || resvg.width * resvg.height > 16000000) throw new Error("SVG dimensions exceed limits.");
+  return providerSafePng(resvg.render().asPng());
+ } catch { throw new Error(BROWSER_DISABLED_MESSAGE + " SVG could not be rendered safely."); }
+}
 export const realHeadless: HeadlessApi = {
-	available() {
-		if (process.env.LH_BROWSER_ENGINE === "disabled") return false;
-		// The helper binary exists by construction in the packaged app; in dev
-		// it resolves via the electron package. System Chrome widens coverage.
-		return browserServiceBinary() !== null || resolveChromeExecutablePath() !== null;
-	},
-	unavailableReason() {
-		if (process.env.LH_BROWSER_ENGINE === "disabled") return BROWSER_DISABLED_MESSAGE;
-		return browserServiceBinary() === null && resolveChromeExecutablePath() === null ? NO_CHROME_MESSAGE : null;
-	},
-	runDemo,
-	renderSvg,
-	renderPdfPages,
+ available: () => false,
+ unavailableReason: () => BROWSER_DISABLED_MESSAGE,
+ runDemo, renderSvg, renderPdfPages,
 };

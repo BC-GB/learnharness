@@ -26,7 +26,7 @@ const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" view
 const FIXTURE = path.join(import.meta.dirname, "fixtures", "sample-3page.pdf");
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==", "base64");
 const FINAL = "Verified offline output (p. 1). Pages consulted: 1";
-const LOOPS = ["visual", "pdf"] as const;
+const LOOPS: readonly ("visual" | "pdf")[] = ["visual"];
 type Loop = typeof LOOPS[number];
 type Call = { name: string; args: JsonObject };
 

@@ -1,8 +1,6 @@
 name: Desktop release
 
 on:
-  push:
-    tags: ["v*"]
   # Manual runs are artifact-only, unsigned, and NEVER create a release.
   # Use this for the first Windows/Linux dress rehearsal without secrets.
   workflow_dispatch:
@@ -25,6 +23,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: "26"
@@ -45,49 +45,11 @@ jobs:
       - run: npm test
       - run: npm run lint
 
-  draft:
-    name: Prepare one draft
-    needs: quality
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      # This job succeeds without creating anything on manual rehearsals.
-      # Preparing once avoids the publisher's list-miss/create race between OS jobs.
-      - name: Create or reuse the tag's draft
-        if: github.event_name == 'push'
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const {owner, repo} = context.repo;
-            const tag = context.ref.replace(/^refs\/tags\//, "");
-            const version = tag.slice(1);
-            const releases = await github.paginate(github.rest.repos.listReleases, {
-              owner, repo, per_page: 100,
-            });
-            const matches = releases.filter(release =>
-              release.tag_name === tag || release.tag_name === version);
-            if (matches.length > 1) {
-              throw new Error(`Multiple releases match ${tag}; resolve them before uploading.`);
-            }
-            if (matches.length === 1) {
-              if (!matches[0].draft) {
-                throw new Error(`${tag} is already published; refusing to modify it.`);
-              }
-              core.info(`Reusing draft ${matches[0].id} for ${tag}`);
-              return;
-            }
-            const {data} = await github.rest.repos.createRelease({
-              owner, repo, tag_name: tag, name: version, draft: true,
-            });
-            core.info(`Created draft ${data.id} for ${tag}`);
-
   package:
     name: Package (${{ matrix.platform }})
-    needs: [quality, draft]
+    needs: quality
     permissions:
-      contents: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -109,6 +71,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: "26"
@@ -133,36 +97,6 @@ jobs:
       - run: node scripts/smoke-provider-runtime.mjs
       - run: node scripts/build-server.mjs
       - run: node scripts/smoke-server.mjs --electron
-      - name: Validate macOS release secrets
-        if: github.event_name == 'push' && runner.os == 'macOS'
-        env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Missing signing/notarization secret: $name"
-              exit 1
-            fi
-          done
-      - name: Signed and notarized macOS release → draft
-        if: github.event_name == 'push' && runner.os == 'macOS'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx electron-builder ${{ matrix.builder_args }} --publish always -c.forceCodeSigning=true
-      - name: Windows/Linux release → draft
-        if: github.event_name == 'push' && runner.os != 'macOS'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder ${{ matrix.builder_args }} --publish always
       - name: Unsigned macOS rehearsal (no publish, no notarization)
         if: github.event_name == 'workflow_dispatch' && runner.os == 'macOS'
         env:
@@ -190,18 +124,18 @@ jobs:
           esac
           node scripts/smoke-provider-runtime.mjs --standalone "$payload"
           node scripts/smoke-provider-runtime.mjs --standalone "$payload" --runtime "$runtime"
-      - name: Exercise packaged demo runtime (own Electron, no system Chrome)
+      - name: Check packaged demo dependencies without executing generated content
         run: |
           case "$RUNNER_OS" in
             macOS)
               app="dist/mac-arm64/LearnHarness.app/Contents"
-              node scripts/smoke-demo-runtime.mjs --standalone "$app/Resources/server/standalone" --runtime "$app/MacOS/LearnHarness" --browser
+              node scripts/smoke-demo-runtime.mjs --standalone "$app/Resources/server/standalone" --runtime "$app/MacOS/LearnHarness"
               ;;
             Windows)
-              node scripts/smoke-demo-runtime.mjs --standalone dist/win-unpacked/resources/server/standalone --runtime dist/win-unpacked/LearnHarness.exe --browser
+              node scripts/smoke-demo-runtime.mjs --standalone dist/win-unpacked/resources/server/standalone --runtime dist/win-unpacked/LearnHarness.exe
               ;;
             Linux)
-              xvfb-run -a node scripts/smoke-demo-runtime.mjs --standalone dist/linux-unpacked/resources/server/standalone --runtime dist/linux-unpacked/learnharness --browser
+              xvfb-run -a node scripts/smoke-demo-runtime.mjs --standalone dist/linux-unpacked/resources/server/standalone --runtime dist/linux-unpacked/learnharness
               ;;
           esac
       - name: Save installers and update metadata
@@ -218,60 +152,3 @@ jobs:
             dist/*.deb
             dist/*.blockmap
             dist/latest*.yml
-
-  # The last gate before a human publishes: after ALL three packaging jobs
-  # have uploaded, fail the run unless the tag's single draft release holds
-  # exactly the 11 verified assets (4 installers + mac updater ZIP + their
-  # blockmaps + 3 latest*.yml feeds) and the feeds reference those uploads
-  # by exact name at the package.json version. Read-only: it never creates,
-  # edits, publishes, or deletes anything. Manual rehearsals upload nothing,
-  # so there is no draft to verify and the job stays skipped.
-  verify:
-    name: Verify draft release
-    needs: package
-    if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    # GitHub hides drafts from tokens without push access. The commands below
-    # remain GET-only; expose this token only to the two API-reading steps.
-    permissions:
-      contents: write
-    steps:
-      # The tagged revision — verify exactly what was packaged, not a moving default.
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "26"
-          cache: npm
-      - run: npm ci
-      - name: List every release, drafts included
-        env:
-          GH_TOKEN: ${{ github.token }}
-        # --slurp wraps the paginated pages into one JSON document
-        # ([[release,...],[release,...]]); the validator flattens it.
-        run: gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
-      - name: Select the tag's single draft
-        # Machine JSON on stdout (release id + asset ids); warnings on stderr.
-        run: npx tsx scripts/verify-release.ts select "$RUNNER_TEMP/releases.json" --tag "$GITHUB_REF_NAME" > "$RUNNER_TEMP/draft.json"
-      - name: Download the three update feeds
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/metadata"
-          for name in latest-mac.yml latest.yml latest-linux.yml; do
-            id=$(DRAFT="$RUNNER_TEMP/draft.json" NAME="$name" node -e '
-              const fs = require("node:fs");
-              const draft = JSON.parse(fs.readFileSync(process.env.DRAFT, "utf8"));
-              const asset = draft.assets.find((entry) => entry.name === process.env.NAME);
-              if (asset == null) { console.error("draft has no " + process.env.NAME); process.exit(1); }
-              console.log(asset.id);
-            ')
-            gh api "repos/$GITHUB_REPOSITORY/releases/assets/$id" -H "Accept: application/octet-stream" > "$RUNNER_TEMP/metadata/$name"
-            echo "downloaded $name ($(wc -c < "$RUNNER_TEMP/metadata/$name") bytes)"
-          done
-      - name: Verify draft assets and update feeds
-        run: npx tsx scripts/verify-release.ts verify "$RUNNER_TEMP/releases.json" "$RUNNER_TEMP/metadata" --tag "$GITHUB_REF_NAME"

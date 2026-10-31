@@ -1,3 +1,4 @@
+import { fetchPublic } from "./public-fetch.ts";
 import { Type } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute } from "../tool-execute.ts";
@@ -36,9 +37,6 @@ import TurndownService from "turndown";
 
 // ── web_fetch ────────────────────────────────────────────────────────────────
 
-const USER_AGENT =
-	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-const FETCH_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 /** Keep the researcher's context sane — long pages truncate with a marker. */
 const MAX_CONTENT_CHARS = 40_000;
@@ -51,26 +49,6 @@ function truncate(text: string): string {
 	return `${text.slice(0, MAX_CONTENT_CHARS)}\n\n[Truncated at ${MAX_CONTENT_CHARS} characters]`;
 }
 
-/** Jina Reader fallback for JS-rendered pages (no deps — plain fetch). */
-async function fetchViaJina(url: string): Promise<string | null> {
-	try {
-		const res = await fetch(`https://r.jina.ai/${url}`, {
-			headers: { Accept: "text/markdown", "X-No-Cache": "true" },
-			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-		});
-		if (!res.ok) return null;
-		const content = await res.text();
-		const marker = "Markdown Content:";
-		const start = content.indexOf(marker);
-		if (start < 0) return null;
-		const markdown = content.slice(start + marker.length).trim();
-		if (markdown.length < MIN_USEFUL_CONTENT || markdown.startsWith("Loading...")) return null;
-		return markdown;
-	} catch {
-		return null;
-	}
-}
-
 function htmlToMarkdown(html: string): { title: string; content: string } | null {
 	const { document } = parseHTML(html);
 	const article = new Readability(document as unknown as Document).parse();
@@ -81,34 +59,18 @@ function htmlToMarkdown(html: string): { title: string; content: string } | null
 }
 
 async function fetchAndExtract(url: string): Promise<string> {
-	const resp = await fetch(url, {
-		headers: {
-			"User-Agent": USER_AGENT,
-			Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-			"Accept-Language": "en-US,en;q=0.9",
-		},
-		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-	});
-	if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-
-	// Final URL after redirects + status — the researcher's only way to
-	// tell a real page from a 200-served error body (owner-reported
-	// "ill-formed request" case: the SITE answered, we just relayed it).
-	const sourceLine = `Source: ${resp.url || url} (HTTP ${resp.status})`;
-
-	const contentType = resp.headers.get("content-type") ?? "";
+	const resp = await fetchPublic(url, MAX_RESPONSE_BYTES);
+	const sourceLine = `Source: ${resp.url} (HTTP ${resp.status})`;
+	const contentType = resp.contentType;
 	if (contentType.includes("application/pdf")) {
 		// Pointer, not dead-end (researcher PDF wave, 2026-10-07): the
 		// researcher's web_fetch_pdf tool downloads + triages PDFs.
-		return `web_fetch: this URL is a PDF document — call web_fetch_pdf on it to download and read it.`;
+		return `web_fetch: this URL is a PDF document. PDF processing is disabled; use prepared text or images.`;
 	}
 	if (/image\/|audio\/|video\/|zip|octet-stream/.test(contentType)) {
 		throw new Error(`Unsupported content type: ${contentType.split(";")[0]}`);
 	}
-	const length = Number(resp.headers.get("content-length") ?? 0);
-	if (length > MAX_RESPONSE_BYTES) throw new Error("Response too large");
-
-	const text = await resp.text();
+	const text = resp.bytes.toString("utf-8");
 	if (!contentType.includes("html")) return `${sourceLine}\n\n${truncate(text)}`; // plain text / markdown / code
 
 	const extracted = htmlToMarkdown(text);
@@ -116,9 +78,6 @@ async function fetchAndExtract(url: string): Promise<string> {
 		const header = extracted.title ? `# ${extracted.title}\n\n${sourceLine}\n\n---\n\n` : `${sourceLine}\n\n---\n\n`;
 		return header + truncate(extracted.content);
 	}
-	// Readability failed — likely JS-rendered. Try Jina Reader.
-	const jina = await fetchViaJina(url);
-	if (jina) return truncate(jina);
 	throw new Error("Could not extract readable content (the page may be JavaScript-rendered)");
 }
 
@@ -165,7 +124,7 @@ export function createWebTools(search: () => SearchProvider | null): Record<stri
 			label: "web_fetch",
 			description:
 				"Fetch a web page and extract its readable content as markdown (Readability). " +
-				"Handles HTML pages and plain text; JS-rendered pages fall back to a reader service.",
+				"Handles HTML pages and plain text; JavaScript-only pages are unsupported.",
 			parameters: webFetchInput,
 			execute: serverExecute("web_fetch", webFetchInput, async ({ url }): Promise<string> => {
 				if (process.env.LH_DISABLE_RESEARCH === "1") return "Web research is disabled by deployment policy.";
