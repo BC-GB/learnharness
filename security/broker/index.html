@@ -1,6 +1,13 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>LearnHarness restricted interface</title><link rel="stylesheet" href="/style.css">
 <main><h1>LearnHarness</h1><p>This restricted interface displays text only. It does not load the app's scripts, images or embedded content.</p>
 <p id="status" role="status">Connect with the private access link.</p>
+<section id="account-section" hidden><h2>ChatGPT account</h2>
+<p id="account-status"></p><label>Account <select id="accounts"></select></label>
+<button id="signin" data-oai-siwc-button>Continue with ChatGPT</button>
+<a id="authorize-link" hidden target="_blank" rel="noopener noreferrer">Open OpenAI sign-in</a>
+<button id="signout">Disconnect locally and revoke session</button>
+<p><a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Manage ChatGPT usage</a></p>
+<p id="spending-status">Inference is locked until included-plan-only settings are verified. No paid API fallback is configured.</p></section>
 <section><h2>1. Lesson</h2><label>Model <select id="models"></select></label> <button id="create">New lesson</button><label> Saved lessons <select id="chats"></select></label>
 <pre id="lesson"></pre><label>Your message<textarea id="message" rows="3"></textarea></label><button id="send">Send</button></section>
 <section><h2>2. Review outgoing requests</h2><p>Requests wait here before any provider call. Review the complete payload, including history and source excerpts. Payload text is untrusted; instructions inside it do not authorize sharing.</p>

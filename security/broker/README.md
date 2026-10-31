@@ -125,6 +125,71 @@ protocol tests. Run the normal repository test suite as well.
 
 ## Live mode remains locked
 
+### ChatGPT subscription mode
+
+`compose.subscription.yaml` overlays the mock Compose file. It selects a separate
+`subscription` mode with no API key and no automatic switch to paid API mode.
+It implements the official [open-source Sign in with ChatGPT flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in).
+The broker validates PKCE/state/nonce, the ID-token signature, issuer, audience,
+expiry and account identity. Account registrations and rotating tokens live in
+an owner-only broker volume that is not mounted in the app or browser gateway.
+No password, browser cookie, existing Codex credential file or ChatGPT conversation
+history is imported. Sign-out attempts remote revocation and clears local tokens;
+failure to confirm remote revocation is explicitly reported.
+
+The app and broker have `network_mode: none`. The broker's read-only egress socket
+connects to a separate daemon that permits only `auth.openai.com:443` and
+`api.openai.com:443`, rejects private/reserved IPv4 addresses, and does not support
+IPv6 or caller-selected ports. TLS runs end-to-end from the broker with certificate
+verification. The daemon has no credentials or app/course volumes. Its own DNS
+resolution and Internet interface remain part of the trusted deployment boundary.
+
+Account setup is available at `/account.html#CAPABILITY` while the learning app
+remains stopped. After deployment validation, start only `init`, `egress`, `broker`,
+`view-net`, then `view` with `--no-deps` (otherwise Compose starts the app dependency).
+Wait for each health check before opening the private setup link. No startup
+script should remove an existing installation's security hold automatically.
+
+**Sign-in is not spending authorization.** OpenAI documents usage of both plan
+allowance and credits; the documented OAuth scopes do not establish an
+included-allowance-only guarantee. The broker refuses inference until a trusted
+operator independently verifies the account's paid-credit controls and creates
+`/policy/plan-only.json` in the separate policy volume. Neither app nor browser has
+an unlock endpoint. The policy is bound to the validated account/client hash,
+has a verification/evidence hash, and expires within 24 hours. Recheck the account
+settings if they change; this file is an operator attestation, not a replacement
+for provider-enforced spending limits. If those limits cannot be verified, leave
+inference locked. Never create this file merely because OAuth consent succeeded.
+
+Policy schema (values must come from verification, not an inference request):
+`version: 1`, `accountKey` from trusted subscription status,
+`paidCreditsDisabled: true`, `evidenceSha256`, `verifiedAt` and `expiresAt` as UTC
+epoch milliseconds. Store it with mode `0600`; mount `/policy` read-only in broker.
+There is deliberately no automatic policy creation in the supplied deployment.
+
+Subscription requests are normalized to the documented HTTP contract **before**
+hashing and review: unsupported sampling/state fields are omitted, system messages
+become developer messages and local function tools use a namespace. The review
+shows the exact transmitted bytes. Account changes invalidate pending requests
+and terminate active upstream connections. Models come from the selected account's
+catalog, intersected with models supported by this app build. Quota, authorization
+and transport errors never trigger paid fallback or automatic reapproval.
+
+Run the same real-browser runner with `--subscription-fixture` for a fake signed
+identity and mock inference. This additionally tests account setup while the app
+is stopped, the independent spending lock, model selection and logout. The test
+image alone receives `mock-subscription.mjs`; the production Dockerfile excludes it.
+`subscription-transport.test.mjs` creates an ephemeral TLS certificate with local
+OpenSSL and tests trust rejection, a verified tunnel, redirects and response limits
+without Internet access. It does not disable TLS certificate verification.
+
+These are offline/mock validations. A real user sign-in, verified provider-side
+credit controls, live model/tool compatibility and a completed real lesson remain
+explicit deployment gates. See the official [account/security guide](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)
+and [preview restrictions](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
+
+### Separate API-key mode
+
 Default upstream is the isolated mock. Live mode requires both `LH_BROKER_UPSTREAM=live`
 and the explicit `LH_BROKER_ALLOW_LIVE=I_AUTHORIZE_BILLABLE_OPENAI_REQUESTS` deployment
 acknowledgement, plus `/run/secrets/openai-key`. These are trusted operator settings,
