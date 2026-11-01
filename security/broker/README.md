@@ -153,10 +153,10 @@ script should remove an existing installation's security hold automatically.
 **Sign-in is not spending authorization.** OpenAI documents usage of both plan
 allowance and credits; the documented OAuth scopes do not establish an
 included-allowance-only guarantee. The broker refuses inference until a trusted
-operator independently verifies the account's paid-credit controls and creates
+operator records verified controls or the user's explicit confirmation and creates
 `/policy/plan-only.json` in the separate policy volume. Neither app nor browser has
 an unlock endpoint. The policy is bound to the validated account/client hash,
-has a verification/evidence hash, and expires within 24 hours. Recheck the account
+has a verification/evidence hash, and uses either time-limited or explicitly persistent permission. Recheck the account
 settings if they change; this file is an operator attestation, not a replacement
 for provider-enforced spending limits. If those limits cannot be verified, leave
 inference locked. Never create this file merely because OAuth consent succeeded.
@@ -166,6 +166,14 @@ Policy schema (values must come from verification, not an inference request):
 `paidCreditsDisabled: true`, `evidenceSha256`, `verifiedAt` and `expiresAt` as UTC
 epoch milliseconds. Store it with mode `0600`; mount `/policy` read-only in broker.
 There is deliberately no automatic policy creation in the supplied deployment.
+
+When the user explicitly requests ongoing permission without renewal, use
+`version: 2`, `authorization: "persistent-subscription-only"`, the same account,
+confirmation hash and `verifiedAt` fields, and omit `expiresAt`. This policy has
+no local timer and survives broker restarts and reauthentication of that same
+account/client. Another account requires its own consent. Sign-out, revoked plan
+scopes, deletion of the policy, and failed token refresh still block requests.
+It does not enable API-key fallback or change the user's ChatGPT credit settings.
 
 Subscription requests are normalized to the documented HTTP contract **before**
 hashing and review: unsupported sampling/state fields are omitted, system messages
