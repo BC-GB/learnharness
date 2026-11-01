@@ -1,4 +1,5 @@
 import RFB from '/novnc/core/rfb.js';
+import {installPreciseScroll} from '/scroll-client.js';
 const status=document.querySelector('#status');
 const token=location.hash.slice(1);history.replaceState(null,'',location.pathname);
 const headers={'x-visual-request':'1'};
@@ -15,8 +16,9 @@ try {
  // Loopback transport favors latency and legible mathematical text over
  // compression. App scripts still execute only inside the Docker browser.
  rfb.compressionLevel=0;rfb.qualityLevel=9;
- rfb.addEventListener('connect',()=>{status.textContent='Browser runs inside Docker';});
- rfb.addEventListener('disconnect',()=>{status.textContent='Disconnected. Refresh to reconnect.';});
+ let scrollInstalled=false,displayConnected=false;
+ rfb.addEventListener('connect',()=>{displayConnected=true;status.textContent='Browser runs inside Docker';if(!scrollInstalled){scrollInstalled=true;installPreciseScroll(document.querySelector('#screen'),()=>displayConnected);}});
+ rfb.addEventListener('disconnect',()=>{displayConnected=false;status.textContent='Disconnected. Refresh to reconnect.';});
  rfb.addEventListener('securityfailure',()=>{status.textContent='Connection rejected.';});
  document.querySelector('#size').onclick=e=>{rfb.scaleViewport=!rfb.scaleViewport;e.target.textContent=rfb.scaleViewport?'Actual size':'Fit to window';};
  document.querySelector('#files').onclick=async()=>{

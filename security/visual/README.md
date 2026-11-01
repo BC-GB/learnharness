@@ -39,11 +39,29 @@ trusted pixel viewer; the original HTTP server is never published on the host.
 Copy `security/chromium/seccomp.json` to `chromium-seccomp.json` beside the first
 deployment Compose file and include its hash in the deployment baseline.
 
-Scrolling preserves all wheel steps and fractional remainders, with a 20-step
-per-event ceiling. `patch-novnc-wheel.py` applies only to the reviewed distro
-handler and fails builds if upstream changes it. Low-delay XDamage updates,
-disabled CopyRect scroll guessing and browser scroll animation, and minimal
-loopback compression reduce lag without passing app scripts to the host.
+Scrolling uses bounded pixel deltas, including fractional trackpad movement,
+over a capability-authenticated `/scroll` WebSocket. The trusted viewer scales
+coordinates to the framebuffer, coalesces input at display cadence, permits one
+unacknowledged request, drops stale input, and releases the channel in hidden
+tabs. Nested-pane scrolling is handled by Chromium's normal wheel input.
+Low-delay XDamage updates and minimal loopback compression reduce display lag;
+the viewer still receives pixels, so it cannot guarantee native display latency.
+
+`scroll-browser.mjs` owns Chromium's anonymous debugging pipes inside the browser
+container. Those pipes are not mounted, proxied or published. The separate
+`scroll.sock` accepts only `{seq,x,y,dx,dy}`: finite bounded numbers, increasing
+sequence, at most four connections and 180 requests/second globally. It returns
+only readiness and input acknowledgements. It does not accept CDP commands,
+JavaScript, URLs, paths, target IDs, keyboard or button events. Fixed internal
+methods select only the app origin, validate its window/viewport, recheck its
+origin and connection freshness after async setup, and dispatch a wheel event.
+No app/session content is returned through this channel. TCP debugging remains
+disabled in production; no new host port, mount, capability or sandbox exception
+is required. The gateway applies the same Host/Origin/cookie checks as VNC.
+
+If the precision channel is unavailable, the existing VNC wheel path remains.
+`patch-novnc-wheel.py` preserves steps and fractional remainders for that fallback,
+with a 20-step per-event ceiling. It fails builds if the distro handler changes.
 
 Use `/#CAPABILITY` to establish the viewer session. The fragment is removed from
 history, and the capability is not stored in local/session storage. This grants

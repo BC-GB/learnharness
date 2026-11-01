@@ -73,10 +73,10 @@ class Handler(ProxyRequestHandler):
    if self.path=='/session':return self.reject(204)
    return self.transfer(self.path)
   if self.headers.get('Upgrade','').lower()=='websocket':
-   if self.path!='/websockify' or self.headers.get('Origin')!=ORIGIN or not self.authorized():return self.reject()
+   if self.path not in ['/websockify','/scroll'] or self.headers.get('Origin')!=ORIGIN or not self.authorized():return self.reject()
    return super().do_GET()
   route=urlsplit(self.path).path
-  fixed={'/':('/visual/viewer.html','text/html'),'/viewer.js':('/visual/viewer.js','text/javascript'),'/viewer.css':('/visual/viewer.css','text/css')}
+  fixed={'/':('/visual/viewer.html','text/html'),'/viewer.js':('/visual/viewer.js','text/javascript'),'/viewer.css':('/visual/viewer.css','text/css'),'/scroll-client.js':('/visual/scroll-client.js','text/javascript')}
   if route in fixed:file,kind=fixed[route];target=pathlib.Path(file)
   elif route.startswith('/novnc/'):
    suffix=unquote(route[len('/novnc/'):]);target=(pathlib.Path('/usr/share/novnc')/suffix).resolve()
@@ -86,6 +86,13 @@ class Handler(ProxyRequestHandler):
   if target.stat().st_size>2*1024*1024:return self.reject(413)
   data=target.read_bytes();self.send_response(200);self.send_header('Content-Type',kind);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
  def validate_connection(self):
-  if not self.allowed_host() or self.path!='/websockify' or self.headers.get('Origin')!=ORIGIN or not self.authorized():raise RuntimeError('Private access required')
+  if not self.allowed_host() or self.path not in ['/websockify','/scroll'] or self.headers.get('Origin')!=ORIGIN or not self.authorized():raise RuntimeError('Private access required')
+ def new_websocket_client(self):
+  if self.path!='/scroll':return super().new_websocket_client()
+  # Only this fixed, input-only socket. Never expose the browser control pipe.
+  target=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+  try:
+   target.connect('/browser-ipc/scroll.sock');self.request.setsockopt(socket.IPPROTO_TCP,socket.TCP_NODELAY,1);self.do_proxy(target)
+  finally:target.close()
 if __name__=='__main__':
  WebSocketProxy(RequestHandlerClass=Handler,listen_host='0.0.0.0',listen_port=8080,unix_target='/browser-ipc/vnc.sock',web=None,daemon=False,verbose=False).start_server()

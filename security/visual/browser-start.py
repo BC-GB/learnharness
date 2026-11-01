@@ -26,7 +26,7 @@ try:
  # The namespace sandbox is required. Never fall back to --no-sandbox.
  args=['chromium','--disable-smooth-scrolling','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--disable-default-apps','--disable-features=MediaRouter','--user-data-dir=/tmp/chromium-profile','--noerrdialogs','--window-size=1440,1000','--window-position=0,0','--app=http://127.0.0.1:3000'+start_path]
  if os.environ.get('LH_VISUAL_TEST_DEBUG')=='1':args+=['--remote-debugging-address=127.0.0.1','--remote-debugging-port=9222']
- start(args)
+ start(['node','/visual/scroll-browser.mjs',*args[1:]])
  # Use XDamage and short update batches. CopyRect's scroll heuristics add
  # delay/artifacts with Chromium's compositor; pixel updates are reliable.
  start(['x11vnc','-display',':99','-unixsock','/browser-ipc/vnc.sock','-rfbport','0','-forever','-shared','-nopw','-nosel','-wait','5','-defer','5','-nonap','-noscrollcopyrect','-quiet'])
