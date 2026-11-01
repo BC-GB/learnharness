@@ -224,6 +224,17 @@ after restart, including DNS/IPv6 and initialization failures. It uses disposabl
 containers without credentials or user mounts. Its positive control makes a TCP
 connection to public Cloudflare DNS service port 443, without sending app data.
 
+### Resource ceilings
+
+Include `compose.resources.yaml` with the isolated app, subscription, renderer
+and direct-browser overlays to bound CPU consumption as well as existing memory,
+process and job-time limits. App and renderer each receive at most two CPUs;
+broker and native gateway receive one; account/relay services and firewall
+initializers receive smaller budgets. The original UI, mock-provider lessons,
+quizzes and exports are tested with these limits. Renderer PDF/demo tests also
+use a two-CPU ceiling. These limits reduce resource exhaustion; they do not
+patch vulnerable libraries or establish that dependencies are benign.
+
 ### Separate API-key mode (explicit opt-in)
 
 Default upstream is the isolated mock. Live mode requires both `LH_BROKER_UPSTREAM=live`
