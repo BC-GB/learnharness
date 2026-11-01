@@ -17,6 +17,8 @@ export function socketJson(socketPath,route,method='GET',value){
 export async function startView({token,port=8080,bind='127.0.0.1',host='127.0.0.1:3188',appSocket='/app-ipc/app.sock',controlSocket='/control/admin.sock'}){
  if(!/^[a-f0-9]{64}$/.test(token))throw Error('View capability must be 32 random bytes');
  const secret=Buffer.from(token),origin='http://'+host;
+ const session=crypto.createHmac('sha256',secret).update('learnharness-review-session-v1').digest('hex');
+ const equal=(a,b)=>typeof a==='string'&&a.length===b.length&&crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b));
  const server=http.createServer({maxHeaderSize:8192,requestTimeout:10000},async(req,res)=>{
   res.setHeader('content-security-policy',"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
   res.setHeader('permissions-policy','camera=(), microphone=(), geolocation=(), usb=(), serial=(), hid=(), bluetooth=(), display-capture=()');
@@ -33,8 +35,12 @@ export async function startView({token,port=8080,bind='127.0.0.1',host='127.0.0.
    }
    if(req.method==='GET'&&assets.has(req.url)){const [file,type]=assets.get(req.url);res.writeHead(200,{'content-type':type});return res.end(fs.readFileSync(path.join(root,file)))}
    if(req.method!=='POST'||!['/app','/control','/subscription'].includes(req.url))return reply(404,{error:'Route denied'});
-   const supplied=Buffer.from(req.headers['x-view-token']??'');
-   if(supplied.length!==secret.length||!crypto.timingSafeEqual(supplied,secret)||req.headers.origin!==origin||req.headers['sec-fetch-site']==='cross-site')return reply(403,{error:'Private access required'});
+   const supplied=req.headers['x-view-token']??'';
+   const cookies=(req.headers.cookie??'').split(';').map(x=>x.trim()).filter(x=>x.startsWith('lh_review='));
+   const bearerOK=equal(supplied,token);
+   const cookieOK=!supplied&&cookies.length===1&&equal(cookies[0].slice('lh_review='.length),session);
+   if((!bearerOK&&!cookieOK)||req.headers.origin!==origin||req.headers['sec-fetch-site']==='cross-site')return reply(403,{error:'Private access required'});
+   if(bearerOK)res.setHeader('set-cookie','lh_review='+session+'; HttpOnly; SameSite=Strict; Path=/');
    if(req.headers['content-type']!=='application/json')return reply(415,{error:'JSON required'});
    const chunks=[];let size=0;for await(const b of req){size+=b.length;if(size>65536)throw Error('Size');chunks.push(b)}
    const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
