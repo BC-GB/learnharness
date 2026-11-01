@@ -183,6 +183,7 @@ export async function runPdfReaderAgent(
 	// (pdfjs paints into @napi-rs/canvas in-process) — the whole pdf-reader
 	// runs browser-free; text tools always worked without one.
 
+	const totalPages = (await pdfInfo(pdfPath)).page_count;
 	const tools = createPdfTools(pdfPath);
 	const toolDeclarations = Object.values(tools);
 	const engine = opts.engine ?? piEngineFor("pdfReader");
