@@ -11,7 +11,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--docker', required=True)
     p.add_argument('--image', required=True)
-    p.add_argument('--code-path', required=True, choices=['/app', '/broker-code', '/native'])
+    p.add_argument('--code-path', required=True, choices=['/app', '/broker-code', '/native', '/usr/local/bin/view-network', '/usr/local/bin/egress-network'])
     p.add_argument('--root', type=Path, required=True)
     p.add_argument('--tooling', type=Path, required=True)
     p.add_argument('--reference', type=Path, required=True)

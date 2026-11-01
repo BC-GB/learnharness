@@ -3,6 +3,11 @@
 Run `Run-Audit.ps1 -AuditDirectory <private-directory> -AppImage sha256:...`.
 Use `-NativeImage sha256:... -BrokerImage sha256:...` to include the exact
 gateway and credential-broker code images in the same audit.
+Supply `-ImageMap <private-map.json>` to include all listed images in the offline
+OS/secret stage and add review/renderer/firewall code snapshots. The OS stage
+downloads its public database first; `-Offline` explicitly reports that stage
+as not run. Keep the existing app/native/broker arguments for their code and
+runtime tests. None of these options deploys or starts the installed services.
 The first run downloads pinned scanner wheels and public npm archives. It does
 not install project dependencies, run their lifecycle hooks, change the app,
 renew account permissions or send an inference request. There is no scheduler.
@@ -84,6 +89,38 @@ It neither executes excerpts nor dismisses findings. Treat excerpts as untrusted
 code, and trace callers and payloads before deciding what a match means.
 
 ## Limits
+
+Additional, explicit image stages are available (neither starts the installed app):
+
+- `image_os_audit.py --images <private-image-map.json> --out <fresh-private-directory>`
+  scans exact local image IDs with pinned Trivy 0.76.1. The map contains safe
+  component labels and `sha256:` image IDs. Only the public vulnerability database
+  download has network access; actual image/secret scans run offline, without the
+  Docker socket, host directory sharing, credentials or course volumes. Results
+  retain package severity, vendor fix status and image layer identity. Reports can
+  contain sensitive secret matches, so never publish them. A package advisory is
+  not evidence of spyware, and no available vendor fix is not a clean result.
+- `ast-context.mjs` consumes verified source JSONL as data, using the installed
+  TypeScript parser in `/app`. Run it inside an offline disposable app-image
+  container. Input records contain `path`, `sha256`, `text` and `positions`
+  (`rule`, UTF-16 `offset`). It locates signatures in syntax nodes, inventories
+  literal hosts and flags direct lexical source-in-sink arguments. `--self-test`
+  checks inert fixtures, including an explicit aliasing blind spot. It neither
+  executes target code nor proves interprocedural data flow or benignness.
+- `rebase_runtime.py --images <private-image-map.json> --out <fresh-private-directory>`
+  is a separate repair step, not part of scanning. It expects the seven audited
+  app/broker/review/native/firewall/renderer image keys. It copies component code
+  to a pinned Node 24.22.2 Debian 13 base, removes global npm/Yarn, omits VNC and
+  remote-desktop packages, and installs only renderer/firewall OS requirements.
+  It preserves component entrypoints/environment and records recipes and image
+  IDs. The base and apt packages require their own audit. It does not deploy;
+  compare copied bytes/permissions and run UI, PDF, sandbox, credential and network
+  regressions before updating any deployment pins. Keep images/recipes private:
+  copying known code does not sanitize arbitrary content or embedded image ENV.
+
+For delayed browser probes, await a promise that confirms the attempted action.
+A fixed observation window can finish before a throttled timer fires. Testing
+that no request was observed during that window is insufficient.
 
 - Static signatures can miss novel, obfuscated, cross-file or native payloads.
 - Native binaries are signature-scanned; they are not decompiled or fully audited.
