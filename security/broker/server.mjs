@@ -63,7 +63,8 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
     if(mode==='subscription'){
       if(job.accountKey!==subscription.status().accountKey)throw Error('Account changed');
       credential=await subscription.authorize(job.model);
-      if(job.res.destroyed||job.epoch!==authEpoch||job.accountKey!==subscription.status().accountKey)throw Error('Request cancelled');
+      const ready = subscription.status();
+      if(job.res.destroyed||job.epoch!==authEpoch||job.accountKey!==ready.accountKey||!ready.signedIn||!ready.planPermission||ready.spendingLocked)throw Error('Request cancelled');
     }
     const options = mode === 'live'
       ? { hostname: 'api.openai.com', port: 443, path: '/v1/responses', servername: 'api.openai.com', rejectUnauthorized: true }
