@@ -17,7 +17,7 @@ the laptop browser. This is not a replacement teaching interface.
 - Gateway: fixed viewer assets and noVNC only, separate private capability,
   strict Host/Origin checks, HttpOnly SameSite cookie, no app/API/file proxy.
   Its separate firewall namespace denies new outbound connections.
-- Subscription sign-in and exact outgoing-request approval remain in the
+- Subscription sign-in and optional outgoing-request review remain in the
   independent broker interface. The app/browser never receive account tokens.
 
 Chromium's native sandbox does not run under the current Docker capability and
@@ -59,3 +59,5 @@ Keep account/course data untouched until the candidate passes these checks.
 copied into the production browser/gateway image and must never replace a real
 provider silently. Browser/PDF worker execution remains disabled in the app;
 static SVG visuals and original theory quiz controls are the intended course flow.
+
+Explicit subscription-direct deployments set LH_BROKER_REQUEST_POLICY=subscription-direct on the trusted broker. New subscription requests then dispatch without per-request review; account identity, sign-in, plan permission and the spending policy are still checked before dispatch and after credential resolution. This option cannot enable billable API-key mode, and never replays old queued requests. Without individual payload review, the app can send its accessible course/session data to the permitted provider. File/network/credential containment remains unchanged.
