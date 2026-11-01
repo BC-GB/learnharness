@@ -31,5 +31,13 @@ for row in rows:
 counts=collections.Counter(x['package'] for x in review)
 malware=[{'id':k,**v} for k,v in advisories.get('details',{}).items() if v['malwareRelated'] and not v['withdrawn']]
 report={'staticComplete':bool(s) and not gaps,'ruleFileCount':s.get('ruleCount'),'files':file_count,'archiveCoverage':{'scanned':s.get('packageArchivesScanned'),'expected':s.get('packageArchivesExpected')},'gaps':gaps,'reviewCandidateFiles':len(review),'reviewCandidatePackages':counts.most_common(),'lifecycleHooks':[{'name':x['name'],'version':x['version'],'scripts':x['lifecycleScripts']} for x in packages if x['lifecycleScripts']],'knownMalwareAdvisories':malware,'advisoryErrors':advisories.get('errors',['not run']),'runtime':runtime,'verdict':'Review required; automated matches are not a spyware verdict. No silent clean status.','installedArtifactAttestation':'Not established by lockfile archive scanning; requires Docker artifact snapshot and manifest comparison.'}
+image_reports={}
+for component in ['app','native','broker']:
+ f=a.out.parent/(a.out.name+'-image-'+component)/'image-summary.json'
+ image_reports[component]=json.loads(f.read_text()) if f.exists() else {'status':'not run'}
+report['imageCodeScans']=image_reports
+installed=a.out.parent/(a.out.name+'-image-app')/'installed-dependencies.json'
+report['installedDependencyComparison']=json.loads(installed.read_text()) if installed.exists() else {'status':'not run'}
+report['installedArtifactAttestation']='See imageCodeScans. These scan immutable code directories and compare content hashes; they do not establish full OS coverage, runtime-volume contents or reproducible bundle provenance.'
 (a.out/'review-queue.json').write_text(json.dumps(review,indent=2));(a.out/'report.json').write_text(json.dumps(report,indent=2))
 print(json.dumps({k:report[k] for k in ['staticComplete','files','archiveCoverage','reviewCandidateFiles','knownMalwareAdvisories','verdict']}))

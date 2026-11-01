@@ -1,17 +1,22 @@
 """Optional disposable tests. Never connects to a production container/volume."""
-import argparse,subprocess,json,time,uuid
+import argparse,subprocess,json,time,uuid,re
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--docker',required=True);p.add_argument('--app-image',required=True);p.add_argument('--out',type=Path,required=True);a=p.parse_args();a.out.mkdir(parents=True,exist_ok=True)
-if not a.app_image.startswith('sha256:') or len(a.app_image)!=71:raise ValueError('Use an exact locally installed image ID')
+p=argparse.ArgumentParser();p.add_argument('--docker',required=True);p.add_argument('--app-image',required=True);p.add_argument('--native-image');p.add_argument('--out',type=Path,required=True);a=p.parse_args();a.out.mkdir(parents=True,exist_ok=True)
+for value in [a.app_image,a.native_image]:
+ if value and not re.fullmatch(r'sha256:[0-9a-f]{64}',value):raise ValueError('Use an exact locally installed image ID')
 result={'time':time.time(),'image':a.app_image,'status':'incomplete','checks':[],'limits':'These exercise specific privacy paths and deliberate hostile containment probes, not every latent app branch.'}
 try:
  subprocess.run([a.docker,'version','--format','{{.Server.Version}}'],capture_output=True,check=True,timeout=8)
- for filename in ['payload-canary.mjs','background-canary.mjs']:
+ checks=[(filename,a.app_image,'/app',['--import','tsx'],(Path(__file__).parent/filename).read_text()) for filename in ['payload-canary.mjs','background-canary.mjs']]
+ if a.native_image:
+  source=(Path(__file__).parent.parent/'native-view/gateway.test.mjs').read_text().replace("'./gateway.mjs'","'/native/gateway.mjs'")
+  checks.append(('native gateway boundary',a.native_image,'/native',[],source))
+ for filename,image,workdir,node_options,source in checks:
   name='lh-audit-'+uuid.uuid4().hex[:10]
   try:
-   cmd=[a.docker,'run','--rm','--name',name,'--pull','never','--network','none','--read-only','--user','1000:1000','--cap-drop','ALL','--security-opt','no-new-privileges:true','--memory','512m','--cpus','1','--pids-limit','64','--tmpfs','/tmp:rw,noexec,nosuid,nodev,size=64m,uid=1000,gid=1000','-w','/app','-i','--entrypoint','node',a.app_image,'--import','tsx','--input-type=module','-']
-   r=subprocess.run(cmd,input=(Path(__file__).parent/filename).read_text(),capture_output=True,text=True,timeout=60)
-   result['checks'].append({'test':filename,'passed':r.returncode==0,'stdout':r.stdout[-6000:],'stderr':r.stderr[-2000:]})
+   cmd=[a.docker,'run','--rm','--name',name,'--pull','never','--network','none','--read-only','--user','1000:1000','--cap-drop','ALL','--security-opt','no-new-privileges:true','--memory','512m','--cpus','1','--pids-limit','64','--tmpfs','/tmp:rw,noexec,nosuid,nodev,size=64m,uid=1000,gid=1000','-w',workdir,'-i','--entrypoint','node',image,*node_options,'--input-type=module','-']
+   r=subprocess.run(cmd,input=source,capture_output=True,text=True,timeout=60)
+   result['checks'].append({'test':filename,'image':image,'passed':r.returncode==0,'stdout':r.stdout[-6000:],'stderr':r.stderr[-2000:]})
   finally:subprocess.run([a.docker,'rm','-f',name],capture_output=True,timeout=10)
  hostile=Path(__file__).parent.parent/'broker/test-hostile-app.py'
  r=subprocess.run(['python','-I','-S',str(hostile),'--docker',a.docker,'--app-image',a.app_image,'--evidence',str(a.out/'delayed-hostile.json')],capture_output=True,text=True,timeout=100)

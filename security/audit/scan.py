@@ -12,14 +12,27 @@ TOOL_PINS={
 MAX_FILE=64*1024*1024
 MAX_ARCHIVE=256*1024*1024
 MAX_EXPANDED=1024*1024*1024
+MAX_MEMBERS=100000
 SCRIPT=Path(__file__).resolve().parent
 
 def sha(data):return hashlib.sha256(data).hexdigest()
 def save(path,obj):path.write_text(json.dumps(obj,indent=2),encoding='utf-8')
 
+def validate_registry_url(url):
+ parsed=urllib.parse.urlsplit(url)
+ if parsed.scheme!='https' or parsed.hostname!='registry.npmjs.org' or parsed.username or parsed.password or parsed.port not in (None,443):
+  raise ValueError('Non-public-registry URL not fetched')
+
+class RegistryRedirects(urllib.request.HTTPRedirectHandler):
+ def redirect_request(self,req,fp,code,msg,headers,newurl):
+  # Check before urllib sends a request, not after reaching another host.
+  validate_registry_url(newurl)
+  return super().redirect_request(req,fp,code,msg,headers,newurl)
+
 def load_engine(tooling):
  # Verify extracted engine against its pinned wheel before loading native code.
  pin=json.loads((SCRIPT/'tool-pins.json').read_text())
+ expected_rules=set()
  for filename,digest in pin.items():
   wheel=tooling/filename
   if sha(wheel.read_bytes())!=digest:raise RuntimeError('Scanner wheel hash mismatch: '+filename)
@@ -31,7 +44,10 @@ def load_engine(tooling):
      if not p.is_relative_to((tooling/'yara-x').resolve()) or sha(p.read_bytes())!=sha(z.read(name)):raise RuntimeError('Extracted scanner mismatch')
    else:
     for name in z.namelist():
-     if name.endswith(('.yar','.meta')) and (tooling/'rules'/Path(name).name).read_bytes()!=z.read(name):raise RuntimeError('Rule mismatch')
+     if name.endswith(('.yar','.meta')):
+      expected_rules.add(Path(name).name)
+      if (tooling/'rules'/Path(name).name).read_bytes()!=z.read(name):raise RuntimeError('Rule mismatch')
+ if {p.name for p in (tooling/'rules').iterdir()}!=expected_rules:raise RuntimeError('Unexpected scanner rule file')
  sys.path.insert(0,str(tooling/'yara-x'))
  import yara_x
  compiler=yara_x.Compiler();compiler.add_include_dir(str(tooling/'rules'))
@@ -46,7 +62,7 @@ class Audit:
   self.a=a;self.root=a.root.resolve();self.out=a.out.resolve();self.out.mkdir(parents=True,exist_ok=True)
   self.cache=self.out.parent/'cache';self.cache.mkdir(exist_ok=True);(self.cache/'archives').mkdir(exist_ok=True)
   self.yara,self.rules,self.identity,self.rule_count=load_engine(a.tooling.resolve())
-  self.local=threading.local();self.lock=threading.Lock();self.rows=[];self.errors=[];self.packages=[];self.counts={'files':0,'bytes':0,'cacheHits':0,'nativeFiles':0}
+  self.local=threading.local();self.lock=threading.Lock();self.rows=[];self.errors=[];self.packages=[];self.bundled={};self.counts={'files':0,'bytes':0,'cacheHits':0,'nativeFiles':0}
   db=sqlite3.connect(self.cache/'scan.sqlite');db.execute('PRAGMA journal_mode=WAL');db.execute('CREATE TABLE IF NOT EXISTS results (key TEXT PRIMARY KEY, value TEXT)');db.close()
   self.manifest=(self.out/'files.jsonl').open('w',encoding='utf-8')
  def error(self,where,reason):
@@ -83,23 +99,26 @@ class Audit:
  def archive(self,item):
   url,entries=item;entry=entries[0][1];name=entry.get('name') or entries[0][0].split('node_modules/')[-1];version=entry.get('version');label=name+'@'+str(version)
   try:
-   if urllib.parse.urlsplit(url).scheme!='https' or urllib.parse.urlsplit(url).hostname!='registry.npmjs.org':raise ValueError('Non-public-registry URL not fetched')
+   validate_registry_url(url)
    integrity=entry.get('integrity','');tokens=integrity.split();token=next((x for x in tokens if x.startswith('sha512-')),next((x for x in tokens if x.startswith('sha256-')),None))
    if not token:raise ValueError('Missing strong lockfile integrity')
    algorithm,expected=token.split('-',1);dest=self.cache/'archives'/(sha(url.encode())+'.tgz')
    if not dest.exists():
     if not self.a.fetch_deps:raise ValueError('Archive not cached; use --fetch-deps')
     req=urllib.request.Request(url,headers={'User-Agent':'LearnHarness-ReadOnly-Audit'})
-    with urllib.request.urlopen(req,timeout=45) as r:
-     if urllib.parse.urlsplit(r.url).hostname!='registry.npmjs.org':raise ValueError('Registry redirect denied')
+    with urllib.request.build_opener(RegistryRedirects()).open(req,timeout=45) as r:
+     validate_registry_url(r.url)
      data=r.read(MAX_ARCHIVE+1)
     if len(data)>MAX_ARCHIVE:raise ValueError('Archive exceeds compressed size bound')
-   else:data=dest.read_bytes()
+   else:
+    if dest.stat().st_size>MAX_ARCHIVE:raise ValueError('Cached archive exceeds compressed size bound')
+    data=dest.read_bytes()
    if base64.b64encode(hashlib.new(algorithm,data).digest()).decode()!=expected:raise ValueError('LOCKFILE INTEGRITY MISMATCH')
    if not dest.exists():dest.write_bytes(data)
    expanded=0;files=0;scripts={};before=[]
    with tarfile.open(fileobj=io.BytesIO(data),mode='r:gz') as archive:
-    for m in archive:
+    for member_number,m in enumerate(archive,1):
+     if member_number>MAX_MEMBERS:raise ValueError('Archive member count bound exceeded')
      # No archive paths are extracted or executed, even if hostile.
      if m.isdir():continue
      if not m.isfile():self.error(label+'/'+m.name,'Archive link/special member not followed');continue
@@ -111,8 +130,19 @@ class Audit:
      self.scan('npm/'+label+'/'+m.name,body,label);files+=1
      if m.name in ['package/package.json','package.json']:
       j=json.loads(body);scripts={k:v for k,v in j.get('scripts',{}).items() if k in ['preinstall','install','postinstall','prepare','prepublish']}
+     elif m.name.startswith('package/node_modules/') and m.name.endswith('/package.json'):
+      j=json.loads(body);suffix=m.name.removeprefix('package').removesuffix('/package.json')
+      with self.lock:
+       for lock_path,_ in entries:self.bundled[lock_path+suffix]={'name':j.get('name'),'version':j.get('version')}
    with self.lock:self.packages.append({'name':name,'version':version,'lockPaths':[k for k,v in entries],'integrityVerified':True,'files':files,'bytes':expanded,'lifecycleScripts':scripts})
   except Exception as e:self.error(label,e)
+ def check_bundled(self,missing):
+  verified=[]
+  for entry in missing:
+   expected={'name':entry['path'].split('node_modules/')[-1],'version':entry['version']}
+   if entry['inBundle'] and self.bundled.get(entry['path'])==expected:verified.append(entry['path'])
+   else:self.error(entry['path'],'Lockfile entry has no verified matching archive or bundled manifest')
+  return verified
  def run(self):
   start=time.time();self.source();print('First-party source scanned:',self.counts['files'],flush=True)
   lock=json.loads((self.root/'package-lock.json').read_text());groups={};missing=[]
@@ -123,6 +153,7 @@ class Audit:
   with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
    for i,_ in enumerate(pool.map(self.archive,groups.items()),1):
     if i%50==0:print('Package archives examined:',i,'/',len(groups),'gaps:',len(self.errors),flush=True)
+  bundled_verified=self.check_bundled(missing)
   self.manifest.close()
   # Capability and threat co-occurrence is a review candidate, NOT proof of
   # exfiltration. Keep all matches, including low-confidence and fixture matches.
@@ -132,6 +163,7 @@ class Audit:
    if any(x.startswith('review.') for x in labels) or (any(x.startswith('threat.') for x in labels) and any(x.startswith('capability.') for x in labels)):
     candidates.append(row)
   summary={'status':'review-required','engine':'YARA-X 1.22.1 + GuardDog 3.2.0 source rules + local review rules','ruleCount':self.rule_count,'rulesAndScannerHash':self.identity,'seconds':round(time.time()-start,2),**self.counts,'packageArchivesExpected':len(groups),'packageArchivesScanned':len(self.packages),'bundledLockEntries':missing,'reviewCandidates':len(candidates),'gapCount':len(self.errors),'scope':'Current working-tree source and integrity-verified lockfile archives, including dev and optional platforms. Not an attestation of installed Docker bytes.','limits':['Pattern matching is not whole-program data flow or proof of benignness.','Native binaries are signature-scanned, not decompiled.','Rules apply to all regular files; no dist/build/node_modules or extension exclusions.','No package code or lifecycle script executed.','Dynamic app behavior requires the separate disposable Docker tests.']}
+  summary['bundledEntriesVerified']=bundled_verified
   for name,obj in [('summary.json',summary),('matches.json',self.rows),('review-candidates.json',candidates),('gaps.json',self.errors),('packages.json',self.packages)]:save(self.out/name,obj)
   print(json.dumps(summary),flush=True)
 

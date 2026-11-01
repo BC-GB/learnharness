@@ -1,0 +1,16 @@
+# Transitional runtime cleanup. Existing image layers remain in local recovery;
+# this removes unnecessary paths from the application's visible filesystem.
+# Supply a local tag verified against the reviewed image ID; use --network=none.
+ARG APP_IMAGE=learnharness-audit-base:reviewed
+FROM ${APP_IMAGE}
+USER root
+RUN --network=none node --input-type=module - <<'JS'
+import fs from 'node:fs';
+if (fs.realpathSync('/app') !== '/app') throw Error('Unexpected app root');
+for (const target of ['/app/.git', '/app/data']) {
+  if (!fs.existsSync(target)) continue;
+  if (fs.lstatSync(target).isSymbolicLink() || fs.realpathSync(target) !== target) throw Error('Unexpected cleanup target');
+  fs.rmSync(target, {recursive: true});
+}
+JS
+USER node
