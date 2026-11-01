@@ -69,11 +69,26 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
       ? { hostname: 'api.openai.com', port: 443, path: '/v1/responses', servername: 'api.openai.com', rejectUnauthorized: true }
       : { hostname: mockHost, port: mockPort, path: '/v1/responses' };
     const requestOptions={ ...options, method: 'POST', headers: {
-      'content-type': 'application/json', 'content-length': job.bytes.length, authorization: `Bearer ${credential}`
+      'accept': 'text/event-stream', 'content-type': 'application/json', 'content-length': job.bytes.length, authorization: `Bearer ${credential}`
     } };
     const receive=reply => {
-      if (reply.statusCode !== 200 || !/^text\/event-stream(?:;|$)/i.test(reply.headers['content-type'] ?? '')) {
-        reply.destroy(); json(job.res, 502, { error: 'Provider response rejected' }); return;
+      const declaredType=reply.headers['content-type'];
+      const streamType=/^text\/event-stream(?:;|$)/i.test(declaredType??'');
+      // Some subscription responses omit Content-Type. Consumers still require terminal SSE completion.
+      if (reply.statusCode !== 200 || (!streamType && !(mode==='subscription' && declaredType===undefined))) {
+        const upstreamStatus=reply.statusCode;
+        let diagnostic='';
+        reply.on('data',chunk=>{diagnostic+=chunk.toString('utf8');if(diagnostic.length>8192)reply.destroy()});
+        const fail=()=>json(job.res,502,{error:'Provider response rejected',upstreamStatus});
+        reply.on('error',fail);
+        reply.on('end',()=>{
+          let providerCode,providerParam,responseShape; const contentType=String(reply.headers['content-type']??'').slice(0,120);
+          try { const parsed=JSON.parse(diagnostic); const e=parsed?.error; responseShape={object:parsed?.object,status:parsed?.status,keys:Object.keys(parsed??{}).slice(0,12)};
+            if(typeof e?.code==='string'&&/^[a-zA-Z0-9_.-]{1,100}$/.test(e.code))providerCode=e.code;
+            if(typeof e?.param==='string'&&/^[a-zA-Z0-9_.\[\]-]{1,100}$/.test(e.param))providerParam=e.param;
+          } catch {}
+          json(job.res,502,{error:'Provider response rejected',upstreamStatus,providerCode,providerParam,contentType,responseShape});
+        });return;
       }
       job.res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
       let size = 0;
