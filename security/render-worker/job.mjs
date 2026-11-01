@@ -7,7 +7,7 @@ const q=JSON.parse(input);let result;
 if(q.op==='demo'){
  if(typeof q.html!=='string'||Buffer.byteLength(q.html)>1024*1024)throw Error('HTML limit');
  const {default:puppeteer}=await import('puppeteer-core');
- const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--disable-background-networking'],timeout:10000});
+ const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--disable-background-networking'],timeout:10000});
  try{const page=await browser.newPage();const consoleErrors=[],pageErrors=[],failedRequests=[];
  await page.setRequestInterception(true);page.on('request',r=>{if(/^(data:|about:|blob:)/.test(r.url()))r.continue();else {failedRequests.push('External resource blocked');r.abort()}});
  page.on('console',m=>{if(m.type()==='error')consoleErrors.push(m.text().slice(0,1000))});page.on('pageerror',e=>pageErrors.push(e.message.slice(0,1000)));

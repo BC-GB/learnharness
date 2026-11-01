@@ -4,11 +4,12 @@ services:
     user: "1000:1000"
     read_only: true
     cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
+    security_opt: [no-new-privileges:true, "seccomp=./chromium-seccomp.json"]
     network_mode: none
     restart: "no"
     pull_policy: never
     mem_limit: 768m
+    shm_size: 128m
     pids_limit: 128
     volumes: [render-ipc:/render-ipc]
     tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=192m,uid=1000,gid=1000"]

@@ -21,11 +21,10 @@ the laptop browser. This is not a replacement teaching interface.
 - Subscription sign-in and optional outgoing-request review remain in the
   independent broker interface. The app/browser never receive account tokens.
 
-Chromium's native sandbox does not run under the current Docker capability and
-no-new-privileges restrictions. No additional privileges are granted to make it
-run; Chromium uses `--no-sandbox` inside the restricted container. Docker is the
-outer boundary, not a proof against kernel/runtime escapes. Do not claim native
-Chromium sandbox protection or suppress this limitation in assurance reports.
+Chromium requires its namespace and seccomp-BPF sandboxes. The deployment uses
+the narrowly extended [Chromium seccomp profile](../chromium/README.md), with no
+added container capabilities and no sandbox-disabling fallback. Docker remains
+the outer boundary; neither layer proves immunity to kernel/runtime escapes.
 
 ## Build and run
 
@@ -37,6 +36,14 @@ it uses the full Next installation rather than Next's standalone server output.
 Overlay `compose.visual.yaml` on the existing broker deployment. Preserve existing
 course/account/state volumes. The only new host port is loopback 3189 for the
 trusted pixel viewer; the original HTTP server is never published on the host.
+Copy `security/chromium/seccomp.json` to `chromium-seccomp.json` beside the first
+deployment Compose file and include its hash in the deployment baseline.
+
+Scrolling preserves all wheel steps and fractional remainders, with a 20-step
+per-event ceiling. `patch-novnc-wheel.py` applies only to the reviewed distro
+handler and fails builds if upstream changes it. Low-delay XDamage updates,
+disabled CopyRect scroll guessing and browser scroll animation, and minimal
+loopback compression reduce lag without passing app scripts to the host.
 
 Use `/#CAPABILITY` to establish the viewer session. The fragment is removed from
 history, and the capability is not stored in local/session storage. This grants

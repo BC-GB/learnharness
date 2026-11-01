@@ -12,6 +12,9 @@ try {
  document.querySelector('#review').href='/account';
  const rfb=new RFB(document.querySelector('#screen'),`${location.protocol==='https:'?'wss':'ws'}://${location.host}/websockify`);
  rfb.scaleViewport=true;rfb.resizeSession=false;rfb.clipViewport=false;
+ // Loopback transport favors latency and legible mathematical text over
+ // compression. App scripts still execute only inside the Docker browser.
+ rfb.compressionLevel=0;rfb.qualityLevel=9;
  rfb.addEventListener('connect',()=>{status.textContent='Browser runs inside Docker';});
  rfb.addEventListener('disconnect',()=>{status.textContent='Disconnected. Refresh to reconnect.';});
  rfb.addEventListener('securityfailure',()=>{status.textContent='Connection rejected.';});

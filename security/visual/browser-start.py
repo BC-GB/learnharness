@@ -23,10 +23,13 @@ try:
     if r.status==200:break
   except Exception:time.sleep(.5)
  else:raise RuntimeError('App unavailable')
- args=['chromium','--no-sandbox','--disable-dev-shm-usage','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--disable-default-apps','--disable-features=MediaRouter','--user-data-dir=/tmp/chromium-profile','--noerrdialogs','--window-size=1440,1000','--window-position=0,0','--app=http://127.0.0.1:3000'+start_path]
+ # The namespace sandbox is required. Never fall back to --no-sandbox.
+ args=['chromium','--disable-smooth-scrolling','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--disable-default-apps','--disable-features=MediaRouter','--user-data-dir=/tmp/chromium-profile','--noerrdialogs','--window-size=1440,1000','--window-position=0,0','--app=http://127.0.0.1:3000'+start_path]
  if os.environ.get('LH_VISUAL_TEST_DEBUG')=='1':args+=['--remote-debugging-address=127.0.0.1','--remote-debugging-port=9222']
  start(args)
- start(['x11vnc','-display',':99','-unixsock','/browser-ipc/vnc.sock','-rfbport','0','-forever','-shared','-nopw','-nosel','-noxdamage','-quiet'])
+ # Use XDamage and short update batches. CopyRect's scroll heuristics add
+ # delay/artifacts with Chromium's compositor; pixel updates are reliable.
+ start(['x11vnc','-display',':99','-unixsock','/browser-ipc/vnc.sock','-rfbport','0','-forever','-shared','-nopw','-nosel','-wait','5','-defer','5','-nonap','-noscrollcopyrect','-quiet'])
  def stop(*_):raise SystemExit()
  signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGINT,stop)
  while all(p.poll() is None for p in children):time.sleep(.5)
