@@ -1,0 +1,74 @@
+# Overlay the broker deployment. The original app's browser remains off the host.
+services:
+  app:
+    command: [node, --import, tsx, security/visual/app-server.mjs]
+    environment:
+      NODE_ENV: production
+      LH_VISUAL_ISOLATED: "1"
+    healthcheck:
+      test: [CMD, node, -e, "process.exit(require('fs').existsSync('/app-ipc/web.sock')?0:1)"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+  browser:
+    image: ${BROWSER_IMAGE:?Pinned browser image required}
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    network_mode: none
+    restart: "no"
+    pull_policy: never
+    mem_limit: 1g
+    pids_limit: 256
+    environment: {HOME: /tmp, LH_VISUAL_TEST_DEBUG: "0"}
+    volumes: [app-ipc:/app-ipc:ro, browser-ipc:/browser-ipc]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=512m,uid=1000,gid=1000"]
+    depends_on:
+      app: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "process.exit(require('fs').existsSync('/browser-ipc/vnc.sock')?0:1)"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+  visual-net:
+    image: ${VIEW_NET_IMAGE:?Pinned firewall image required}
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, SETPCAP]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    pull_policy: never
+    mem_limit: 64m
+    pids_limit: 32
+    networks: [visual-only]
+    ports: ["127.0.0.1:3189:8080"]
+    tmpfs: ["/run:rw,noexec,nosuid,nodev,size=1m"]
+  visual:
+    image: ${BROWSER_IMAGE:?Pinned browser image required}
+    command: [python3, /visual/gateway.py]
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    pull_policy: never
+    mem_limit: 128m
+    pids_limit: 32
+    network_mode: service:visual-net
+    environment: {LH_VISUAL_HOST: "127.0.0.1:3189"}
+    volumes: [browser-ipc:/browser-ipc:ro, view-secret:/view-secret:ro]
+    depends_on:
+      browser: {condition: service_healthy}
+      visual-net: {condition: service_healthy}
+      init: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; r=urllib.request.Request('http://127.0.0.1:8080/',headers={'Host':'127.0.0.1:3189'}); assert urllib.request.urlopen(r).status==200"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+volumes:
+  browser-ipc:
+networks:
+  visual-only: {}
