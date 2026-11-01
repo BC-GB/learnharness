@@ -16,6 +16,7 @@ try:
   time.sleep(.1)
  else:raise RuntimeError('Display failed')
  start(['node','/visual/browser-http.mjs'])
+ start(['node','/visual/transfer.mjs'])
  for _ in range(120):
   try:
    with urllib.request.urlopen('http://127.0.0.1:3000/',timeout=2) as r:

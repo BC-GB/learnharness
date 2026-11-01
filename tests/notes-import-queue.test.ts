@@ -59,10 +59,9 @@ it("synchronous transport failures settle one wave once without reentrant pump r
 });
 
 
-it("PDF selections are refused locally without sending an upload", () => {
-	let calls = 0;
-	const queue = createNotesImportQueue(async () => { calls++; return []; });
-	queue.append([new File(["%PDF-"], "source.pdf")]);
-	assert.equal(calls, 0);
-	assert.match(queue.getSnapshot().errors[0]!, /PDF processing is disabled/);
+it("PDF selections reach the server, which owns isolated-parser policy", async () => {
+ const paths: string[]=[];
+ const queue=createNotesImportQueue(async ([file])=>{paths.push(file!.name);return [success(file!.name)];});
+ queue.append([new File(["%PDF-"],"source.pdf")]);await tick();
+ assert.deepEqual(paths,["source.pdf"]);assert.deepEqual(queue.getSnapshot().errors,[]);
 });

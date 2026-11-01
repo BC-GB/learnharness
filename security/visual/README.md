@@ -14,8 +14,9 @@ the laptop browser. This is not a replacement teaching interface.
   host display, clipboard, device or Docker mounts. Managed policies block other
   origins, downloads, sign-in/sync and device/clipboard permissions. x11vnc uses
   a Unix socket and `-nosel`; no VNC TCP port or file transfer is enabled.
-- Gateway: fixed viewer assets and noVNC only, separate private capability,
-  strict Host/Origin checks, HttpOnly SameSite cookie, no app/API/file proxy.
+- Gateway: fixed viewer assets, noVNC and three bounded data operations (selected
+  PDF/text import, session titles, Markdown export), separate private capability,
+  strict Host/Origin checks, HttpOnly SameSite cookie, no arbitrary app/API/file proxy.
   Its separate firewall namespace denies new outbound connections.
 - Subscription sign-in and optional outgoing-request review remain in the
   independent broker interface. The app/browser never receive account tokens.
@@ -57,7 +58,21 @@ Keep account/course data untouched until the candidate passes these checks.
 
 `mock-provider.mjs` and `Dockerfile.mock` are synthetic fixtures; they are not
 copied into the production browser/gateway image and must never replace a real
-provider silently. Browser/PDF worker execution remains disabled in the app;
-static SVG visuals and original theory quiz controls are the intended course flow.
+provider silently. PDF and demo execution requires the separate networkless
+`security/render-worker/compose.yaml` worker; without it those tools refuse.
+
+The viewer's **Files** control imports only files explicitly selected by the
+user into the original knowledge-graph pipeline. It does not mount a laptop
+directory or expose a general file API. Import is model-backed and subject to
+the same broker permission as teaching. A fixed Unix transfer service validates
+routes, limits request/response sizes, and discards upstream headers. Export
+returns session Markdown as a text attachment, or a PNG of the displayed screen;
+generated HTML/SVG downloads remain blocked. Treat exported text as untrusted.
+The app cannot trigger host downloads or open the host file picker itself.
+
+Refresh uses the existing HttpOnly cookie. **Actual size** avoids shrinking the
+framebuffer text; **Fit to window** restores scaling. Account settings opens the
+separate trusted broker page. Research and dictation require their original
+third-party providers and remain unavailable in this subscription-only setup.
 
 Explicit subscription-direct deployments set LH_BROKER_REQUEST_POLICY=subscription-direct on the trusted broker. New subscription requests then dispatch without per-request review; account identity, sign-in, plan permission and the spending policy are still checked before dispatch and after credential resolution. This option cannot enable billable API-key mode, and never replays old queued requests. Without individual payload review, the app can send its accessible course/session data to the permitted provider. File/network/credential containment remains unchanged.

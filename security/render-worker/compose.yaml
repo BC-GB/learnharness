@@ -1,0 +1,26 @@
+services:
+  renderer:
+    image: ${RENDER_IMAGE:?Pinned renderer image required}
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    network_mode: none
+    restart: "no"
+    pull_policy: never
+    mem_limit: 768m
+    pids_limit: 128
+    volumes: [render-ipc:/render-ipc]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=192m,uid=1000,gid=1000"]
+    healthcheck:
+      test: [CMD, node, -e, "process.exit(require('fs').existsSync('/render-ipc/render.sock')?0:1)"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  app:
+    volumes: [render-ipc:/render-ipc:ro]
+    environment: {LH_ISOLATED_RENDERER: "1"}
+    depends_on:
+      renderer: {condition: service_healthy}
+volumes:
+  render-ipc:
