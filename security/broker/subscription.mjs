@@ -44,9 +44,12 @@ export function verifyIdentity(jwt, jwks, client, nonce, now = Date.now()) {
   return claims;
 }
 
-export function normalizeSubscriptionRequest(value) {
+export function normalizeSubscriptionRequest(value, { serviceTier = 'default' } = {}) {
+  if (!['default','fast'].includes(serviceTier)) throw Error('Unsupported subscription speed');
   const allowed = new Set(['model','input','instructions','tools','tool_choice','parallel_tool_calls','reasoning','text','store','stream','include']);
   const out = Object.fromEntries(Object.entries(value).filter(([key]) => allowed.has(key)));
+  // Speed is controlled by trusted deployment configuration, never app payloads.
+  if (serviceTier === 'fast') out.service_tier = 'fast';
   if (!Array.isArray(out.input) || out.store !== false || out.stream !== true) throw Error('Subscription request contract');
   out.input = out.input.map(item => item?.role === 'system' ? {...item, role:'developer'} : item);
   if (out.tools?.length) {

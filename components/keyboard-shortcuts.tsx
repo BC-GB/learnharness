@@ -77,6 +77,9 @@ export function KeyboardShortcuts() {
 			}
 
 			if (e.key === "Escape") {
+				// Let the browser exit native fullscreen without also aborting a
+				// lesson turn, cancelling dictation or dismissing an app overlay.
+				if (document.fullscreenElement) return;
 				// Our own overlay is the topmost layer.
 				if (cheatOpen) {
 					setCheatOpen(false);

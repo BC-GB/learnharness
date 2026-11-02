@@ -129,6 +129,16 @@ test('subscription normalization precedes review, removes unsupported options an
  assert.equal(v.input[0].role,'developer');assert.equal(v.temperature,undefined);assert.equal(v.max_output_tokens,undefined);assert.equal(v.metadata,undefined);assert.equal(v.tools[0].type,'namespace');assert.equal(v.tools[0].tools[0].name,'read_course');
  assert.throws(()=>normalizeSubscriptionRequest({...v,input:'text'}));assert.throws(()=>normalizeSubscriptionRequest({...v,tools:[{type:'web_search'}]}));
 });
+
+test('only trusted subscription configuration can select Fast speed',()=>{
+ const payload={model:'synthetic',input:[{role:'user',content:'synthetic'}],stream:true,store:false,service_tier:'ultrafast'};
+ assert.equal(normalizeSubscriptionRequest(payload).service_tier,undefined,'App cannot select a premium tier');
+ const fast=normalizeSubscriptionRequest(payload,{serviceTier:'fast'});
+ assert.equal(fast.service_tier,'fast');assert.equal(fast.model,payload.model);
+ assert.equal(fast.store,false);assert.equal(fast.stream,true);
+ assert.throws(()=>normalizeSubscriptionRequest(payload,{serviceTier:'ultrafast'}),/Unsupported subscription speed/);
+ assert.throws(()=>normalizeSubscriptionRequest(payload,{serviceTier:'fast;malformed'}),/Unsupported subscription speed/);
+});
 test('egress denies other hosts, private/metadata/loopback DNS results and non-IPv4 destinations',async()=>{
  for(const ip of ['127.0.0.1','10.0.0.1','192.168.1.1','169.254.169.254','100.100.100.200','::1','::ffff:1.1.1.1','224.0.0.1'])assert.equal(publicAddress(ip),false);
  assert.equal(publicAddress('1.1.1.1'),true);

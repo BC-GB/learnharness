@@ -32,7 +32,8 @@ function persist(dir, id, record) {
 }
 
 /** The caller supplies trusted deployment settings, never HTTP input. */
-export async function startBroker({ requestSocket, controlSocket, stateDir, mode = 'mock', mockPort = 8090, mockHost = 'mock', keyFile, approvalMs = 600000, responseMs = 120000, subscription, transport, requireReview = true }) {
+export async function startBroker({ requestSocket, controlSocket, stateDir, mode = 'mock', mockPort = 8090, mockHost = 'mock', keyFile, approvalMs = 600000, responseMs = 120000, subscription, transport, requireReview = true, serviceTier = 'default' }) {
+  if (!['default','fast'].includes(serviceTier) || (serviceTier !== 'default' && mode !== 'subscription')) throw Error('Unsupported subscription speed');
   if(typeof requireReview!=='boolean'||(!requireReview&&mode==='live'))throw Error('Invalid review policy');
   if (!['mock', 'live', 'subscription'].includes(mode)) throw Error('Unknown broker mode');
   if (mode === 'subscription' && (!subscription || !transport)) throw Error('Subscription broker not configured');
@@ -123,7 +124,7 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
         if(!s.signedIn||!s.planPermission||s.spendingLocked)return json(res,423,{error:'Subscription sign-in and spending verification required'});
         accountKey=s.accountKey;
         // Normalize BEFORE hashing/review: approval always covers the transmitted bytes.
-        bytes=Buffer.from(JSON.stringify(normalizeSubscriptionRequest(value)));
+        bytes=Buffer.from(JSON.stringify(normalizeSubscriptionRequest(value,{serviceTier})));
       }
       if (pending.size + inflight.size + authorizing >= 16 || records >= 1024) return json(res, 429, { error: 'Broker review capacity reached' });
       const id = crypto.randomUUID(), sha256 = hash(bytes), expires = Date.now() + approvalMs;
@@ -146,7 +147,7 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
       if(req.method==='POST'&&req.url==='/subscription'){
         if(mode!=='subscription')return json(res,200,{mode,accounts:[]});
         const action=JSON.parse((await body(req,8192)).toString());
-        if(action.op==='status')return json(res,200,subscription.status());
+        if(action.op==='status')return json(res,200,{...subscription.status(),requestedServiceTier:serviceTier});
         if(action.op==='models')return json(res,200,await subscription.models());
         if(!['start','callback','logout'].includes(action.op))return json(res,400,{error:'Subscription operation denied'});
         authEpoch++;
@@ -189,6 +190,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
   const mode=process.env.LH_BROKER_UPSTREAM??'mock';
   const transport=mode==='subscription'?subscriptionTransport():undefined;
   const subscription=transport?createSubscription({dir:'/subscription/accounts',policyFile:'/policy/plan-only.json',request:transport.request}):undefined;
-  const broker = await startBroker({ requestSocket: '/broker/request.sock', controlSocket: '/control/admin.sock', stateDir: '/state', mode, requireReview:process.env.LH_BROKER_REQUEST_POLICY!=='subscription-direct', keyFile: '/run/secrets/openai-key', subscription, transport });
+  const broker = await startBroker({ requestSocket: '/broker/request.sock', controlSocket: '/control/admin.sock', stateDir: '/state', mode, requireReview:process.env.LH_BROKER_REQUEST_POLICY!=='subscription-direct', serviceTier:process.env.LH_BROKER_SERVICE_TIER??'default', keyFile: '/run/secrets/openai-key', subscription, transport });
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await broker.close(); process.exit(0); });
 }

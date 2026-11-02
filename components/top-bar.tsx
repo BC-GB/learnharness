@@ -40,6 +40,7 @@
 
 import type { ReactNode } from "react";
 import { SidebarToggle } from "@/components/sidebar";
+import { FullscreenToggle } from "@/components/fullscreen-toggle";
 
 export function TopBar({
 	drag = true,
@@ -57,6 +58,7 @@ export function TopBar({
 		>
 			<SidebarToggle />
 			{children}
+			<FullscreenToggle />
 		</header>
 	);
 }
