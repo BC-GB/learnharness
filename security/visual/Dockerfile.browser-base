@@ -1,0 +1,4 @@
+FROM node@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c
+RUN apt-get update && apt-get install -y --no-install-recommends chromium xvfb x11vnc novnc python3-websockify tini fonts-liberation && rm -rf /var/lib/apt/lists/*
+RUN mkdir /browser-ipc /app-ipc /view-secret && chown node:node /browser-ipc /app-ipc /view-secret
+USER node

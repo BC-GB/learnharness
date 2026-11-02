@@ -35,7 +35,7 @@ function fixture(){
  const config={dir,policyFile,request,now:()=>clock};let manager=createSubscription(config);
  const start=(account=null)=>{const result=manager.start('http://127.0.0.1:3188/auth/callback',account),url=new URL(result.url);nonce=url.searchParams.get('nonce');return url};
  const finish=url=>manager.callback({state:url.searchParams.get('state'),code:'fixture-code',client_id:'oaiapp_fixture'});
- const unlock=()=>fs.writeFileSync(policyFile,JSON.stringify({version:1,accountKey:manager.status().accountKey,paidCreditsDisabled:true,evidenceSha256:'a'.repeat(64),verifiedAt:clock,expiresAt:clock+86400000}),{mode:0o600});
+ const unlock=(persistent=false)=>fs.writeFileSync(policyFile,JSON.stringify({version:persistent?2:1,accountKey:manager.status().accountKey,paidCreditsDisabled:true,evidenceSha256:'a'.repeat(64),verifiedAt:clock,...(persistent?{authorization:'persistent-subscription-only'}:{expiresAt:clock+86400000})}),{mode:0o600});
  return {get manager(){return manager},start,finish,unlock,calls,dir,claims,advance:ms=>clock+=ms,subject:s=>subject=s,scopes:s=>granted=s,failRefresh:()=>failRefresh=true,get refreshes(){return refreshes},get revoked(){return revoked},reload:()=>manager=createSubscription(config),close:()=>fs.rmSync(dir,{recursive:true,force:true})};
 }
 
@@ -43,12 +43,12 @@ test('OAuth registers with PKCE, validates signed identity, persists privately; 
  const f=fixture();try{
   const u=f.start();assert.equal(u.origin,ISSUER);assert.equal(u.searchParams.get('client_id'),'dynamic_agent_client');assert.equal(u.searchParams.get('code_challenge_method'),'S256');assert.ok(u.searchParams.get('ext_agent_host_id'));
   const s=await f.finish(u);assert.equal(s.signedIn,true);assert.equal(s.spendingLocked,true);assert.ok(!JSON.stringify(s).includes('fixture-access'));assert.ok(!JSON.stringify(s).includes('fixture-refresh'));
-  await assert.rejects(f.manager.authorize('gpt-4'),/Spending locked/);
+  await assert.rejects(f.manager.authorize('gpt-4'),/Local subscription permission/);
   assert.equal(fs.statSync(path.join(f.dir,'accounts.json')).mode&0o077,0);
   f.reload();assert.equal(f.manager.status().signedIn,true);assert.equal(f.manager.status().spendingLocked,true);
   f.unlock();assert.equal(await f.manager.authorize('gpt-4'),'fixture-access-0');await assert.rejects(f.manager.authorize('hidden'),/Model unavailable/);
   const returning=f.start(s.active);assert.equal(returning.searchParams.get('client_id'),'oaiapp_fixture');assert.equal(returning.searchParams.has('agent_name_hint'),false);assert.equal(returning.searchParams.has('id_token_hint'),false);
-  await assert.rejects(f.manager.authorize('gpt-4'),/Spending locked/);
+  await assert.rejects(f.manager.authorize('gpt-4'),/Local subscription permission/);
   f.advance(1);await f.finish(returning);assert.equal(f.manager.status().spendingLocked,true,'A fresh sign-in must invalidate older spending verification');
  }finally{f.close()}
 });
@@ -78,9 +78,50 @@ test('refresh is serialized, rotates tokens, and invalid grant removes local cre
 });
 test('spending verification is account-bound and expires; logout revokes and preserves registration',async()=>{
  const f=fixture();try{
-  const s=await f.finish(f.start());f.unlock();f.advance(86400001);await assert.rejects(f.manager.authorize('gpt-4'),/Spending locked/);
+  const s=await f.finish(f.start());f.unlock();f.advance(86400001);await assert.rejects(f.manager.authorize('gpt-4'),/Local subscription permission/);
   const result=await f.manager.logout();assert.equal(result.revoked,true);assert.equal(f.revoked,true);assert.equal(result.signedIn,false);assert.equal(result.active,s.active);assert.equal(result.accounts.length,1);
   const saved=fs.readFileSync(path.join(f.dir,'accounts.json'),'utf8');assert.ok(!saved.includes('fixture-access'));assert.ok(!saved.includes('fixture-refresh'));
+ }finally{f.close()}
+});
+
+test('explicit persistent permission survives time, restart, token refresh and same-account sign-in',async()=>{
+ const f=fixture();try{
+  const s=await f.finish(f.start());f.unlock(true);
+  f.advance(30*86400000);f.reload();
+  assert.equal(f.manager.status().spendingLocked,false);
+  assert.equal(await f.manager.authorize('gpt-4'),'fixture-access-1');
+  assert.equal(f.refreshes,1,'normal OAuth refresh still applies');
+  await f.finish(f.start(s.active));
+  assert.equal(f.manager.status().spendingLocked,false,'same account does not need local renewal');
+  await f.manager.authorize('gpt-4');
+  await f.manager.logout();
+  assert.equal(f.manager.status().signedIn,false);
+  await assert.rejects(f.manager.authorize('gpt-4'),/Local subscription permission/);
+ }finally{f.close()}
+});
+
+test('persistent permission still rejects another account, revoked consent, malformed consent and missing plan scopes',async()=>{
+ const f=fixture();try{
+  await f.finish(f.start());f.unlock(true);
+  const file=path.join(f.dir,'policy.json'),p=JSON.parse(fs.readFileSync(file));
+  for(const change of [{authorization:undefined},{expiresAt:Date.now()+3600000},{paidCreditsDisabled:false},{version:3},{accountKey:'wrong'}]){
+   fs.writeFileSync(file,JSON.stringify({...p,...change}),{mode:0o600});
+   await assert.rejects(f.manager.authorize('gpt-4'),/Local subscription permission/);
+  }
+  fs.unlinkSync(file);await assert.rejects(f.manager.authorize('gpt-4'),/Local subscription permission/);
+  f.unlock(true);f.scopes('openid email');await f.finish(f.start(f.manager.status().active));
+  await assert.rejects(f.manager.authorize('gpt-4'),/sign-in required/);
+  f.scopes(scopes);f.subject('another-user');await f.finish(f.start());
+  await assert.rejects(f.manager.authorize('gpt-4'),/Local subscription permission/);
+ }finally{f.close()}
+});
+
+test('persistent permission revoked during asynchronous token refresh fails closed',async()=>{
+ const f=fixture();try{
+  await f.finish(f.start());f.unlock(true);f.advance(3550000);
+  const authorization=f.manager.authorize('gpt-4');
+  fs.unlinkSync(path.join(f.dir,'policy.json'));
+  await assert.rejects(authorization,/Local subscription permission changed/);
  }finally{f.close()}
 });
 test('subscription normalization precedes review, removes unsupported options and namespaces local tools',()=>{

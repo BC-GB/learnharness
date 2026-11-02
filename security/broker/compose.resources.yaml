@@ -1,0 +1,23 @@
+# Resource ceilings complement network/file isolation. They do not patch vendor CVEs.
+# Include with the isolated app, broker, renderer and direct-browser Compose files.
+services:
+  app:
+    cpus: 2.0
+  renderer:
+    cpus: 2.0
+  broker:
+    cpus: 1.0
+  native:
+    cpus: 1.0
+  view:
+    cpus: 0.5
+  egress:
+    cpus: 0.5
+  init:
+    cpus: 0.5
+  view-net:
+    cpus: 0.25
+  native-net:
+    cpus: 0.25
+  egress-net:
+    cpus: 0.25

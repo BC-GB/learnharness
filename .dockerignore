@@ -1,0 +1,15 @@
+# Never add local repository history, session state or credentials to build context.
+.git
+data
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+auth.json
+credentials.json
+node_modules
+.next
+coverage
+test-results
+playwright-report

@@ -60,8 +60,7 @@ export function createNotesImportQueue(post: (files: readonly File[]) => Promise
 				const index = sequence++;
 				const path = notesPath(file);
 				if (file.webkitRelativePath && file.name === ".DS_Store") continue;
-				if (/\.pdf$/i.test(path) || file.type === "application/pdf") failures.set(index, `${path}: PDF processing is disabled; use prepared text or Markdown.`);
-				else if (!IMPORT_EXTENSIONS.test(path) || !validNotesPath(path, file.name)) failures.set(index, `${path}: Unsupported format or unsafe relative path.`);
+				if (!IMPORT_EXTENSIONS.test(path) || !validNotesPath(path, file.name)) failures.set(index, `${path}: Unsupported format or unsafe relative path.`);
 				else if (file.size > MAX_IMPORT_BYTES) failures.set(index, `${path}: Too big. Max 25 MB.`);
 				else pending.push({ file, index });
 			}

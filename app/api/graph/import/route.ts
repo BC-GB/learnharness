@@ -7,8 +7,7 @@
  * source record (the file's provenance + the run's usage), and runs
  * extractor → auditor → merger over the raw text.
  *
- * PDF uploads are refused before extraction or metadata writes;
- * this deployment has no isolated PDF parser.
+ * PDF uploads are converted in the separately isolated parser before extraction.
  *
  * Small concurrency cap: the model calls are the slow part, and a burst of
  * 25 simultaneous runs would trip provider rate limits — a 3-wide worker
@@ -16,7 +15,7 @@
  * healthy. The dock's chips + graph refetch track progress live through
  * /api/graph/status, as with session runs.
  */
-import { extraction, NotesImportError, sourceDirectory } from "@/src/server";
+import { convertPdf, joinPages, extraction, NotesImportError, sourceDirectory } from "@/src/server";
 import { MAX_IMPORT_BODY_BYTES, MAX_IMPORT_BYTES, validNotesPath } from "@/lib/notes-import-limits.ts";
 import {
 	emit,
@@ -52,8 +51,13 @@ type NotesFile = { kind: "notes"; text: string; notice?: string } | { kind: "ref
 /** Preserve folder/text imports without reopening an in-process PDF parser. */
 async function readNotesFile(file: File): Promise<NotesFile> {
 	const header = new TextDecoder().decode(await file.slice(0, 5).arrayBuffer());
-	if (header === "%PDF-" || /\.pdf$/i.test(file.name) || file.type === "application/pdf")
-		return { kind: "refused", error: "PDF processing is disabled; import prepared text or Markdown instead." };
+	if (header === "%PDF-" || /\.pdf$/i.test(file.name) || file.type === "application/pdf") {
+        try { const pdf=await convertPdf(new Uint8Array(await file.arrayBuffer()),200);
+        if(pdf.kind==='too-long')return {kind:'refused',error:'PDF exceeds the 200-page processing limit.'};
+        if(pdf.kind==='unreadable')return {kind:'refused',error:'Could not open this PDF.'};
+        const text=joinPages(pdf.pages);return text?{kind:'notes',text,notice:'Check extracted text against the PDF; scanned pages may need OCR.'}:{kind:'refused',error:'No readable text found; OCR is not available.'};
+        } catch {return {kind:'refused',error:'Isolated PDF processing unavailable or input exceeded limits.'};}
+    }
 	return { kind: "notes", text: await file.text() };
 }
 

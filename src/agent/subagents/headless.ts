@@ -1,3 +1,5 @@
+import { isolatedRender, isolatedRendererEnabled } from "./render-client.ts";
+import { approvedPdfBytes } from "./pdf-ops.ts";
 export interface DemoRunResult {
 	/** console.error / console messages of type "error". */
 	consoleErrors: string[];
@@ -215,11 +217,13 @@ export function pdfCanvasGeometry(baseWidth: number, baseHeight: number, dpi: nu
 const BROWSER_DISABLED_MESSAGE = "Browser execution is disabled by deployment policy.";
 export function browserServiceBinary(): string | null { return null; }
 export function resolveChromeExecutablePath(): string | null { return null; }
-async function runDemo(_html: string, _opts: RunDemoOptions = {}): Promise<DemoRunResult> {
- throw new Error(BROWSER_DISABLED_MESSAGE);
+async function runDemo(html: string, opts: RunDemoOptions = {}): Promise<DemoRunResult> {
+ if(!isolatedRendererEnabled())throw new Error(BROWSER_DISABLED_MESSAGE);
+ return isolatedRender({op:"demo",html,...opts});
 }
-async function renderPdfPages(_file: string, _pages: number[], _opts: RenderPdfOptions = {}): Promise<RenderedPdfPage[]> {
- throw new Error("PDF rasterization is disabled: an isolated parser is required.");
+async function renderPdfPages(file: string, pages: number[], opts: RenderPdfOptions = {}): Promise<RenderedPdfPage[]> {
+ if(!isolatedRendererEnabled())throw new Error("PDF rasterization is disabled: an isolated parser is required.");
+ const result=await isolatedRender<{page:number;png:string}[]>({op:"render",pdf:await approvedPdfBytes(file),pages,...opts});return result.map(x=>({page:x.page,png:providerSafePng(Buffer.from(x.png,"base64"))}));
 }
 async function renderSvg(svg: string, opts: RenderSvgOptions = {}): Promise<Buffer> {
  if (Buffer.byteLength(svg) > 1024 * 1024) throw new Error("SVG input too large.");
@@ -234,7 +238,7 @@ async function renderSvg(svg: string, opts: RenderSvgOptions = {}): Promise<Buff
  } catch { throw new Error(BROWSER_DISABLED_MESSAGE + " SVG could not be rendered safely."); }
 }
 export const realHeadless: HeadlessApi = {
- available: () => false,
- unavailableReason: () => BROWSER_DISABLED_MESSAGE,
+ available: isolatedRendererEnabled,
+ unavailableReason: () => isolatedRendererEnabled()?null:BROWSER_DISABLED_MESSAGE,
  runDemo, renderSvg, renderPdfPages,
 };
