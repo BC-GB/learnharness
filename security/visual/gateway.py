@@ -8,6 +8,23 @@ HOST=os.environ.get('LH_VISUAL_HOST','127.0.0.1:3189')
 assert re.fullmatch(r'[a-f0-9]{64}',TOKEN)
 assert re.fullmatch(r'127\.0\.0\.1:[0-9]{1,5}',HOST)
 ORIGIN='http://'+HOST
+def static_assets(root=pathlib.Path('/usr/share/novnc'), allowed=(pathlib.Path('/usr/share/novnc'),pathlib.Path('/usr/share/javascript'))):
+ """Inventory trusted installed assets once; request text never becomes a file path."""
+ assets={};roots=tuple(p.resolve() for p in allowed)
+ def walk(directory, prefix, ancestors):
+  resolved=directory.resolve()
+  if resolved in ancestors or len(ancestors)>=32 or not any(resolved.is_relative_to(p) for p in roots):return
+  try:entries=list(directory.iterdir())
+  except OSError:return
+  for entry in entries:
+   target=entry.resolve()
+   if not any(target.is_relative_to(p) for p in roots):continue
+   route=prefix+'/'+entry.name
+   if target.is_dir():walk(entry,route,ancestors|{resolved})
+   elif target.is_file() and target.suffix in ['.js','.css','.png','.svg']:assets[route]=(target,{'.js':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml'}[target.suffix])
+ walk(root,'/novnc',set())
+ return assets
+STATIC_ASSETS=static_assets()
 class Transfer(http.client.HTTPConnection):
  def connect(self):
   self.sock=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);self.sock.settimeout(185);self.sock.connect('/browser-ipc/transfer.sock')
@@ -28,6 +45,7 @@ class Handler(ProxyRequestHandler):
    c=SimpleCookie();c.load(raw);v=c.get('lh_visual');return bool(v) and hmac.compare_digest(v.value,TOKEN)
   except Exception:return False
  def transfer(self,path,body=None,kind=None):
+  if path not in ['/sessions','/import'] and not re.fullmatch(r'/export/[A-Za-z0-9_-]{1,100}',path):return self.reject(400)
   c=Transfer('unused')
   try:
    c.request('POST' if body is not None else 'GET',path,body,{'Content-Type':kind} if kind else {})
@@ -45,7 +63,7 @@ class Handler(ProxyRequestHandler):
      value={'results':[{'ok':x.get('ok') is True,'filePath':str(x.get('filePath',''))[:500],'error':str(x.get('error',''))[:1000]} for x in value.get('results',[])[:20] if isinstance(x,dict)],'error':str(value.get('error',''))[:1000]}
     data=json.dumps(value).encode();mime='application/json'
    self.send_response(r.status);self.send_header('Content-Type',mime)
-   if path.startswith('/export/'):self.send_header('Content-Disposition','attachment; filename="'+path[8:]+'.md"')
+   if path.startswith('/export/'):self.send_header('Content-Disposition','attachment; filename="session.md"')
    self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
   except Exception:return self.reject(502)
   finally:c.close()
@@ -78,10 +96,7 @@ class Handler(ProxyRequestHandler):
   route=urlsplit(self.path).path
   fixed={'/':('/visual/viewer.html','text/html'),'/viewer.js':('/visual/viewer.js','text/javascript'),'/viewer.css':('/visual/viewer.css','text/css'),'/scroll-client.js':('/visual/scroll-client.js','text/javascript')}
   if route in fixed:file,kind=fixed[route];target=pathlib.Path(file)
-  elif route.startswith('/novnc/'):
-   suffix=unquote(route[len('/novnc/'):]);target=(pathlib.Path('/usr/share/novnc')/suffix).resolve()
-   if not str(target).startswith(('/usr/share/novnc/','/usr/share/javascript/')) or not target.is_file() or target.suffix not in ['.js','.css','.png','.svg']:return self.reject(404)
-   kind={'.js':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml'}[target.suffix]
+  elif unquote(route) in STATIC_ASSETS:target,kind=STATIC_ASSETS[unquote(route)]
   else:return self.reject(404)
   if target.stat().st_size>2*1024*1024:return self.reject(413)
   data=target.read_bytes();self.send_response(200);self.send_header('Content-Type',kind);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
