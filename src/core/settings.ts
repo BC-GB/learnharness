@@ -393,6 +393,10 @@ export interface AppearanceSettings {
 	/** Reading font size in px (12–24, default 16). Headings render as
 	 *  multiples of this, so one knob scales the document coherently. */
 	proseFontSize?: number;
+	/** Lesson text width in px (560–1200, default 864); visuals may be wider. */
+	readingWidth?: number;
+	/** Centre the reading column within the session (default true). */
+	readingCentered?: boolean;
 	/** Session names in CMU Serif (default true — today's look). */
 	sessionNameSerif?: boolean;
 	mdRendering?: MdRenderingSettings;
@@ -494,6 +498,8 @@ export interface FactorySettings {
 		background: string | null;
 		fontFamily: string | null;
 		proseFontSize: number;
+		readingWidth: number;
+		readingCentered: boolean;
 		sessionNameSerif: boolean;
 		mdRendering: {
 			headingWeight: number;
@@ -514,6 +520,8 @@ export const FACTORY_SETTINGS: FactorySettings = {
 		background: null, // the dark default (#141414) lives in the mode's derivation curve
 		fontFamily: null, // Source Sans 3
 		proseFontSize: 16,
+		readingWidth: 864,
+		readingCentered: true,
 		sessionNameSerif: true,
 		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null },
 	},
@@ -745,6 +753,11 @@ function sanitizeAppearance(raw: Record<string, unknown>): AppearanceSettings {
 		out.proseFontSize = clamp(Math.round(raw.proseFontSize), PROSE_FONT_MIN, PROSE_FONT_MAX);
 	}
 	const sessionNameSerif = boolOrDrop(raw.sessionNameSerif);
+	if (typeof raw.readingWidth === "number" && Number.isFinite(raw.readingWidth)) {
+		out.readingWidth = clamp(Math.round(raw.readingWidth), 560, 1200);
+	}
+	const readingCentered = boolOrDrop(raw.readingCentered);
+	if (readingCentered !== undefined) out.readingCentered = readingCentered;
 	if (sessionNameSerif !== undefined) out.sessionNameSerif = sessionNameSerif;
 	if (raw.mdRendering !== undefined) out.mdRendering = sanitizeMdRendering(raw.mdRendering);
 	return out;

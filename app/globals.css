@@ -197,17 +197,30 @@ body {
 /* A centred reading measure for lesson text. Keep the transcript's tables,
    code, display equations and generated visuals free to use its wider frame.
    Scope this to the transcript so question panels and settings keep their UI. */
+.lh-reading-transcript {
+	max-width: max(72rem, calc(var(--lh-reading-width, 864px) + 3rem));
+	margin-inline: var(--lh-reading-margin, auto);
+}
 .lh-reading-transcript .lh-prose > :where(p, ul, ol, dl, blockquote, h1, h2, h3, h4, h5, h6, hr),
 .lh-reading-transcript .lh-prose > [data-testid="md-callout"] {
 	box-sizing: border-box;
 	width: 100%;
-	max-width: 46rem;
-	margin-inline: auto;
+	max-width: var(--lh-reading-width, 864px);
+	margin-inline: var(--lh-reading-margin, auto);
 }
 
 .lh-reading-transcript .is-user {
-	max-width: 46rem;
-	margin-inline: auto;
+	max-width: var(--lh-reading-width, 864px);
+	margin-inline: var(--lh-reading-margin, auto);
+}
+
+/* Compact tables start with the surrounding prose. Intrinsically wide tables
+   may expand into the visual frame, then scroll inside their own wrapper. */
+.lh-reading-transcript .lh-prose [data-testid="md-table"] {
+	width: max-content;
+	min-width: min(100%, var(--lh-reading-width, 864px));
+	max-width: 100%;
+	margin-inline: var(--lh-reading-margin, auto);
 }
 
 /* Session-name weight (owner, fix wave round 3): with the serif toggle

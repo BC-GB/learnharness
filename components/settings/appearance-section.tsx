@@ -281,6 +281,31 @@ export function AppearanceSection({
 					}}
 				/>
 			</SettingsRow>
+			<SettingsRow label="Centre reading column" testid="row-reading-centered">
+				<Toggle
+					checked={resolved.readingCentered}
+					label="centre reading column"
+					onChange={(on) => onSectionChange({ ...appearance, readingCentered: on })}
+				/>
+			</SettingsRow>
+			<SettingsRow label="Reading width" hint={`${resolved.readingWidth}px · visuals can be wider`} testid="row-reading-width">
+				<CommitInput
+					type="number"
+					value={String(appearance?.readingWidth ?? "")}
+					placeholder="864"
+					ariaLabel="reading width in pixels"
+					testid="input-reading-width"
+					onCommit={(v) => {
+						if (v === "") {
+							onSectionChange({ ...appearance, readingWidth: undefined });
+							return;
+						}
+						const n = Number(v);
+						if (!Number.isFinite(n)) return;
+						onSectionChange({ ...appearance, readingWidth: Math.min(1200, Math.max(560, Math.round(n))) });
+					}}
+				/>
+			</SettingsRow>
 			<SettingsRow label="Session names in serif" testid="row-session-serif">
 				<Toggle
 					checked={appearance?.sessionNameSerif ?? true}
