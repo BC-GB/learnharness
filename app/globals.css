@@ -194,6 +194,22 @@ body {
 	line-height: var(--lh-prose-leading);
 }
 
+/* A centred reading measure for lesson text. Keep the transcript's tables,
+   code, display equations and generated visuals free to use its wider frame.
+   Scope this to the transcript so question panels and settings keep their UI. */
+.lh-reading-transcript .lh-prose > :where(p, ul, ol, dl, blockquote, h1, h2, h3, h4, h5, h6, hr),
+.lh-reading-transcript .lh-prose > [data-testid="md-callout"] {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 46rem;
+	margin-inline: auto;
+}
+
+.lh-reading-transcript .is-user {
+	max-width: 46rem;
+	margin-inline: auto;
+}
+
 /* Session-name weight (owner, fix wave round 3): with the serif toggle
    OFF, --font-title resolves to the prose font — Source Sans 3 is loaded
    as a VARIABLE font, and without an explicit weight the titles render at
