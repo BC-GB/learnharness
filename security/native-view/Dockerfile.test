@@ -1,0 +1,3 @@
+FROM learnharness-native:direct
+COPY gateway.test.mjs /native/
+RUN --network=none node --test /native/gateway.test.mjs

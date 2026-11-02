@@ -1,3 +1,7 @@
+import fs from "node:fs/promises";
+import { resolveSourcePath } from "../tools/fs-shared.ts";
+import { isolatedRender, isolatedRendererEnabled } from "./render-client.ts";
+import type { PdfPage } from "./pdf-markdown.ts";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 export interface PdfPageInfo {
@@ -60,9 +64,17 @@ export function renderDir(filePath: string): string {
 	return path.join("/tmp", `lh-pdf-${h.toString(16).padStart(8, "0")}`);
 }
 const DISABLED = "PDF processing is disabled by deployment policy: an isolated parser is required.";
-export async function pdfProbe(_file: string): Promise<void> { throw new Error(DISABLED); }
-export async function pdfInfo(_file: string): Promise<PdfInfo> { throw new Error(DISABLED); }
-export async function pdfExtract(_file: string, _pages: string): Promise<string> { throw new Error(DISABLED); }
-export async function pdfSearch(_file: string, _query: string, _opts?: { contextLines?: number; literal?: boolean }): Promise<{ hits: PdfSearchHit[]; pageTexts: Map<number, string> }> { throw new Error(DISABLED); }
-
-export async function convertPdf(_data: Uint8Array, _maxPages: number): Promise<never> { throw new Error(DISABLED); }
+export async function approvedPdfBytes(file:string):Promise<string>{
+ if(!isolatedRendererEnabled())throw Error(DISABLED);
+ const safe=resolveSourcePath(file),stat=await fs.stat(safe);
+ if(!stat.isFile()||stat.size>20*1024*1024)throw Error('PDF file limit');
+ const bytes=await fs.readFile(safe);if(bytes.length>20*1024*1024||bytes.subarray(0,5).toString()!=='%PDF-')throw Error('Invalid PDF');return bytes.toString('base64');
+}
+export async function pdfProbe(file:string):Promise<void>{await pdfInfo(file)}
+export async function pdfInfo(file:string):Promise<PdfInfo>{const x=await isolatedRender<Omit<PdfInfo,'path'>>({op:'info',pdf:await approvedPdfBytes(file)});return {...x,path:file}}
+export async function pdfExtract(file:string,pages:string):Promise<string>{return isolatedRender({op:'extract',pdf:await approvedPdfBytes(file),pages})}
+export async function pdfSearch(file:string,query:string,opts?:{contextLines?:number;literal?:boolean}):Promise<{hits:PdfSearchHit[];pageTexts:Map<number,string>}>{
+ const x=await isolatedRender<{hits:PdfSearchHit[];pageTexts:[number,string][]}>({op:'search',pdf:await approvedPdfBytes(file),query,contextLines:opts?.contextLines??3,literal:opts?.literal??false});return {...x,pageTexts:new Map(x.pageTexts)};
+}
+export type PdfConversion={kind:'converted';pages:PdfPage[]}|{kind:'too-long';pageCount:number}|{kind:'unreadable'};
+export async function convertPdf(data:Uint8Array,maxPages:number):Promise<PdfConversion>{if(!isolatedRendererEnabled())throw Error(DISABLED);if(data.length>20*1024*1024)throw Error('PDF input too large');return isolatedRender({op:'convert',pdf:Buffer.from(data).toString('base64'),maxPages})}

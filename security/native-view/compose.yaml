@@ -1,0 +1,40 @@
+services:
+  native-net:
+    image: ${VIEW_NET_IMAGE:?Pinned inbound-only network image required}
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, SETPCAP]
+    security_opt: [no-new-privileges:true]
+    pull_policy: never
+    restart: "no"
+    mem_limit: 64m
+    pids_limit: 32
+    networks: [native-only]
+    ports: ["127.0.0.1:3192:8080"]
+    tmpfs: ["/run:rw,noexec,nosuid,nodev,size=1m"]
+  native:
+    image: ${NATIVE_IMAGE:?Pinned native gateway image required}
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pull_policy: never
+    restart: "no"
+    mem_limit: 192m
+    pids_limit: 32
+    network_mode: service:native-net
+    volumes: [app-ipc:/app-ipc:ro, view-secret:/view-secret:ro]
+    environment: {LH_NATIVE_HOST: "127.0.0.1:3192"}
+    depends_on:
+      native-net: {condition: service_healthy}
+      app: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "require('http').get('http://127.0.0.1:8080/open',{headers:{host:process.env.LH_NATIVE_HOST}},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      start_interval: 1s
+      start_period: 20s
+      timeout: 2s
+      retries: 3
+networks:
+  native-only: {}

@@ -125,7 +125,7 @@ it("PDF uploads are refused before extraction, including disguised and malformed
 	assert.equal(results.length, 4);
 	for (const result of results) {
 		if (result.filePath === "notes.md") assert.equal(result.outcome, "completed");
-		else { assert.equal(result.ok, false); assert.match(result.error, /PDF processing is disabled/); }
+		else { assert.equal(result.ok, false); assert.match(result.error, /Isolated PDF processing unavailable/); }
 	}
 });
 

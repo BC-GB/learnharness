@@ -21,11 +21,11 @@ Page retrieval is denied unless the server sets `LH_RESEARCH_ALLOWED_HOSTS` to a
 
 `LH_DISABLE_RESEARCH=1` additionally disables search and research jobs. Search-provider API calls remain separate from page retrieval; configure only trusted providers.
 
-## Removed execution paths
+## Isolated execution paths
 
-This fork does not run model-authored HTML in a server browser. The Electron browser-service entry point refuses startup, and there is no system-Chrome fallback. Static SVG rendering remains, with input/dimension limits and no external or embedded resource references. Raw HTML/SVG export remains unavailable.
+The Electron browser-service entry point refuses startup, and there is no system-Chrome fallback. Model-authored demo execution is available only through the separate restricted renderer described below. Static SVG rendering retains input/dimension limits and rejects external or embedded resource references. Raw HTML/SVG export remains unavailable.
 
-Raw PDF downloading, parsing and rendering are disabled in every configuration. There is no environment override. Supply prepared text and images in the approved library instead. Restoring these features requires a separately isolated renderer/parser with enforced process, memory, time and network limits; toggling an environment variable is not a supported restoration path. Existing PDF and browser-disable variables are therefore no longer necessary.
+PDF parsing/rendering and demo execution default to denied. The explicit `security/render-worker/compose.yaml` deployment supplies a fixed Unix-only worker and sets `LH_ISOLATED_RENDERER=1`. An environment flag alone cannot restore execution: the app never falls back to local parsing or Chrome. The worker has no network adapter, course/account/state/host mounts, or Docker socket; it runs non-root/read-only with resource limits. Inputs are bounded document bytes or self-contained HTML, never arbitrary file paths. Each job has a hard deadline and descendant cleanup. The original PDF-reading agent uses this worker for triage, extraction, search and page images; citation tracking reflects pages actually delivered. Raw PDF web downloading remains disabled. See `security/render-worker/README.md` for limits and tests.
 
 ## Release and diagnostics
 

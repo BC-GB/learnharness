@@ -32,7 +32,8 @@ function persist(dir, id, record) {
 }
 
 /** The caller supplies trusted deployment settings, never HTTP input. */
-export async function startBroker({ requestSocket, controlSocket, stateDir, mode = 'mock', mockPort = 8090, mockHost = 'mock', keyFile, approvalMs = 600000, responseMs = 120000, subscription, transport }) {
+export async function startBroker({ requestSocket, controlSocket, stateDir, mode = 'mock', mockPort = 8090, mockHost = 'mock', keyFile, approvalMs = 600000, responseMs = 120000, subscription, transport, requireReview = true }) {
+  if(typeof requireReview!=='boolean'||(!requireReview&&mode==='live'))throw Error('Invalid review policy');
   if (!['mock', 'live', 'subscription'].includes(mode)) throw Error('Unknown broker mode');
   if (mode === 'subscription' && (!subscription || !transport)) throw Error('Subscription broker not configured');
   // Fail closed: live mode requires a separate explicit deployment acknowledgement.
@@ -50,7 +51,7 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
   }
   const pending = new Map();
   const inflight = new Set();
-  let authEpoch=0;
+  let authEpoch=0, authorizing=0;
   let records = fs.readdirSync(stateDir).filter(n => n.endsWith('.json')).length;
   function closeRecord(job, status) {
     clearTimeout(job.timer); pending.delete(job.id);
@@ -63,17 +64,33 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
     if(mode==='subscription'){
       if(job.accountKey!==subscription.status().accountKey)throw Error('Account changed');
       credential=await subscription.authorize(job.model);
-      if(job.res.destroyed||job.epoch!==authEpoch||job.accountKey!==subscription.status().accountKey)throw Error('Request cancelled');
+      const ready = subscription.status();
+      if(job.res.destroyed||job.epoch!==authEpoch||job.accountKey!==ready.accountKey||!ready.signedIn||!ready.planPermission||ready.spendingLocked)throw Error('Request cancelled');
     }
     const options = mode === 'live'
       ? { hostname: 'api.openai.com', port: 443, path: '/v1/responses', servername: 'api.openai.com', rejectUnauthorized: true }
       : { hostname: mockHost, port: mockPort, path: '/v1/responses' };
     const requestOptions={ ...options, method: 'POST', headers: {
-      'content-type': 'application/json', 'content-length': job.bytes.length, authorization: `Bearer ${credential}`
+      'accept': 'text/event-stream', 'content-type': 'application/json', 'content-length': job.bytes.length, authorization: `Bearer ${credential}`
     } };
     const receive=reply => {
-      if (reply.statusCode !== 200 || !/^text\/event-stream(?:;|$)/i.test(reply.headers['content-type'] ?? '')) {
-        reply.destroy(); json(job.res, 502, { error: 'Provider response rejected' }); return;
+      const declaredType=reply.headers['content-type'];
+      const streamType=/^text\/event-stream(?:;|$)/i.test(declaredType??'');
+      // Some subscription responses omit Content-Type. Consumers still require terminal SSE completion.
+      if (reply.statusCode !== 200 || (!streamType && !(mode==='subscription' && declaredType===undefined))) {
+        const upstreamStatus=reply.statusCode;
+        let diagnostic='';
+        reply.on('data',chunk=>{diagnostic+=chunk.toString('utf8');if(diagnostic.length>8192)reply.destroy()});
+        const fail=()=>json(job.res,502,{error:'Provider response rejected',upstreamStatus});
+        reply.on('error',fail);
+        reply.on('end',()=>{
+          let providerCode,providerParam,responseShape; const contentType=String(reply.headers['content-type']??'').slice(0,120);
+          try { const parsed=JSON.parse(diagnostic); const e=parsed?.error; responseShape={object:parsed?.object,status:parsed?.status,keys:Object.keys(parsed??{}).slice(0,12)};
+            if(typeof e?.code==='string'&&/^[a-zA-Z0-9_.-]{1,100}$/.test(e.code))providerCode=e.code;
+            if(typeof e?.param==='string'&&/^[a-zA-Z0-9_.\[\]-]{1,100}$/.test(e.param))providerParam=e.param;
+          } catch {}
+          json(job.res,502,{error:'Provider response rejected',upstreamStatus,providerCode,providerParam,contentType,responseShape});
+        });return;
       }
       job.res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
       let size = 0;
@@ -94,7 +111,7 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
       if (req.method !== 'POST' || req.url !== '/v1/responses') return json(res, 404, { error: 'Not found' });
       const allowed = new Set(['host', 'connection', 'content-type', 'content-length']);
       if (Object.keys(req.headers).some(k => !allowed.has(k))) return json(res, 400, { error: 'Unexpected header' });
-      if (pending.size >= 16 || records >= 1024) return json(res, 429, { error: 'Broker review capacity reached' });
+      if (pending.size + inflight.size + authorizing >= 16 || records >= 1024) return json(res, 429, { error: 'Broker review capacity reached' });
       let bytes = await body(req);
       const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
       if (!value || typeof value.model !== 'string' || value.stream !== true || value.store !== false) return json(res, 400, { error: 'Streaming and store:false required' });
@@ -108,9 +125,16 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
         // Normalize BEFORE hashing/review: approval always covers the transmitted bytes.
         bytes=Buffer.from(JSON.stringify(normalizeSubscriptionRequest(value)));
       }
-      if (pending.size >= 16 || records >= 1024) return json(res, 429, { error: 'Broker review capacity reached' });
+      if (pending.size + inflight.size + authorizing >= 16 || records >= 1024) return json(res, 429, { error: 'Broker review capacity reached' });
       const id = crypto.randomUUID(), sha256 = hash(bytes), expires = Date.now() + approvalMs;
       const job = { id, sha256, expires, bytes, res, accountKey, model:value.model, epoch:authEpoch };
+      if(!requireReview){
+        // Deployment opt-in only; never accept an HTTP flag or replay old queued requests.
+        records++;authorizing++;
+        try { await dispatch(job); } catch { json(res,423,{error:'Provider authorization failed closed'}); }
+        finally { authorizing--; }
+        return;
+      }
       persist(stateDir, id, { id, sha256, expires, status: 'pending', bodyBase64: bytes.toString('base64') }); records++;
       job.timer = setTimeout(() => { closeRecord(job, 'expired'); json(res, 408, { error: 'Approval expired' }); }, approvalMs);
       pending.set(id, job);
@@ -165,6 +189,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
   const mode=process.env.LH_BROKER_UPSTREAM??'mock';
   const transport=mode==='subscription'?subscriptionTransport():undefined;
   const subscription=transport?createSubscription({dir:'/subscription/accounts',policyFile:'/policy/plan-only.json',request:transport.request}):undefined;
-  const broker = await startBroker({ requestSocket: '/broker/request.sock', controlSocket: '/control/admin.sock', stateDir: '/state', mode, keyFile: '/run/secrets/openai-key', subscription, transport });
+  const broker = await startBroker({ requestSocket: '/broker/request.sock', controlSocket: '/control/admin.sock', stateDir: '/state', mode, requireReview:process.env.LH_BROKER_REQUEST_POLICY!=='subscription-direct', keyFile: '/run/secrets/openai-key', subscription, transport });
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await broker.close(); process.exit(0); });
 }

@@ -73,7 +73,11 @@ export function createSubscription({dir,policyFile,request,now=()=>Date.now()}) 
     if (!a?.access_token || !policyFile) return false;
     try {
       const p = readPrivate(policyFile);
-      return p?.version === 1 && p.accountKey === accountKey(a) && p.paidCreditsDisabled === true && /^[a-f0-9]{64}$/.test(p.evidenceSha256) && Number.isFinite(p.verifiedAt) && Number.isFinite(p.expiresAt) && p.verifiedAt >= a.signedInAt && p.verifiedAt <= now() && p.expiresAt > now() && p.expiresAt - p.verifiedAt <= 86400000;
+      if (!p || p.accountKey !== accountKey(a) || p.paidCreditsDisabled !== true || !/^[a-f0-9]{64}$/.test(p.evidenceSha256) || !Number.isFinite(p.verifiedAt) || p.verifiedAt > now()) return false;
+      // Explicit durable consent is tied to this account/client, not a timer.
+      // OAuth expiry, refresh, scopes, logout and dispatch checks remain separate.
+      if (p.version === 2) return p.authorization === 'persistent-subscription-only' && p.expiresAt === undefined;
+      return p.version === 1 && Number.isFinite(p.expiresAt) && p.verifiedAt >= a.signedInAt && p.expiresAt > now() && p.expiresAt - p.verifiedAt <= 86400000;
     } catch { return false; }
   }
   function status() {
@@ -152,9 +156,9 @@ export function createSubscription({dir,policyFile,request,now=()=>Date.now()}) 
     modelCache={account:db.active,expires:now()+60000,items};return items;
   }
   async function authorize(model) {
-    if(pending||busy||!policyOK(active()))throw Error('Spending locked: verify included-plan-only settings first');
+    if(pending||busy||!policyOK(active()))throw Error('Local subscription permission is not enabled for this account');
     if(!(await models()).some(m=>m.id===model))throw Error('Model unavailable for this ChatGPT account');
-    if(!policyOK(active()))throw Error('Spending verification expired');
+    if(!policyOK(active()))throw Error('Local subscription permission changed');
     return access();
   }
   async function logout() {

@@ -18,6 +18,18 @@ try{
   assert.equal((await request('/app',{'x-view-token':token,origin:'https://evil.invalid'},{op:'chats'})).status,403);
   assert.equal((await request('/',{host:'evil.invalid'})).status,403);
  });
+ await test('review session survives refresh but retains exact Origin, Host and token checks',async()=>{
+  const first=await request('/control',{'x-view-token':token,origin:'http://127.0.0.1:3188'},{op:'list'});
+  const set=first.headers['set-cookie'][0];assert.match(set,/HttpOnly/);assert.match(set,/SameSite=Strict/);assert.ok(!set.includes(token));assert.ok(!set.includes('Max-Age'));
+  const cookie=set.split(';')[0],headers={cookie,origin:'http://127.0.0.1:3188'};
+  assert.equal((await request('/control',headers,{op:'list'})).status,200);
+  assert.equal((await request('/control',{...headers,origin:'http://127.0.0.1:3189'},{op:'list'})).status,403);
+  assert.equal((await request('/control',{...headers,origin:'https://evil.invalid'},{op:'list'})).status,403);
+  assert.equal((await request('/control',{...headers,host:'evil.invalid'},{op:'list'})).status,403);
+  assert.equal((await request('/control',{...headers,'x-view-token':'wrong'},{op:'list'})).status,403);
+  assert.equal((await request('/control',{...headers,cookie:cookie+'; '+cookie},{op:'list'})).status,403);
+  assert.equal((await request('/control',{cookie},{op:'list'})).status,403);
+ });
  await test('view serves only fixed trusted assets and inert JSON with restrictive browser headers',async()=>{
   const page=await request('/');assert.equal(page.status,200);assert.match(page.headers['content-security-policy'],/script-src 'self'/);assert.match(page.headers['content-security-policy'],/img-src 'none'/);assert.match(page.headers['content-security-policy'],/frame-src 'none'/);assert.equal(page.headers['x-content-type-options'],'nosniff');
   assert.equal((await request('/app-owned-script.js')).status,404);

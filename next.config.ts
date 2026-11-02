@@ -5,6 +5,7 @@ import { MAX_IMPORT_BODY_BYTES } from "./lib/notes-import-limits.ts";
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string; homepage: string };
 
 const nextConfig: NextConfig = {
+	typescript: { tsconfigPath: process.env.LH_VISUAL_ISOLATED === "1" ? "tsconfig.app.json" : "tsconfig.json" },
 	// Public build metadata only; no new runtime Electron version API.
 	env: { LH_VERSION: pkg.version, LH_HOMEPAGE: pkg.homepage },
 	// Leave multipart headroom above the 25 MiB file allowance. This is a
@@ -16,7 +17,7 @@ const nextConfig: NextConfig = {
 	// on 127.0.0.1. Harmless for plain web deploys (extra build output).
 	// The manual copies the docs require — public/ and .next/static — are
 	// done by scripts/build-server.mjs.
-	output: "standalone",
+	output: process.env.LH_VISUAL_ISOLATED === "1" ? undefined : "standalone",
 	// SAFETY (empirically verified 2026-09-17): without this, output file
 	// tracing sweeps the repo's real data/ — chat records, graph ledgers —
 	// INTO the standalone bundle. A shipped desktop app would carry the

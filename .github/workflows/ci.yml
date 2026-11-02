@@ -37,6 +37,8 @@ jobs:
         env:
           NODE_ENV: test
       - run: npm run lint
+      - name: Legacy visual gateway traversal and export-header regressions
+        run: python3 security/visual/test_gateway_security.py
 
   standalone:
     name: Standalone (${{ matrix.platform }})

@@ -139,9 +139,9 @@ it("25 MiB is per file, not per selection; oversized files fail locally while sm
 	await submit([new File([new Uint8Array(MAX_IMPORT_BYTES + 1)], "textbook.md"), new File([half], "a.md"), new File([half], "b.md")]);
 	assert.deepEqual(sent, ["a.md", "b.md"]); assert.deepEqual(current.errors, ["textbook.md: Too big. Max 25 MB."]);
 });
-it("picker stays enabled during imports, offers Files/Folder, and accepts only prepared text", () => {
+it("picker stays enabled during imports, offers Files/Folder, and accepts PDFs and prepared text", () => {
 	const html = renderToStaticMarkup(<NotesImportControl importing onImportFiles={() => {}} />);
-	assert.match(html, /webkitdirectory/); assert.match(html, /accept=".md,.markdown,.txt"/); assert.doesNotMatch(html, /disabled/);
+	assert.match(html, /webkitdirectory/); assert.match(html, /accept=".pdf,.md,.markdown,.txt"/); assert.doesNotMatch(html, /disabled/);
 });
 it("alerts/notices stay plain and escaped", () => {
 	assert.equal(renderToStaticMarkup(<NotesImportErrors errors={[]} />), "");

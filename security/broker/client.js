@@ -27,7 +27,7 @@
   if(s.active!==activeId){$('accounts').value=s.active??'';activeId=s.active;$('authorize-link').hidden=true;$('authorize-link').removeAttribute('href')}
   const active=s.accounts.find(a=>a.id===s.active);
   $('account-status').textContent=s.signedIn?(s.planPermission?`Signed in with ChatGPT plan permission. Active account: ${active?.email??active?.clientId??''}.`:'Signed in; ChatGPT plan permission was not granted.'):'Sign-in required.';
-  $('spending-status').textContent=s.spendingLocked?'Inference locked: included-plan-only spending settings need independent verification.':'Using ChatGPT plan. Independent spending verification is current; every outgoing request still needs approval.';
+  $('spending-status').textContent=s.spendingLocked?'Inference locked: spending settings need confirmation.':'Using ChatGPT plan. Spending settings are confirmed for this session; every outgoing request still needs approval.';
   if(!s.signedIn||!s.planPermission||s.spendingLocked)$('send').disabled=true;
   const signature=JSON.stringify([s.active,s.signedIn,s.planPermission]);
   if(signature!==accountSignature){

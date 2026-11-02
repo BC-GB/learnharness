@@ -1,3 +1,4 @@
+import { isolatedRendererEnabled } from "./render-client.ts";
 import type { PiEngine } from "../models.ts";
 import type { SearchProvider } from "../../core/search.ts";
 import {
@@ -239,7 +240,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 								};
 			await finishJob(jobId, failure);
 		};
-		if (job.kind === "pdf") {
+		if (job.kind === "pdf" && !isolatedRendererEnabled()) {
 			await refuse("PDF processing is disabled: an isolated parser is required.");
 			return;
 		}

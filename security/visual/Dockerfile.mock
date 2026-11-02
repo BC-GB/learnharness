@@ -1,0 +1,4 @@
+ARG BROKER_IMAGE
+FROM ${BROKER_IMAGE}
+COPY mock-provider.mjs /broker-code/mock-provider.mjs
+CMD ["node", "mock-provider.mjs"]
