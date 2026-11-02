@@ -254,6 +254,16 @@ export function parseAppearanceSettingsBody(body: unknown): SettingsBodyResult<A
 		}
 		settings.proseFontSize = raw.proseFontSize;
 	}
+	if (raw.readingWidth !== undefined) {
+		if (typeof raw.readingWidth !== "number" || !Number.isInteger(raw.readingWidth) || raw.readingWidth < 560 || raw.readingWidth > 1200) {
+			return { ok: false, error: "readingWidth must be an integer between 560 and 1200" };
+		}
+		settings.readingWidth = raw.readingWidth;
+	}
+	if (raw.readingCentered !== undefined) {
+		if (typeof raw.readingCentered !== "boolean") return { ok: false, error: "readingCentered must be a boolean" };
+		settings.readingCentered = raw.readingCentered;
+	}
 	if (raw.sessionNameSerif !== undefined) {
 		if (typeof raw.sessionNameSerif !== "boolean") {
 			return { ok: false, error: "sessionNameSerif must be a boolean" };
