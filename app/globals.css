@@ -217,10 +217,22 @@ body {
 /* Compact tables start with the surrounding prose. Intrinsically wide tables
    may expand into the visual frame, then scroll inside their own wrapper. */
 .lh-reading-transcript .lh-prose [data-testid="md-table"] {
-	width: max-content;
-	min-width: min(100%, var(--lh-reading-width, 864px));
+	width: min(100%, var(--lh-reading-width, 864px));
+	min-width: 0;
 	max-width: 100%;
 	margin-inline: var(--lh-reading-margin, auto);
+}
+
+/* Wrap prose in table cells rather than expanding the reading frame. */
+.lh-prose [data-testid="md-table"] table {
+ width: 100%;
+ table-layout: fixed;
+}
+.lh-prose [data-testid="md-table"] :where(th, td),
+.lh-prose [data-testid="md-table"] :where(th, td) :where(p, a, code) {
+ min-width: 0;
+ white-space: normal;
+ overflow-wrap: anywhere;
 }
 
 /* Session-name weight (owner, fix wave round 3): with the serif toggle
