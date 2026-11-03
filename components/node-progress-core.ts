@@ -1,108 +1,93 @@
-/** Browser-only coverage projection. Never written into the conversation,
- * plan, compaction summary or model request. Reads existing UI parts only. */
+/** Read-only browser projection. Never enters the teacher's context. */
 import { derivePlanStatuses, textPartMessageId, type PlanTree } from "@/src/core";
 
-export interface ProgressPart {
-	type: string;
-	id?: string;
-	text?: string;
-	state?: string;
-	sourceMessageId?: string;
-	input?: unknown;
-	output?: unknown;
-}
+export interface ProgressPart { type: string; id?: string; text?: string; input?: unknown }
 export interface ProgressMessage { id: string; role: string; parts: readonly ProgressPart[] }
-export interface CoveredSection { title: string; messageId: string | null }
-export interface NodeCheck {
-	id: string;
-	question: string;
-	status: "correct" | "incorrect" | "unsure" | "answered" | "pending" | "dismissed" | "failed";
-	note?: string;
-}
-export interface NodeCoverage {
-	id: string;
-	title: string;
-	sections: CoveredSection[];
-	checks: NodeCheck[];
-}
-type ObjectValue = Record<string, unknown>;
-function object(value: unknown): ObjectValue {
-	return value !== null && typeof value === "object" && !Array.isArray(value) ? value as ObjectValue : {};
+export interface ConceptLabel { name: string; provenance: readonly { chatId: string; messageId: string }[] }
+export interface NodeCoverage { id: string; title: string; ideas: string[] }
+
+function topicLabel(value: string): string | null {
+ const label = value.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\$([^$]+)\$/g, "$1")
+  .replace(/[*`]/g, "").replace(/^\s*(?:\d+[.)]|[①-⑳])\s*/, "")
+  .replace(/^week\s+\d+\s*:\s*/i, "").split(/:\s+/)[0]!.replace(/[:.]+$/, "").trim();
+ // Select named topics rather than rhetorical headings, example steps or
+ // equation fragments. This is conservative selection, not a summarizer.
+ if (!label || label.length < 2 || label.length > 72 || label.split(/\s+/).length > 8 || /[?!=<>\\]/.test(label)) return null;
+ if (/^(?:how|what|why|when|where|which|who|did|does|do|can|could|should|if|yes|no|now|next|keep|apply|compare|suppose|translate|separate|read|name and purpose|one month|the two words|the question|the distinction|the building blocks|the whole process|your proposed options)\b/i.test(label)) return null;
+ if (/^(?:given|required|solution|interpretation|question|answer|source|sources|summary|worked example|worked forecast|example|step|rule|option)(?:\s+[A-Z\d])?$/i.test(label)) return null;
+ if (/\b(?:is|are|was|were|does|means|chooses|must|should|would|cannot|isn.t|doesn.t)\b/i.test(label)) return null;
+ return label;
 }
 
-/** Extract literal headings, not an AI-generated claim that a topic is complete.
- * Code examples, source footers and generic worked-answer scaffolding do not
- * become topic names. Plain React text rendering keeps any markup inert. */
-export function sectionHeadings(text: string): string[] {
-	const headings: string[] = [];
-	let fence: string | null = null;
-	for (const line of text.split(/\r?\n/)) {
-		const marker = line.match(/^\s*(`{3,}|~{3,})/);
-		if (marker) {
-			if (fence === null) fence = marker[1]![0]!;
-			else if (marker[1]![0] === fence) fence = null;
-			continue;
-		}
-		if (fence) continue;
-		const match = line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
-		if (!match) continue;
-		const title = match[1]!.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`]/g, "").trim();
-		const bare = title.replace(/^[\d①-⑳]+[.)\s:]*/, "").replace(/[:?!.]+$/, "").trim();
-		if (!bare || /^(?:given|required|question|solution|answer|interpretation|source(?:s)?|worked example|worked forecast|the building blocks|the distinction|the whole process|summary)$/i.test(bare)) continue;
-		headings.push(title.length > 180 ? title.slice(0, 177) + "…" : title);
-	}
-	return headings;
+/** Explicitly named definitions only, while existing concept extraction catches up. No inferred
+ * syllabus, new vocabulary, free-form summary or model request. */
+export function mainIdeaLabels(text: string): string[] {
+ const labels: string[] = [];
+ let fence: { char: string; length: number } | null = null;
+ for (const line of text.split(/\r?\n/)) {
+  const marker = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
+  if (marker) {
+   const delimiter = marker[1]!;
+   if (!fence) fence = { char: delimiter[0]!, length: delimiter.length };
+   else if (delimiter[0] === fence.char && delimiter.length >= fence.length && !marker[2]!.trim()) fence = null;
+   continue;
+  }
+  if (fence) continue;
+  for (const match of line.matchAll(/\*\*([^*\n]+)\*\*/g)) {
+   const rest = line.slice(match.index! + match[0].length);
+   if (!/[:：]\s*$/.test(match[1]!) && !/^\s*(?:[:：]|(?:means?|is|are|refers?|describes?|measures?|occurs?)\b)/i.test(rest)) continue;
+   const label = topicLabel(match[1]!); if (label && /^\p{Lu}/u.test(label)) labels.push(label);
+  }
+ }
+ return labels;
 }
 
-export function deriveNodeCoverage(tree: PlanTree, messages: readonly ProgressMessage[]): {
-	current: string | null;
-	nodes: NodeCoverage[];
-} {
-	const nodes = tree.nodes.map(n => ({ id: n.id, title: n.title, sections: [] as CoveredSection[], checks: [] as NodeCheck[] }));
-	const byId = new Map(nodes.map(n => [n.id, n]));
-	const seen = new Map(nodes.map(n => [n.id, new Set<string>()]));
-	let active: string | null = null;
-	let pending: CoveredSection[] = [];
-	function flush(nodeId: string | null) {
-		const node = nodeId ? byId.get(nodeId) : undefined;
-		if (node) for (const section of pending) {
-			const key = section.title.toLocaleLowerCase().replace(/^[\d①-⑳]+[.)\s:]*/, "");
-			if (seen.get(node.id)!.has(key)) continue;
-			seen.get(node.id)!.add(key);
-			node.sections.push(section);
-		}
-		pending = [];
-	}
-	for (const message of messages) {
-		if (message.role !== "assistant") continue;
-		for (const [index, part] of message.parts.entries()) {
-			if (part.type === "text" && typeof part.text === "string") {
-				const messageId = part.sourceMessageId ?? textPartMessageId(part.id);
-				pending.push(...sectionHeadings(part.text).map(title => ({ title, messageId })));
-				continue;
-			}
-			if (part.type !== "tool-quiz" && part.type !== "tool-explain") continue;
-			const input = object(part.input);
-			if (typeof input.nodeId !== "string" || !byId.has(input.nodeId)) continue;
-			// A check follows the explanation it assesses. A prediction precedes
-			// its teaching; do not credit the previous node's prose to that node.
-			flush(input.type === "predict" ? active : input.nodeId);
-			active = input.nodeId;
-			if (typeof input.question !== "string" || !input.question.trim()) continue;
-			const output = object(part.output);
-			let status: NodeCheck["status"] = "pending";
-			if (part.state === "output-error") status = "failed";
-			else if (output.dismissed === true) status = "dismissed";
-			else if (part.state === "output-available") {
-				status = output.dontKnow === true ? "unsure" : output.correct === true ? "correct" : output.correct === false ? "incorrect" : "answered";
-			}
-			const note = typeof output.readingThinking === "string" && output.readingThinking.trim() ? output.readingThinking.trim() : undefined;
-			byId.get(active)!.checks.push({ id: part.id ?? `${message.id}-${index}`, question: input.question.trim(), status, ...(note ? { note } : {}) });
-		}
-	}
-	flush(active);
-	// Keep the same navigation semantics as the harness. This projection never
-	// turns a correct answer into a mastery/completion flag.
-	const current = derivePlanStatuses(tree, messages.map(m => ({ parts: [...m.parts] }))).current;
-	return { current, nodes };
+export function deriveNodeCoverage(tree: PlanTree, messages: readonly ProgressMessage[], concepts: readonly ConceptLabel[] = [], chatId?: string): { current: string | null; nodes: NodeCoverage[] } {
+ const nodes = tree.nodes.map(n => ({ id: n.id, title: n.title, ideas: [] as string[] }));
+ const byId = new Map(nodes.map(n => [n.id, n]));
+ const sources = new Map(nodes.map(n => [n.id, new Set<string>()]));
+ const seen = new Map(nodes.map(n => [n.id, new Set<string>()]));
+ let active: string | null = null;
+ let pending: { labels: string[]; source: string | null }[] = [];
+ function flush(nodeId: string | null) {
+  const node = nodeId ? byId.get(nodeId) : undefined;
+  if (node) for (const entry of pending) {
+   if (entry.source) sources.get(node.id)!.add(entry.source);
+   for (const idea of entry.labels) {
+    const key = idea.toLocaleLowerCase();
+    if (key === node.title.toLocaleLowerCase() || seen.get(node.id)!.has(key)) continue;
+    seen.get(node.id)!.add(key);node.ideas.push(idea);
+   }
+  }
+  pending = [];
+ }
+ for (const message of messages) {
+  if (message.role !== "assistant") continue;
+  for (const part of message.parts) {
+   if (part.type === "text" && typeof part.text === "string") { pending.push({labels: mainIdeaLabels(part.text),source: textPartMessageId(part.id)}); continue; }
+   if (part.type !== "tool-quiz" && part.type !== "tool-explain") continue;
+   const input = part.input as { nodeId?: unknown; type?: unknown } | undefined;
+   if (typeof input?.nodeId !== "string" || !byId.has(input.nodeId)) continue;
+   // Existing position tags only: checks follow teaching; predictions precede
+   // it. Question results, notes and grades are never read by this view.
+   flush(input.type === "predict" ? active : input.nodeId);
+   active = input.nodeId;
+  }
+ }
+ flush(active);
+ // Reuse the existing extractor's stable, short proposition names. No
+ // extraction is triggered here. Provenance confines them to this chat/node.
+ for (const node of nodes) {
+  const sourceIds = sources.get(node.id)!;
+  const saved = concepts.filter(c => c.provenance.some(p => p.chatId === chatId && p.messageId !== "" && sourceIds.has(p.messageId)));
+  if (saved.length) {
+   const names = saved.map(c => c.name.trim()).filter(name => name.length > 1 && name.length <= 100 && /\p{L}/u.test(name));
+   // Existing concept extraction supplies stable semantic names. Until a
+   // node has extracted concepts, its explicit definition names are the
+   // lightweight fallback. Never turn every heading into another item.
+   if (names.length) node.ideas = [...new Map(names.map(name => [name.toLocaleLowerCase(),name])).values()];
+  }
+ }
+ const current = derivePlanStatuses(tree, messages.map(m => ({ parts: [...m.parts] }))).current;
+ return { current, nodes };
 }

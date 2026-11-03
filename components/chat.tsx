@@ -1396,7 +1396,7 @@ export function Chat({
 					)}
 				</TopBar>
 
-				{kind !== "practice" && planTree && <NodeProgress key={chatId} tree={planTree} messages={messages} />}
+				{kind !== "practice" && planTree && <NodeProgress key={chatId} tree={planTree} messages={messages} chatId={chatId} refreshKey={coverageTick} />}
 				<SessionFind scopeRef={sessionFindScopeRef} scrollContextRef={scrollContextRef} />
 				<div ref={sessionFindScopeRef} className="relative flex min-h-0 flex-1">
 				<Conversation className="h-full min-w-0 flex-1" initial="instant" contextRef={scrollContextRef}>
