@@ -56,6 +56,8 @@ The server owns the transcript. `POST /api/chat` carries `{chatId, input}`, not 
 
 The system prompt and tool declarations are seeded by Pi at agent construction. That synthetic system message is filtered out at settlement, so every new agent receives fresh instructions rather than replaying old declarations. Rebuilding the application Agent does not require every provider transport to be stateless: the Claude Code adapter can retain an eligible live CLI process behind this boundary (see its [lifecycle reference](claude-code.md)).
 
+The optional node-progress panel is a browser-only projection (`components/node-progress-core.ts`). It uses the existing quiz/explain `nodeId` calls for position, groups literal lesson headings around those checks, and displays saved answer outcomes and reading notes. A check groups the preceding explanation; a prediction switches position before the new explanation. These groupings are navigation aids, not a fixed within-node syllabus or a mastery/completion ledger. The panel writes only its collapse preference to browser storage. It does not append messages, edit the plan, change prompts, call a provider or contribute to compaction/model context.
+
 ### Admission, execution and settlement
 
 `src/server/chat-handler.ts` composes the turn:
