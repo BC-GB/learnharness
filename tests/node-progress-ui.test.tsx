@@ -20,7 +20,8 @@ test("only current-node title and topic labels appear, with no navigation or tra
  assert.match(markup,/Inference/);assert.match(markup,/Standard errors/);
  assert.doesNotMatch(markup,/Sample variation|<a\b|<select|Recent checks|reading notes|answered checks|mastery|score|%/i);
  const unsafe={...tree,nodes:[{id:"a",title:"<script>alert(1)</script>"}]};
- assert.doesNotMatch(renderToStaticMarkup(<NodeProgress tree={unsafe} messages={messages.slice(0,1)}/>),/<script>/);
+ const escaped=renderToStaticMarkup(<NodeProgress tree={unsafe} messages={messages.slice(0,1)}/>);
+ assert.equal(parseHTML(escaped).document.querySelector("script"),null);assert.ok(escaped.includes("&lt;script&gt;"));
 });
 test("hide/show is local UI state, with zero requests or storage and transcript changes",async()=>{
  const dom=parseHTML("<html><body><div id='test'></div></body></html>");
