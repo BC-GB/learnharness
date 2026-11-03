@@ -1,5 +1,7 @@
 import { isolatedRender, isolatedRendererEnabled } from "./render-client.ts";
 import { approvedPdfBytes } from "./pdf-ops.ts";
+import path from "node:path";
+import { ROOT } from "../../../config.ts";
 export interface DemoRunResult {
 	/** console.error / console messages of type "error". */
 	consoleErrors: string[];
@@ -232,7 +234,16 @@ async function renderSvg(svg: string, opts: RenderSvgOptions = {}): Promise<Buff
  if (![width,height].every(n => Number.isFinite(n) && n > 0 && n <= 4096) || width * height > 16000000) throw new Error("SVG dimensions exceed limits.");
  try {
   const { Resvg } = await import("@resvg/resvg-js");
-  const resvg = new Resvg(svg, { fitTo: { mode: "width", value: width }, background: "white", font: { loadSystemFonts: true } });
+  // The contained runtime deliberately has no system fonts. Load only the
+  // app's shipped fonts, anchored to its read-only assets rather than cwd or
+  // learner input, so preview labels survive minimal images and desktop bundles.
+  const resvg = new Resvg(svg, { fitTo: { mode: "width", value: width }, background: "white", font: {
+   loadSystemFonts: false,
+   fontDirs: [path.join(ROOT, "public", "fonts")],
+   defaultFontFamily: "Source Sans 3",
+   sansSerifFamily: "Source Sans 3",
+   monospaceFamily: "JetBrains Mono",
+  } });
   if (resvg.width > 4096 || resvg.height > 4096 || resvg.width * resvg.height > 16000000) throw new Error("SVG dimensions exceed limits.");
   return providerSafePng(resvg.render().asPng());
  } catch { throw new Error(BROWSER_DISABLED_MESSAGE + " SVG could not be rendered safely."); }

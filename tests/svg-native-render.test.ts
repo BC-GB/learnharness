@@ -3,9 +3,11 @@
  * rasterizes in-process; the old Chrome path stays as fallback for
  * exotic-SVG parse failures. These tests pin the native path against real
  * SVGs: attribute-sized, viewBox-only (the 900px default), text-bearing
- * (system fonts), and the canonical single-IDAT PNG form.
+ * (bundled fonts even in a runtime without system fonts), and the canonical
+ * single-IDAT PNG form.
  */
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { realHeadless } from "../src/agent/subagents/headless.ts";
 
@@ -55,7 +57,7 @@ describe("native renderSvg (resvg in-process, browser fallback)", () => {
 		assert.equal(f.w, 500);
 	});
 
-	it("text-bearing SVG renders with system fonts (non-trivial output)", async () => {
+	it("text-bearing SVG renders with bundled fonts (non-trivial output)", async () => {
 		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100">
   <rect width="300" height="100" fill="#ffffff"/>
   <text x="150" y="60" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="32" fill="#111111">Harness</text>
@@ -65,5 +67,21 @@ describe("native renderSvg (resvg in-process, browser fallback)", () => {
 		assert.equal(f.w, 300);
 		// A blank 300x100 white PNG is ~300 bytes; glyphs push it well past.
 		assert.ok(png.length > 1000, `text rendered (png ${png.length} bytes > 1000)`);
+	});
+
+	it("renders real label ink from bundled fonts independently of the working directory", async () => {
+		const before = process.cwd();
+		try {
+			process.chdir(fileURLToPath(new URL("../public/", import.meta.url)));
+			const frame = '<svg xmlns="http://www.w3.org/2000/svg" width="440" height="110" viewBox="0 0 440 110"><rect width="440" height="110" fill="white"/>';
+			const blank = await realHeadless.renderSvg(frame + '</svg>');
+			for (const family of ["sans-serif", "monospace"]) {
+				const labelled = await realHeadless.renderSvg(frame + `<text x="12" y="65" font-family="${family}" font-size="36" fill="black">Fit cost = 0.25; β = 0</text></svg>`);
+				assert.notDeepEqual(labelled, blank, `${family} labels must not disappear`);
+				assert.ok(labelled.length > blank.length + 1000, `${family} produces glyphs rather than a blank PNG`);
+			}
+		} finally {
+			process.chdir(before);
+		}
 	});
 });
