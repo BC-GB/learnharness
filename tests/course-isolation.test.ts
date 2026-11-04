@@ -68,6 +68,18 @@ const request = (course: string, tail: string, init?: RequestInit) => new Reques
 const context = (id: string) => ({ params: Promise.resolve({ id }) });
 after(() => { for (const scope of scopes) runInCourse(scope, () => { endTurn(shared); unregisterTurn(shared); }); fs.rmSync(fixture, { recursive: true, force: true }); });
 
+test("course route preserves synchronous adapters and catches asynchronous course errors", async () => {
+	const { CourseError } = await import("../src/store/courses.ts");
+	const sync = courseRoute(() => Response.json({ course: currentCourse()!.id }));
+	const response = sync(request(b.id, "/api/fixture"));
+	assert.ok(response instanceof Response);
+	assert.deepEqual(await response.json(), { course: b.id });
+	const asyncHandler = courseRoute(async () => { await Promise.resolve(); throw new CourseError("Unavailable fixture.", 503); });
+	const rejected = await asyncHandler(request(b.id, "/api/fixture"));
+	assert.equal(rejected.status, 503);
+	assert.equal((await rejected.json()).code, "course_unavailable");
+});
+
 test("course creation retains legacy state and copies only general preferences", () => {
 	assert.deepEqual(fs.readFileSync(path.join(data, "settings.json")), originalSettings);
 	assert.equal(a.dataRoot, data);

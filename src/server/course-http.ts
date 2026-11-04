@@ -17,17 +17,25 @@ export function requestedCourse(headers: Headers, url?: string): string {
 /** Bind BEFORE the first store access. Rejections never fall back to the
  * legacy course. The binding survives streamed/background continuations. */
 export function courseRoute<F extends (...args: any[]) => any>(handler: F): F {
-	return (async (...args: Parameters<F>) => {
+	const reject = (error: unknown) => {
+		if (error instanceof CourseError) return Response.json({ error: error.message, code: "course_unavailable" }, { status: error.status, headers: { "Cache-Control": "no-store" } });
+		throw error;
+	};
+	return ((...args: Parameters<F>) => {
 		try {
 			const request = args[0] as Request | undefined;
-			if (!request) return await handler(...args); // framework-free fixture/internal call retains its explicit context
-			const scope = resolveCourse(requestedCourse(request.headers, request.url));
-			if (currentCourse() && currentCourseId() !== scope.id) throw new CourseError("Course selection changed inside a bound request.");
-			return await runInCourse(scope, () => handler(...args));
-		} catch (error) {
-			if (error instanceof CourseError) return Response.json({ error: error.message, code: "course_unavailable" }, { status: error.status, headers: { "Cache-Control": "no-store" } });
-			throw error;
-		}
+			const invoke = () => handler(...args);
+			let result;
+			if (!request) result = invoke(); // framework-free fixture/internal call retains its explicit context
+			else {
+				const scope = resolveCourse(requestedCourse(request.headers, request.url));
+				if (currentCourse() && currentCourseId() !== scope.id) throw new CourseError("Course selection changed inside a bound request.");
+				result = runInCourse(scope, invoke);
+			}
+			// Preserve synchronous GET adapters used by both route composition and
+			// callers, while retaining fail-closed errors after an async handler.
+			return result instanceof Promise ? result.catch(reject) : result;
+		} catch (error) { return reject(error); }
 	}) as F;
 }
 

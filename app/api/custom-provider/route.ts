@@ -8,4 +8,3 @@ export const GET = courseRoute(customProviderGet);
 export const POST = courseRoute(customProviderMutation);
 export const PATCH = courseRoute(customProviderMutation);
 export const DELETE = courseRoute(customProviderMutation);
-
