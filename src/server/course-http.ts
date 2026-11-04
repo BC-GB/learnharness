@@ -1,6 +1,6 @@
 import { CourseError, resolveCourse } from "../store/courses.ts";
 import { DEFAULT_COURSE_ID, isCourseId } from "../core/courses.ts";
-import { runInCourse, currentCourseId } from "../runtime/course-context.ts";
+import { runInCourse, currentCourseId, currentCourse } from "../runtime/course-context.ts";
 import { setEventScopeProvider } from "../core/events.ts";
 
 setEventScopeProvider(currentCourseId);
@@ -22,6 +22,7 @@ export function courseRoute<F extends (...args: any[]) => any>(handler: F): F {
 			const request = args[0] as Request | undefined;
 			if (!request) return await handler(...args); // framework-free fixture/internal call retains its explicit context
 			const scope = resolveCourse(requestedCourse(request.headers, request.url));
+			if (currentCourse() && currentCourseId() !== scope.id) throw new CourseError("Course selection changed inside a bound request.");
 			return await runInCourse(scope, () => handler(...args));
 		} catch (error) {
 			if (error instanceof CourseError) return Response.json({ error: error.message, code: "course_unavailable" }, { status: error.status, headers: { "Cache-Control": "no-store" } });

@@ -51,7 +51,7 @@ export async function uploadCourseMaterials(request: Request): Promise<string[]>
 	const root = library();
 	const body = await boundedCourseBody(request, MAX_COURSE_UPLOAD);
 	let form;
-	try { form = await new Response(body, { headers: { "Content-Type": request.headers.get("content-type") ?? "" } }).formData(); }
+	try { form = await new Response(new Uint8Array(body), { headers: { "Content-Type": request.headers.get("content-type") ?? "" } }).formData(); }
 	catch { throw new CourseError("Choose files to upload."); }
 	const entries = form.getAll("files");
 	if (!entries.length || entries.length > 25 || entries.some((file) => !(file instanceof File))) throw new CourseError("Choose between 1 and 25 files.");

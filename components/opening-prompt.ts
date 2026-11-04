@@ -4,6 +4,7 @@
  * the chat page loads. Storage is required for automatic delivery, not an
  * optional best-effort side effect of navigating away from the source draft.
  */
+import { documentCourse } from "@/lib/course-client";
 export const OPENING_PROMPT_FAILURE = "Couldn’t open the session. Your message is still here. Try sending again.";
 
 export interface OpeningPrompt {
@@ -12,7 +13,7 @@ export interface OpeningPrompt {
 	attempted: boolean;
 }
 
-const keyFor = (id: string) => `lh.openingPrompt.${id}`;
+const keyFor = (id: string) => documentCourse() === "legacy" ? `lh.openingPrompt.${id}` : `lh.openingPrompt.${documentCourse()}.${id}`;
 
 export function stashOpeningPrompt(id: string, text: string, attempted = false): boolean {
 	try {
