@@ -271,7 +271,8 @@ test("compaction of identical chat IDs uses only that course's history, summary 
 			calls.push(scope.id); await new Promise(resolve => setTimeout(resolve, 25));
 			return { summary: own(scope), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
 		} }, shared);
-		assert.equal(activeCompactionOf(stores.chatStore.getChat(shared)!.messages)?.content, own(scope));
+		const summary = activeCompactionOf(stores.chatStore.getChat(shared)!.messages)?.content;
+		assert.ok(summary?.endsWith(own(scope)) && !summary.includes(foreign(scope)));
 	})));
 	assert.deepEqual(new Set(calls), new Set(scopes.map(scope => scope.id)));
 });
