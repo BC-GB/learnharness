@@ -186,9 +186,8 @@ export async function runPdfReaderAgent(
 		return { path: pdfPath, question: input.question, brief: `PDF failed: ${openError}`, pagesRead: [], pagesConsulted: [] };
 	}
 	const headless = opts.headless ?? getHeadless();
-	// No Chrome gate (Wave E, 2026-10-10): pdf_render is native now
-	// (pdfjs paints into @napi-rs/canvas in-process) — the whole pdf-reader
-	// runs browser-free; text tools always worked without one.
+	// Approved bytes go to the separate renderer; PDF parsing and page
+	// rasterization never run in the app process.
 
 	const totalPages = (await pdfInfo(pdfPath)).page_count;
 	const tools = createPdfTools(pdfPath);
