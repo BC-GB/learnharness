@@ -70,11 +70,11 @@ after(() => { for (const scope of scopes) runInCourse(scope, () => { endTurn(sha
 
 test("course route preserves synchronous adapters and catches asynchronous course errors", async () => {
 	const { CourseError } = await import("../src/store/courses.ts");
-	const sync = courseRoute(() => Response.json({ course: currentCourse()!.id }));
+	const sync = courseRoute((_request: Request) => Response.json({ course: currentCourse()!.id }));
 	const response = sync(request(b.id, "/api/fixture"));
 	assert.ok(response instanceof Response);
 	assert.deepEqual(await response.json(), { course: b.id });
-	const asyncHandler = courseRoute(async () => { await Promise.resolve(); throw new CourseError("Unavailable fixture.", 503); });
+	const asyncHandler = courseRoute(async (_request: Request): Promise<Response> => { await Promise.resolve(); throw new CourseError("Unavailable fixture.", 503); });
 	const rejected = await asyncHandler(request(b.id, "/api/fixture"));
 	assert.equal(rejected.status, 503);
 	assert.equal((await rejected.json()).code, "course_unavailable");
