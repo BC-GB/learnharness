@@ -13,6 +13,7 @@ import { buildSubagentSteer, type JobKind, type SteerMessage } from "../src/core
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lh-job-delivery-"));
 process.env.LH_DATA_DIR = path.join(directory, "data");
 process.env.LH_AUTH_FILE = path.join(directory, "auth.json");
+process.env.LH_SOURCE_ROOT = directory;
 fs.writeFileSync(process.env.LH_AUTH_FILE, "{}");
 const { stores } = await import("../src/server/stores.ts");
 const { jobTools } = await import("../src/agent/tools/jobs.ts");

@@ -13,9 +13,11 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { after, describe, it, type TestContext } from "node:test";
-import { removeLeftoverTemps, writeFileAtomicSync } from "../src/store/atomic-write.ts";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "lh-atomic-write-"));
+process.env.LH_DATA_DIR = root;
+process.env.LH_AUTH_FILE = path.join(root, "auth.json");
+const { removeLeftoverTemps, writeFileAtomicSync } = await import("../src/store/atomic-write.ts");
 after(() => fs.rmSync(root, { recursive: true, force: true }));
 const onWindows = { skip: process.platform !== "win32" && "Windows rename semantics" };
 
@@ -36,6 +38,20 @@ function modelWindows(t: TestContext): void {
 }
 
 describe("writeFileAtomicSync", () => {
+	it("refuses traversal, a sibling prefix and a parent symlink outside application state", (t) => {
+		const outside = fs.mkdtempSync(root + "-outside-");
+		t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+		const untouched = path.join(outside, "keep.json");
+		fs.writeFileSync(untouched, "original");
+		assert.throws(() => writeFileAtomicSync(untouched, "bad"), /outside the active/);
+		assert.throws(() => writeFileAtomicSync(path.join(root, "..", path.basename(outside), "keep.json"), "bad"), /outside the active/);
+		assert.throws(() => removeLeftoverTemps(untouched), /outside the active/);
+		const alias = path.join(root, "escape-alias");
+		fs.symlinkSync(outside, alias, process.platform === "win32" ? "junction" : "dir");
+		assert.throws(() => writeFileAtomicSync(path.join(alias, "keep.json"), "bad"), /parent escapes/);
+		assert.equal(fs.readFileSync(untouched, "utf8"), "original");
+		assert.deepEqual(fs.readdirSync(outside), ["keep.json"]);
+	});
 	it("replaces the file with exactly the given text and leaves no temp file", () => {
 		const file = target("record.json", "old");
 		writeFileAtomicSync(file, '{\n\t"é": "\u{1F600}"\n}');

@@ -31,14 +31,42 @@
 import fs from "node:fs"; // default import on purpose: tests patch fs.renameSync on this object, namespace imports would not see it
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { AUTH_FILE, PATHS } from "../../config.ts";
 
 const TEMP_MARKER = ".tmp-";
 const RENAME_RETRY_MS = 100;
+
+function canonicalDirectory(directory: string): string {
+	try { return fs.realpathSync(directory); }
+	catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		const parent = path.dirname(directory);
+		if (parent === directory) throw error;
+		return path.join(canonicalDirectory(parent), path.basename(directory));
+	}
+}
+
+/** The generic writer is still an application-state boundary. Callers may
+ * choose a record inside the active data root, never an arbitrary host path.
+ * The one configured auth file is a separate, exact-name exception. Check
+ * parent aliases too; replacing a destination symlink itself remains safe. */
+function statePath(file: string): string {
+	const absolute = path.resolve(file);
+	const auth = path.resolve(AUTH_FILE);
+	const root = path.resolve(PATHS.data);
+	if (absolute !== auth && !absolute.startsWith(root + path.sep)) throw new Error("Store path is outside the active application state.");
+	const allowed = absolute === auth ? path.dirname(auth) : root;
+	const parent = canonicalDirectory(path.dirname(absolute));
+	const canonical = canonicalDirectory(allowed);
+	if (parent !== canonical && !parent.startsWith(canonical + path.sep)) throw new Error("Store parent escapes the active application state.");
+	return absolute;
+}
 
 /** Replace `file` with `text` (UTF-8). Throws on failure, with the old file
  *  untouched, except when the in-place fallback fails midway: then the temp
  *  file beside it keeps the complete new bytes. */
 export function writeFileAtomicSync(file: string, text: string, options?: { mode?: number; allowInPlaceFallback?: boolean }): void {
+	file = statePath(file);
 	const tmp = `${file}${TEMP_MARKER}${randomUUID()}`;
 	let target: number;
 	try {
@@ -69,6 +97,7 @@ export function writeFileAtomicSync(file: string, text: string, options?: { mode
 /** Delete temp files that crashes left beside `file`. Call it after deleting `file`,
  *  or leftovers would keep the deleted record's newest bytes on disk. */
 export function removeLeftoverTemps(file: string): void {
+	file = statePath(file);
 	const prefix = `${path.basename(file)}${TEMP_MARKER}`;
 	let names: string[];
 	try {
