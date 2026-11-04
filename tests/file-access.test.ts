@@ -245,6 +245,9 @@ describe("live policy and all learner-source surfaces", () => {
 		const { jobStore } = await import("../src/store/jobs.ts");
 		const { jobTools } = await import("../src/agent/tools/jobs.ts");
 		const { createJobRunner } = await import("../src/agent/subagents/runner.ts");
+		// Importing the composition root installs its production provider.
+		// Reinstall this test's live provider before admission and queue execution.
+		setFileAccessPolicy(() => policy);
 		const faux = createFauxCore({ tokenSize: { min: 64, max: 64 } });
 		let calls = 0;
 		const engine = { model: faux.getModel(), streamFn: (() => { calls++; throw new Error("must not call model"); }) as typeof faux.streamSimple };

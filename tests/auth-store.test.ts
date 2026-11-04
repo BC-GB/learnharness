@@ -18,6 +18,7 @@ import { after, before, describe, it } from "node:test";
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lh-auth-store-"));
 process.env.LH_AUTH_FILE = path.join(TMP, "auth.json");
+process.env.LH_SOURCE_ROOT = TMP;
 
 // Import AFTER the env redirect — module-load-bound seam.
 const { authStore } = await import("../src/store/auth.ts");
