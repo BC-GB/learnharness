@@ -56,6 +56,8 @@ import { artifactRenderers } from "../components/artifacts/index.ts";
 process.env.OPENROUTER_API_KEY ??= "test-key-presence-gate";
 
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "lh-learner-images-"));
+const priorSourceRoot = process.env.LH_SOURCE_ROOT;
+process.env.LH_SOURCE_ROOT = scratch;
 const JOBS_DIR = path.join(PATHS.data, "jobs");
 const createdChats: string[] = [];
 const createdJobs: string[] = [];
@@ -63,6 +65,7 @@ const snapshots = new Map<string, ImageSnapshot>();
 const showImageTool = createShowImageTool({ chatId: "test", chatStore: { saveImageSnapshot: (_chatId, id, image) => snapshots.set(id, image) } });
 
 after(() => {
+	if (priorSourceRoot === undefined) delete process.env.LH_SOURCE_ROOT; else process.env.LH_SOURCE_ROOT = priorSourceRoot;
 	fs.rmSync(scratch, { recursive: true, force: true });
 	for (const id of createdChats) fs.rmSync(path.join(PATHS.chats, `${id}.json`), { force: true });
 	for (const id of createdJobs) fs.rmSync(path.join(JOBS_DIR, `${id}.json`), { force: true });
@@ -226,9 +229,9 @@ describe("learner image loader", () => {
 		await assert.rejects(checkLearnerImage(scratch), /not a regular file/);
 	});
 
-	it("resolves relative paths against the learner's home, like read", async () => {
+	it("resolves relative paths against the approved source library, like read", async () => {
 		await assert.rejects(checkLearnerImage("lh-no-such-image.png"), (err: Error) =>
-			err.message.includes(path.join(os.homedir(), "lh-no-such-image.png")),
+			err.message.includes(path.join(scratch, "lh-no-such-image.png")),
 		);
 	});
 });

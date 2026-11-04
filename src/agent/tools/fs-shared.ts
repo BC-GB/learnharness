@@ -172,9 +172,9 @@ export function resolveSourcePath(p?: string, policy: ResolvedFileAccessPolicy =
  if (p === "~" || p?.startsWith("~/") || p?.startsWith("~\\")) throw new Error("Home-directory expansion is disabled; use a path inside the approved source root.");
  const root = approvedSourceRoot();
  const candidate = path.resolve(root, p || ".");
- if (!isWithin(candidate, root)) throw new Error("Source access is restricted to the course library.");
+ if (!isWithin(candidate, root)) throw new Error("Access denied: source access is restricted to the course library.");
  const resolved = checkedSourcePath(candidate, sourcePathCheck());
- if (!isWithin(resolved, root)) throw new Error("Source access is restricted to the course library.");
+ if (!isWithin(resolved, root)) throw new Error("Access denied: source access is restricted to the course library.");
  return guardSourcePath(resolved, policy);
 }
 

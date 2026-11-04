@@ -217,6 +217,7 @@ describe("read (home-anchored re-port)", () => {
 describe("abort plumbing (the 2026-09-19 cascade fix)", () => {
 	it("walkFiles stops promptly when the signal aborts mid-walk", async () => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "lh-fs-abort-"));
+		process.env.LH_SOURCE_ROOT = root;
 		for (let i = 0; i < 20; i++) await fs.writeFile(path.join(root, `f${i}.txt`), "needle\n");
 		const ac = new AbortController();
 		let visited = 0;

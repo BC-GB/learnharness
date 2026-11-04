@@ -174,12 +174,12 @@ export async function runPdfReaderAgent(
 	input: PdfReaderInput,
 	opts: PdfReaderOptions = {},
 ): Promise<PdfResult> {
- if (!isolatedRendererEnabled()) return { path: input.path, question: input.question, brief: "PDF failed: PDF processing is disabled: an isolated parser is required.", pagesRead: [], pagesConsulted: [] };
  const maxIterations = Math.max(1, Math.min(opts.maxIterations ?? MAX_ITERATIONS, MAX_ITERATIONS));
  let pdfPath = input.path;
  let openError: string | null;
  try {
   pdfPath = resolveSourcePath(input.path);
+  if (!isolatedRendererEnabled()) return { path: pdfPath, question: input.question, brief: "PDF failed: PDF processing is disabled: an isolated parser is required.", pagesRead: [], pagesConsulted: [] };
   openError = await probeReadable(pdfPath);
  } catch (error) { openError = error instanceof Error ? error.message : String(error); }
 	if (openError) {

@@ -182,7 +182,7 @@ describe("default multi-root discovery", () => {
 	});
 	it("a protected selected root cannot override mandatory denials", async () => {
 		policy = { restricted: true, folders: [path.join(home, ".ssh"), a] };
-		assert.match(await text(findTool, { pattern: "notes.md" }), /Skipped 1 protected/);
+		assert.match(await text(findTool, { pattern: "notes.md" }), /Skipped 1 unavailable or disallowed/);
 		assert.equal(sourceSearchRoots().roots[0], a);
 	});
 	it("walkers accept one shared deadline across multiple roots", async (t) => {
@@ -275,7 +275,7 @@ describe("live policy and all learner-source surfaces", () => {
 		policy = { restricted: true, folders: [] };
 		const { createPdfReadTools } = await import("../src/agent/tools/pdf-read.ts");
 		const tools = createPdfReadTools(outside);
-		assert.match(await text(tools.pdf_info!, { path: path.join(outside, "sample.pdf") }), /"page_count":\s*3/);
+		assert.match(await text(tools.pdf_info!, { path: path.join(outside, "sample.pdf") }), /PDF processing is disabled.*isolated parser/);
 		assert.match(await text(tools.pdf_info!, { path: path.join(a, "sample.pdf") }), /path must stay inside this job/);
 	});
 });

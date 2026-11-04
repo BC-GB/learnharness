@@ -16,8 +16,11 @@ import type { JobRecord, ShowImageDetails } from "../src/core/contracts.ts";
 import type { JobStore } from "../src/core/ports.ts";
 
 const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "lh-image-snapshots-"));
+const priorSourceRoot = process.env.LH_SOURCE_ROOT;
+process.env.LH_SOURCE_ROOT = scratch;
 const chats: string[] = [];
 after(async () => {
+	if (priorSourceRoot === undefined) delete process.env.LH_SOURCE_ROOT; else process.env.LH_SOURCE_ROOT = priorSourceRoot;
 	for (const id of chats) chatStore.deleteChat(id);
 	await fs.rm(scratch, { recursive: true, force: true });
 });
@@ -165,9 +168,9 @@ describe("learner image source safety", () => {
 		try {
 			process.env.HOME = home;
 			const tool = createShowImageTool({ chatId: "never-written", chatStore: { saveImageSnapshot: () => assert.fail("must not save denied image") } });
-			await assert.rejects(tool.execute("denied", { path: "alias/private.png" }), /Access denied/);
+			await assert.rejects(tool.execute("denied", { path: path.join(home, "alias/private.png") }), /Access denied/);
 			const tools = jobTools({ chatId: "x", jobStore: { findJobByToolCallId: () => undefined } as unknown as JobStore, spawn: () => assert.fail("must not spawn") });
-			await assert.rejects(tools.visual!.execute("denied", { brief: "mark it", image: "alias/private.png" }), /Access denied/);
+			await assert.rejects(tools.visual!.execute("denied", { brief: "mark it", image: path.join(home, "alias/private.png") }), /Access denied/);
 		} finally { if (old === undefined) delete process.env.HOME; else process.env.HOME = old; }
 	});
 

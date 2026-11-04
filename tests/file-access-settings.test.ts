@@ -13,8 +13,8 @@ const data = path.join(root, "data");
 const auth = path.join(root, "auth.json");
 const a = path.join(home, "Study");
 const b = path.join(root, "Other");
-const prior = Object.fromEntries(["HOME", "USERPROFILE", "LH_AUTH_FILE", "LH_DATA_DIR"].map((key) => [key, process.env[key]]));
-Object.assign(process.env, { HOME: home, USERPROFILE: home, LH_AUTH_FILE: auth, LH_DATA_DIR: data });
+const prior = Object.fromEntries(["HOME", "USERPROFILE", "LH_AUTH_FILE", "LH_DATA_DIR", "LH_SOURCE_ROOT"].map((key) => [key, process.env[key]]));
+Object.assign(process.env, { HOME: home, USERPROFILE: home, LH_AUTH_FILE: auth, LH_DATA_DIR: data, LH_SOURCE_ROOT: root });
 for (const directory of [a, b, data]) await fs.mkdir(directory, { recursive: true });
 await fs.writeFile(auth, "{}\n");
 await fs.writeFile(path.join(a, "notes.md"), "synthetic study\n");
@@ -54,13 +54,13 @@ describe("strict persisted file-access policy", () => {
 	});
 	it("reads the latest policy for the next operation, not a cached sanitized default", async () => {
 		await stored({ version: 1, agent: { fileAccess: { restricted: true, folders: ["~/Study"] } } });
-		assert.equal(resolveSourcePath("Study/notes.md"), path.join(a, "notes.md"));
+		assert.equal(resolveSourcePath("home/Study/notes.md"), path.join(a, "notes.md"));
 		assert.throws(() => resolveSourcePath(path.join(b, "notes.md")), /allowed folders/);
 		await stored({ version: 1, agent: { fileAccess: { restricted: true, folders: [b] } } });
-		assert.throws(() => resolveSourcePath("Study/notes.md"), /allowed folders/);
+		assert.throws(() => resolveSourcePath("home/Study/notes.md"), /allowed folders/);
 		assert.equal(resolveSourcePath(path.join(b, "notes.md")), path.join(b, "notes.md"));
 		await stored({ version: 1, agent: { fileAccess: { restricted: false, folders: [b] } } });
-		assert.equal(resolveSourcePath("Study/notes.md"), path.join(a, "notes.md"));
+		assert.equal(resolveSourcePath("home/Study/notes.md"), path.join(a, "notes.md"));
 	});
 	it("malformed records and policies fail CLOSED with a safe actionable diagnostic", async () => {
 		for (const value of [null, [], 5, { agent: null }, { agent: [] }, { agent: { fileAccess: null } }, { agent: { fileAccess: { restricted: "yes", folders: [a] } } }, { agent: { fileAccess: { folders: [a, "relative"] } } }]) {
@@ -140,7 +140,7 @@ describe("settings HTTP and safe repair", () => {
 		assert.equal(response.status, 200);
 		assert.equal((await response.json()).fileAccessError, undefined);
 		assert.equal((await (await GET()).json()).fileAccessError, undefined);
-		assert.equal(resolveSourcePath("Study/notes.md"), path.join(a, "notes.md"));
+		assert.equal(resolveSourcePath("home/Study/notes.md"), path.join(a, "notes.md"));
 		assert.throws(() => resolveSourcePath(path.join(b, "notes.md")), /allowed folders/);
 		await fs.writeFile(SETTINGS_FILE, "broken JSON again");
 		writeSettings({ version: 1, agent: { fileAccess: { restricted: false, folders: [a] } } });

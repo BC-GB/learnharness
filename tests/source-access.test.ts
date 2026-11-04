@@ -189,8 +189,8 @@ describe("source access: canonical roots and all tool paths", () => {
 		await link(path.join(home, "notes", "topic.md"), alias);
 		assert.equal(resolveSourcePath(alias), path.join(home, "notes", "topic.md"));
 		assert.match(await text(readTool, { path: alias }), /ordinary study notes/);
-		await assert.rejects(readTool.execute!("s", { path: "notes/absent" }), /ENOENT/);
-		await assert.rejects(readTool.execute!("s", { path: "notes/keys/absent" }), denied);
+		await assert.rejects(readTool.execute!("s", { path: "home/notes/absent" }), /ENOENT/);
+		await assert.rejects(readTool.execute!("s", { path: "home/notes/keys/absent" }), denied);
 	});
 
 	for (const name of [".env", ".env.example", ".env.template", ".ENV.production"]) {
@@ -207,8 +207,8 @@ describe("source access: canonical roots and all tool paths", () => {
 		const ctx = { chatId: "synthetic", chatStore: { getChat: () => null } as unknown as ChatStore, jobStore: {} as JobStore, spawn: () => {}, deliver: () => {} };
 		for (const tools of [createProberTools(ctx), createTeacherTools(ctx), practiceTools(ctx)]) {
 			await assert.rejects(tools.read!.execute!("s", { path: auth }), denied);
-			await assert.rejects(tools.ls!.execute!("s", { path: "~/.ssh" }), denied);
-			await assert.rejects(tools.find!.execute!("s", { path: "~/.ssh", pattern: "*" }), denied);
+			await assert.rejects(tools.ls!.execute!("s", { path: path.join(home, ".ssh") }), denied);
+			await assert.rejects(tools.find!.execute!("s", { path: path.join(home, ".ssh"), pattern: "*" }), denied);
 			await assert.rejects(tools.grep!.execute!("s", { path: auth, pattern: "x" }), denied);
 		}
 		const model = createFauxCore({ tokenSize: { min: 64, max: 64 } }).getModel();
@@ -294,7 +294,7 @@ describe("source access: case-sensitive home-location variants", () => {
 				assert.match(pdf.brief, /^PDF failed: Access denied:/);
 			}
 			assert.equal(await text(grepTool, { path: root, pattern: "CASE_VARIANT_SECRET" }), "No matches found");
-			assert.match(await text(readTool, { path: "notes/topic.md" }), /ordinary study notes/);
+			assert.match(await text(readTool, { path: "home/notes/topic.md" }), /ordinary study notes/);
 		} finally {
 			t.mock.restoreAll();
 			await fs.unlink(upperSsh);
