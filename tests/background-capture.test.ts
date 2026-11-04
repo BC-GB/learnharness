@@ -348,6 +348,9 @@ test("recording failures and unserializable payloads never throw into a worker",
 
 test("enabling background capture cannot restore the disabled PDF reader", async (t) => {
 	const dir = setup(t, "all");
+	const sourceRoot = process.env.LH_SOURCE_ROOT;
+	process.env.LH_SOURCE_ROOT = dir;
+	t.after(() => { if (sourceRoot === undefined) delete process.env.LH_SOURCE_ROOT; else process.env.LH_SOURCE_ROOT = sourceRoot; });
 	const result = await runPdfReaderAgent({ path: "untrusted.pdf", question: "Fixture?" }, { engine: fakeEngine(true), headless });
 	assert.match(result.brief, /disabled/);
 	assert.deepEqual(fs.readdirSync(dir), []);

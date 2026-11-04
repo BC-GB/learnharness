@@ -1,9 +1,11 @@
+import { untrustedSource } from "./untrusted-source.ts";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Type } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute } from "../tool-execute.ts";
-import { capOutput, formatSize, MAX_OUTPUT_BYTES, resolveSourcePath } from "./fs-shared.ts";
+import { capOutput, formatSize, MAX_OUTPUT_BYTES, resolveSourcePath, sourceSearchRoots } from "./fs-shared.ts";
+import { resolvePolicy } from "./file-access.ts";
 
 /**
  * The ls tool — sources v1 (2026-09-19): a Node port of pi's
@@ -27,10 +29,19 @@ const lsInput = Type.Object({
 export const lsTool: AgentTool<typeof lsInput> = {
 	name: "ls",
 	label: "ls",
-	description: `List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to ${DEFAULT_LIMIT} entries or ${formatSize(MAX_OUTPUT_BYTES)} (whichever is hit first).`,
+	description: `List directory contents, or list the allowed folder paths when restriction is enabled and no path is supplied. Inspect a listed folder by supplying its path. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to ${DEFAULT_LIMIT} entries or ${formatSize(MAX_OUTPUT_BYTES)} (whichever is hit first).`,
 	parameters: lsInput,
 	execute: serverExecute("ls", lsInput, async (input) => {
-		const dirPath = resolveSourcePath(input.path);
+		const policy = resolvePolicy();
+		if (!input.path && policy.restricted) {
+			const { roots, notices } = sourceSearchRoots(undefined, policy);
+			const limit = Math.max(0, input.limit ?? DEFAULT_LIMIT);
+			const { content, truncated } = capOutput(["Allowed folders:", ...roots.slice(0, limit)]);
+			if (roots.length > limit) notices.push(`${limit} entries limit`);
+			if (truncated) notices.push(`${formatSize(MAX_OUTPUT_BYTES)} limit`);
+			return untrustedSource(notices.length ? `${content}\n\n[${notices.join(". ")}]` : content);
+		}
+		const dirPath = resolveSourcePath(input.path, policy);
 
 		let stat;
 		try {
@@ -58,8 +69,8 @@ export const lsTool: AgentTool<typeof lsInput> = {
 				entryLimitReached = true;
 				break;
 			}
-			const fullPath = path.join(dirPath, entry);
 			try {
+				const fullPath = resolveSourcePath(path.join(dirPath, entry), policy);
 				const entryStat = await fs.stat(fullPath);
 				lines.push(entryStat.isDirectory() ? `${entry}/` : entry);
 			} catch {
@@ -72,6 +83,6 @@ export const lsTool: AgentTool<typeof lsInput> = {
 		const notices: string[] = [];
 		if (entryLimitReached) notices.push(`${effectiveLimit} entries limit`);
 		if (truncated) notices.push(`${formatSize(MAX_OUTPUT_BYTES)} limit`);
-		return notices.length > 0 ? `${content}\n\n[Truncated: ${notices.join(", ")}]` : content;
+		return untrustedSource(notices.length > 0 ? `${content}\n\n[Truncated: ${notices.join(", ")}]` : content);
 	}),
 };

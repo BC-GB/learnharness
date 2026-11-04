@@ -239,7 +239,7 @@ for (const [role, resize, expected] of [
 
 test("disabled PDF reader sends no document images or model requests", async () => {
  const { engine, requests } = scripted([]);
- const result = await runPdfReaderAgent({ path: PDF, question: "Inspect" }, { engine });
+ const result = await runPdfReaderAgent({ path: path.join(scratch, "unopened.pdf"), question: "Inspect" }, { engine });
  assert.match(result.brief, /disabled/);
  assert.equal(requests.length, 0);
 });

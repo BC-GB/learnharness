@@ -1,3 +1,4 @@
+import { validatedNativeSvg } from "./native-svg-resources.ts";
 import { isolatedRender, isolatedRendererEnabled } from "./render-client.ts";
 import { approvedPdfBytes } from "./pdf-ops.ts";
 import path from "node:path";
@@ -24,6 +25,8 @@ export interface RunDemoOptions {
 }
 
 export interface RenderSvgOptions {
+	/** Annotation images use only the static native rasterizer, never executable browser markup. */
+	nativeOnly?: boolean;
 	/** Viewport size — defaults to the SVG's width/height attrs, else 900×700. */
 	width?: number;
 	height?: number;
@@ -228,8 +231,7 @@ async function renderPdfPages(file: string, pages: number[], opts: RenderPdfOpti
  const result=await isolatedRender<{page:number;png:string}[]>({op:"render",pdf:await approvedPdfBytes(file),pages,...opts});return result.map(x=>({page:x.page,png:providerSafePng(Buffer.from(x.png,"base64"))}));
 }
 async function renderSvg(svg: string, opts: RenderSvgOptions = {}): Promise<Buffer> {
- if (Buffer.byteLength(svg) > 1024 * 1024) throw new Error("SVG input too large.");
- if (/(?:href\s*=|url\s*\(|<!ENTITY|<!DOCTYPE)/i.test(svg)) throw new Error("External or embedded SVG resources are unsupported.");
+ svg = validatedNativeSvg(svg);
  const { width, height } = svgViewport(svg, opts);
  if (![width,height].every(n => Number.isFinite(n) && n > 0 && n <= 4096) || width * height > 16000000) throw new Error("SVG dimensions exceed limits.");
  try {
