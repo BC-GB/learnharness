@@ -1,3 +1,4 @@
+import { courseRoute } from "@/src/server";
 /**
  * POST /api/graph/coverage/extract — the manual extraction affordance
  * (vision-extraction-coverage.md): run the pipeline over ONE session's
@@ -14,7 +15,7 @@ import { extraction, extractionStatuses } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request: Request) {
+async function handleCoursePOST(request: Request) {
 	let body: unknown;
 	try {
 		body = await request.json();
@@ -35,3 +36,4 @@ export async function POST(request: Request) {
 	});
 	return Response.json({ started: true }, { status: 202 });
 }
+export const POST = courseRoute(handleCoursePOST);

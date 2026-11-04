@@ -1,5 +1,8 @@
 "use client";
 
+import { courseFetch as fetch } from "@/lib/course-client";
+
+
 /**
  * The home knowledge-graph view (W4; vision §1 "Rendering (DECIDED)").
  *
@@ -65,7 +68,7 @@
 
 import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { NotesImportControl, NotesImportErrors, NotesImportNotices, useNotesImport } from "@/components/notes-import.tsx";
-import Link from "next/link";
+import Link from "@/components/course-navigation";
 import { FileTextIcon, ListTreeIcon, Loader2Icon, SearchIcon, SettingsIcon, WaypointsIcon } from "lucide-react";
 import { incrementalLayout, propositionSessionHref, type GraphCostSummary, type GraphNode, type GraphSnapshot } from "@/src/core";
 import { planCostLabel } from "@/components/usage-format";

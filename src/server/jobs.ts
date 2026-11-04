@@ -1,3 +1,4 @@
+import { courseLocal, forEachKnownCourse } from "../runtime/course-context.ts";
 /**
  * THE WAKE PIPELINE (contracts.ts "THE ASYNC PROTOCOL" §4) — server-side
  * steer delivery for finished sub-agent jobs. Wave C (2026-09-26):
@@ -133,16 +134,24 @@ interface LhWakeGlobal {
 
 function state(): WakeState {
 	const g = globalThis as typeof globalThis & LhWakeGlobal;
-	return (g.__lhWakePipeline ??= { queues: new Map(), liveAgents: new Map(), userSteers: new Map(), pumping: new Set(), lastSweepAt: 0, automaticDeferred: new WeakSet() });
+	const local = courseLocal<WakeState>("wake-pipeline", () => ({ queues: new Map(), liveAgents: new Map(), userSteers: new Map(), pumping: new Set(), lastSweepAt: 0, automaticDeferred: new WeakSet() }));
+	const wiring = (globalThis as typeof globalThis & { __lhWakeWiring?: { run?: TurnRunner; respawn?: JobRespawn } }).__lhWakeWiring;
+	local.turnRunner ??= wiring?.run;
+	local.respawn ??= wiring?.respawn;
+	return local;
 }
 
 /** chat-handler wires this at module init: its adapter around handleChatRequest. */
 export function setTurnRunner(run: TurnRunner): void {
+	const g = globalThis as typeof globalThis & { __lhWakeWiring?: { run?: TurnRunner; respawn?: JobRespawn } };
+	(g.__lhWakeWiring ??= {}).run = run;
 	state().turnRunner = run;
 }
 
 /** chat-handler wires this at module init: its job runner's runJob. */
 export function setJobRespawn(respawn: JobRespawn): void {
+	const g = globalThis as typeof globalThis & { __lhWakeWiring?: { run?: TurnRunner; respawn?: JobRespawn } };
+	(g.__lhWakeWiring ??= {}).respawn = respawn;
 	state().respawn = respawn;
 }
 
@@ -617,8 +626,9 @@ async function pump(chatId: string): Promise<void> {
 
 // Connection changes are the only wake for consent-deferred automatic work.
 // No retry timer, inference, or API-key fallback is started while consent is off.
-state().stopConnectionWatch?.();
-state().stopConnectionWatch = onSubscriptionChange(() => {
+const wakeWatch = globalThis as typeof globalThis & { __lhWakeWatch?: () => void };
+wakeWatch.__lhWakeWatch?.();
+wakeWatch.__lhWakeWatch = onSubscriptionChange(() => forEachKnownCourse(() => {
 	const s = state();
 	for (const [chatId, agent] of s.liveAgents) {
 		if (!isSubscriptionProvider(agent.state?.model?.provider) || automaticFollowUpAllowed(chatId, agent)) continue;
@@ -633,7 +643,7 @@ state().stopConnectionWatch = onSubscriptionChange(() => {
 	for (const chatId of s.queues.keys()) {
 		if (automaticFollowUpAllowed(chatId, s.liveAgents.get(chatId))) void pump(chatId);
 	}
-});
+}));
 
 function deferOrReject(chatId: string, entry: QueuedSteer, error: Error): void {
 	entry.waking = false;

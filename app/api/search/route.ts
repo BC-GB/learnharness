@@ -1,3 +1,4 @@
+import { courseRoute } from "@/src/server";
 /**
  * GET /api/search — the search engines' status (search wave, 2026-09-20):
  * the honest availability signal the settings UI explains from (the
@@ -13,6 +14,8 @@ import { searchStatus } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function handleCourseGET() {
 	return Response.json(searchStatus());
 }
+
+export const GET = courseRoute(handleCourseGET);

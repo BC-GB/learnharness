@@ -1,3 +1,4 @@
+import { courseLocal } from "../../runtime/course-context.ts";
 /**
  * Job abort registry — WHO can actually kill a running sub-agent.
  *
@@ -24,7 +25,7 @@ interface LhAbortGlobal {
 
 function registry(): Map<string, AbortController> {
 	const g = globalThis as typeof globalThis & LhAbortGlobal;
-	return (g.__lhJobAborts ??= new Map());
+	return courseLocal("job-aborts", () => new Map<string, AbortController>());
 }
 
 /** The runner registers its controller at job start (idempotent overwrite). */

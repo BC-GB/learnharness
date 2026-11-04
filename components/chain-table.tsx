@@ -1,5 +1,8 @@
 "use client";
 
+import { courseFetch as fetch } from "@/lib/course-client";
+
+
 /**
  * THE CHAIN TABLE (chains overlay; owner refinements round 2, 2026-09-29):
  * every reasoning chain of the graph in one FULL-BLEED surface — the blur

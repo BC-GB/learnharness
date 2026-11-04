@@ -1,5 +1,8 @@
 "use client";
 
+import { courseFetch as fetch } from "@/lib/course-client";
+
+
 import { useContext, useState } from "react";
 import { ChatActionsContext } from "@/components/chat";
 import { MaximizeIcon } from "lucide-react";

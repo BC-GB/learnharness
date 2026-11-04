@@ -1,3 +1,4 @@
+import { courseRoute } from "@/src/server";
 import { modelCatalog, refreshConnectionCatalog } from "@/src/server";
 
 /**
@@ -6,7 +7,9 @@ import { modelCatalog, refreshConnectionCatalog } from "@/src/server";
  * model's SUPPORTED thinking levels (per its thinkingLevelMap). Static
  * catalog: no network, stable within a pi-ai version.
  */
-export async function GET() {
+async function handleCourseGET() {
 	await refreshConnectionCatalog();
 	return Response.json(modelCatalog(), { headers: { "Cache-Control": "no-store" } });
 }
+
+export const GET = courseRoute(handleCourseGET);

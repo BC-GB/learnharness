@@ -1,5 +1,8 @@
 "use client";
 
+import { courseFetch as fetch } from "@/lib/course-client";
+
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2Icon, MicIcon } from "lucide-react";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";

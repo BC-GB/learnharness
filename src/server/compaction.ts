@@ -1,3 +1,4 @@
+import { courseLocal } from "../runtime/course-context.ts";
 /**
  * THE COMPACTION SERVICE (owner round 14, 2026-10-05): the trigger
  * plumbing around core/compaction's pure cuts and markers.
@@ -123,7 +124,7 @@ interface CompactionState {
 }
 const g = globalThis as typeof globalThis & { __lhCompaction?: CompactionState };
 function state(): CompactionState {
-	return (g.__lhCompaction ??= { inFlight: new Map() });
+	return courseLocal("compaction", () => ({ inFlight: new Map<string, Promise<void>>() }));
 }
 
 /** Is a compaction running for this chat? (The client status event's

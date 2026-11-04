@@ -1,8 +1,11 @@
 "use client";
 
+import { courseFetch as fetch } from "@/lib/course-client";
+
+
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import Link from "@/components/course-navigation";
+import { usePathname, useRouter } from "@/components/course-navigation";
 import { MenuShell } from "@/components/menu-shell";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import type { ChatDeleteMode } from "@/src/core";
@@ -51,6 +54,8 @@ const STORAGE_KEY = "lh:sidebar-open";
 import type { ChatGPTControlBridge, NativeSubscriptionControlBridge } from "@/src/core";
 import type { UpdateState } from "@/components/settings/update-settings.tsx";
 import { FilePathDropZone } from "@/components/file-path-drop-zone";
+import { CoursePicker } from "@/components/course-picker";
+import { courseUrl } from "@/lib/course-client";
 const SIDEBAR_AUTOCLOSE = 928;
 
 // Module scope, guarded for SSR (the server has no navigator).
@@ -694,6 +699,7 @@ function SessionsSidebar() {
 					</Hint>
 				</div>
 
+				<CoursePicker />
 				{/* Two doors, STACKED (owner round 8, 2026-10-05 — was a
 				    half/half row): full-width rows read cleaner and give the
 				    labels room; teaching keeps the original draft route,
@@ -906,7 +912,7 @@ function SessionsSidebar() {
 								const chatId = ctxChatId;
 								setCtxChatId(null);
 								const a = document.createElement("a");
-								a.href = `/api/chats/${chatId}/markdown`;
+								a.href = courseUrl(`/api/chats/${chatId}/markdown`);
 								a.download = ""; // the route's filename wins
 								document.body.appendChild(a);
 								a.click();

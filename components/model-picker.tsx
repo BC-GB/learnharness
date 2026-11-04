@@ -1,5 +1,8 @@
 "use client";
 
+import { courseFetch as fetch } from "@/lib/course-client";
+
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatSettings, ModelCatalogEntry, ModelCatalogResponse, ModelsSettings, UserSettings } from "@/src/core";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";

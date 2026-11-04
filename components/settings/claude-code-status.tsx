@@ -1,4 +1,7 @@
 "use client";
+
+import { courseFetch as fetch } from "@/lib/course-client";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CLAUDE_CODE_MINIMUM_VERSION, type ClaudeCodeStatus, type UserSettings } from "@/src/core";
 import { notifySettingsSaved, useSettingsSaved } from "@/components/settings-signal";

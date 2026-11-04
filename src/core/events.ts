@@ -80,6 +80,15 @@ export type ServerEventListener = (event: ServerEvent) => void;
 
 interface LhEventsGlobal {
 	__lhEventBus?: Set<ServerEventListener>;
+	__lhEventScope?: () => string;
+}
+
+/** Injected server binding; the core and browser bundle stay free of IO. */
+export function setEventScopeProvider(provider: () => string): void {
+	(globalThis as typeof globalThis & LhEventsGlobal).__lhEventScope = provider;
+}
+function eventScope(): string {
+	return (globalThis as typeof globalThis & LhEventsGlobal).__lhEventScope?.() ?? "legacy";
 }
 
 /** The shared listener set — globalThis-backed so every Next module entry
@@ -94,8 +103,14 @@ function listeners(): Set<ServerEventListener> {
  *  any test cleanup call it; a dropped listener leaks nothing. */
 export function subscribe(listener: ServerEventListener): () => void {
 	const set = listeners();
-	set.add(listener);
-	return () => set.delete(listener);
+	const scope = eventScope();
+	const scoped: ServerEventListener = (event) => {
+		// Connection status belongs to the shared account; all session and
+		// graph notifications remain strictly course-local.
+		if (event.type === "subscriptions-changed" || eventScope() === scope) listener(event);
+	};
+	set.add(scoped);
+	return () => set.delete(scoped);
 }
 
 /** Notify every listener. Zero subscribers is a no-op (no window open —

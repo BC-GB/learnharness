@@ -1,3 +1,4 @@
+import { courseLocal } from "../runtime/course-context.ts";
 /**
  * The running-turn registry (background-turn runner wave, owner ruling
  * 2026-09-25): chatId → the live PiTurnHandle. THE reattach surface —
@@ -37,14 +38,14 @@ interface LhTurnRunsGlobal {
 
 function runs(): Map<string, PiTurnHandle> {
 	const g = globalThis as typeof globalThis & LhTurnRunsGlobal;
-	return (g.__lhTurnRuns ??= new Map<string, PiTurnHandle>());
+	return courseLocal("turn-runs", () => new Map<string, PiTurnHandle>());
 }
 
 /** One small, transient notice per failed session. Never stores messages.
  * Cleared on the next accepted begin, session deletion, or process exit. */
 function failures(): Map<string, string> {
 	const g = globalThis as typeof globalThis & LhTurnRunsGlobal;
-	return (g.__lhTurnFailures ??= new Map<string, string>());
+	return courseLocal("turn-failures", () => new Map<string, string>());
 }
 
 export function rememberTurnFailure(chatId: string, errorText: string): void {

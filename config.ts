@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { currentCourse, courseStatePath } from "./src/runtime/course-context.ts";
 
 /** Repository root (this file is at <root>/config.ts). */
 export const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -17,18 +18,21 @@ export const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA_ROOT = process.env.LH_DATA_DIR
 	? path.resolve(process.env.LH_DATA_DIR)
 	: path.join(ROOT, "data");
+/** Registry and legacy records keep their original location. Course-local
+ * stores use the accessors below rather than mutating process.env per request. */
+export const BASE_DATA_ROOT = DATA_ROOT;
 
 export const PATHS = {
 	root: ROOT,
 	/** Teacher system prompt — the agent's instructions (src/agent/). */
 	teacherPrompt: path.join(ROOT, "src", "agent", "system-prompt.md"),
-	data: DATA_ROOT,
+	get data(): string { return currentCourse()?.dataRoot ?? DATA_ROOT; },
 	/** Chat sessions (AI SDK UIMessage transcripts, one JSON file per chat). */
-	chats: path.join(DATA_ROOT, "chats"),
-	graph: path.join(DATA_ROOT, "graph"),
+	get chats(): string { return courseStatePath(path.join(PATHS.data, "chats")); },
+	get graph(): string { return courseStatePath(path.join(PATHS.data, "graph")); },
 	/** Debug artifacts (env-gated): data/debug/provider-events/<chatId>.jsonl
 	 * raw provider stream recordings (src/agent/provider-events.ts). */
-	debug: path.join(DATA_ROOT, "debug"),
+	get debug(): string { return courseStatePath(path.join(PATHS.data, "debug")); },
 } as const;
 
 // ─── Models ────────────────────────────────────────────────────────────────
@@ -60,13 +64,13 @@ export type ModelRole =
  * TRUTH (owner, 2026-09-30): edges are a derived view, never stored.
  */
 export const LEDGER_FILES = {
-	nodes: path.join(PATHS.graph, "nodes.jsonl"),
-	chains: path.join(PATHS.graph, "chains.jsonl"),
-	sessions: path.join(PATHS.graph, "sessions.jsonl"),
+	get nodes() { return courseStatePath(path.join(PATHS.graph, "nodes.jsonl")); },
+	get chains() { return courseStatePath(path.join(PATHS.graph, "chains.jsonl")); },
+	get sessions() { return courseStatePath(path.join(PATHS.graph, "sessions.jsonl")); },
 	/** Per-message extraction coverage (contracts/graph.ts CoverageEntry;
 	 *  the checkpoint's replacement for chat extractions — notes keep
 	 *  sessions.jsonl, whole-file as they are). */
-	coverage: path.join(PATHS.graph, "coverage.jsonl"),
+	get coverage() { return courseStatePath(path.join(PATHS.graph, "coverage.jsonl")); },
 } as const;
 
 /**
@@ -127,6 +131,16 @@ export const SETTINGS_FILE = path.join(DATA_ROOT, "settings.json");
  * a vanished segment stops composing but stays on disk.
  */
 export const PROMPTS_OVERRIDE_DIR = path.join(DATA_ROOT, "prompts");
+
+/** Legacy constant exports remain compatible with fixtures and recovery
+ * tooling. Runtime stores MUST call these scope-aware functions instead. */
+export const settingsFile = () => courseStatePath(path.join(PATHS.data, "settings.json"));
+export const promptsOverrideDir = () => courseStatePath(path.join(PATHS.data, "prompts"));
+export const sourcesFile = () => courseStatePath(path.join(PATHS.graph, "sources.json"));
+export const sourceOrganizationFile = () => courseStatePath(path.join(PATHS.graph, "source-organization.json"));
+export const positionsFile = () => courseStatePath(path.join(PATHS.graph, "positions.json"));
+export const renderSettingsFile = () => courseStatePath(path.join(PATHS.graph, "render-settings.json"));
+export const graphFormatFile = () => courseStatePath(path.join(PATHS.graph, "format.json"));
 
 /**
  * THE AUTH/KEY STORE (auth-keys wave, 2026-09-19): BYOK provider keys in a

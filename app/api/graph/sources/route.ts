@@ -1,14 +1,15 @@
+import { courseRoute } from "@/src/server";
 import { deleteSources, readOrganizationAction, sourceDirectory, SourceDeletionError, SourceOrganizationInputError } from "@/src/server";
 import { emit } from "@/src/core";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function handleCourseGET() {
 	try { return Response.json(sourceDirectory.read()); }
 	catch { return Response.json({ error: "Could not read source organization." }, { status: 500 }); }
 }
 
-export async function DELETE(request: Request) {
+async function handleCourseDELETE(request: Request) {
 	try { return Response.json(deleteSources(await readOrganizationAction(request))); }
 	catch (error) {
 		if (error instanceof SourceDeletionError) return Response.json({ error: error.message, code: error.code }, { status: error.status });
@@ -19,10 +20,14 @@ export async function DELETE(request: Request) {
 	}
 }
 
-export async function POST(request: Request) {
+async function handleCoursePOST(request: Request) {
 	try { return Response.json(sourceDirectory.change(await readOrganizationAction(request))); }
 	catch (error) {
 		const input = error instanceof SourceOrganizationInputError;
 		return Response.json({ error: input ? error.message : "Could not save source organization." }, { status: input ? 400 : 500 });
 	}
 }
+
+export const GET = courseRoute(handleCourseGET);
+export const DELETE = courseRoute(handleCourseDELETE);
+export const POST = courseRoute(handleCoursePOST);

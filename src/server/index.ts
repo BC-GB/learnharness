@@ -5,6 +5,8 @@
  */
 
 export * from "./chat-handler.ts";
+export * from "./course-http.ts";
+export { boundedCourseBody, courseMaterials, uploadCourseMaterials } from "./course-materials.ts";
 export * from "./events-stream.ts";
 export * from "./chats.ts";
 export * from "./graph.ts";

@@ -1,5 +1,5 @@
 import { NewSession } from "@/components/new-session";
-import { readSettingsRecord } from "@/src/server";
+import { readSettingsRecord, coursePage } from "@/src/server";
 import { slotsConfigured } from "@/src/core";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
  * default); the session the first send creates is stamped from it
  * server-side (per-session models, owner 2026-09-28).
  */
-export default async function NewSessionPage({
+async function renderNewSession({
 	searchParams,
 }: {
 	searchParams: Promise<{ mode?: string }>;
@@ -27,4 +27,8 @@ export default async function NewSessionPage({
 			mode={mode === "practice" ? "practice" : "teach"}
 		/>
 	);
+}
+
+export default function NewSessionPage(props: Parameters<typeof renderNewSession>[0]) {
+	return coursePage(() => renderNewSession(props));
 }

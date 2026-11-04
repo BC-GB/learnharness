@@ -1,3 +1,4 @@
+import { courseRoute } from "@/src/server";
 /**
  * GET/PUT /api/graph/render-settings — server persistence for the graph
  * view's rendering controls (node/edge/arrow/label sizes, the label-zoom
@@ -16,11 +17,11 @@ import { readRenderSettings, writeRenderSettings } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function handleCourseGET() {
 	return Response.json(readRenderSettings());
 }
 
-export async function PUT(request: Request) {
+async function handleCoursePUT(request: Request) {
 	let body: unknown;
 	try {
 		body = await request.json();
@@ -29,3 +30,6 @@ export async function PUT(request: Request) {
 	}
 	return Response.json(writeRenderSettings(body));
 }
+
+export const GET = courseRoute(handleCourseGET);
+export const PUT = courseRoute(handleCoursePUT);
