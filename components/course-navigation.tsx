@@ -26,6 +26,10 @@ export function useRouter(): ReturnType<typeof useNextRouter> {
 export default function CourseLink(props: ComponentProps<typeof NextLink>) {
 	const { id } = useCourse();
 	const href = typeof props.href === "string" ? courseUrlForId(props.href, id)
-		: id === "legacy" ? props.href : { ...props.href, query: { ...(typeof props.href.query === "object" ? props.href.query : {}), course: id } };
+		: (() => {
+			const query = typeof props.href.query === "string" ? Object.fromEntries(new URLSearchParams(props.href.query)) : { ...props.href.query };
+			if (query.course !== undefined && query.course !== id) throw new Error("Conflicting course selection");
+			return id === "legacy" ? props.href : { ...props.href, query: { ...query, course: id } };
+		})();
 	return <NextLink {...props} href={href} />;
 }

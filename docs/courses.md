@@ -8,7 +8,7 @@ Each tab carries its own course selection. Switching courses reloads that tab's 
 
 ## Enforcement
 
-- API routes validate the course before accessing records. Server pages are dynamic and resolve the same validated course; a missing/invalid course never falls back to another profile.
+- API routes validate the course before accessing records. Server pages are dynamic and resolve the same validated course. Invalid or unavailable selections fail closed; URLs without a course selection retain existing-course compatibility.
 - Storage accessors, live process registries, graph retrieval and model-facing tools use a server-side asynchronous course context. File reads require the active source root. State reads reject aliases into another profile.
 - The browser sends the course with API, stream, export and navigation URLs. It is not a shared selection cookie. Opening-message drafts are also scoped by course.
 - The update status endpoint reports counts across all courses, without titles or lesson content, and does not start recovery or inference.

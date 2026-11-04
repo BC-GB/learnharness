@@ -34,6 +34,12 @@ test("the picker and application links render the selected course with no infere
 	} finally { globalThis.fetch = before; }
 });
 
+test("object links retain their query and reject a different course", () => {
+	const html = renderToStaticMarkup(<CourseProvider course={{ id: b, name: "Subject B", readOnlyLibrary: false }}><CourseLink href={{ pathname: "/chat/new", query: "mode=practice", hash: "question" }}>Practice</CourseLink></CourseProvider>);
+	assert.ok(html.includes(`mode=practice&amp;course=${b}#question`));
+	assert.throws(() => renderToStaticMarkup(<CourseProvider course={{ id: b, name: "Subject B", readOnlyLibrary: false }}><CourseLink href={{ pathname: "/", query: { course: c } }}>Invalid</CourseLink></CourseProvider>), /Conflicting/);
+});
+
 test("each document stamps APIs, streams and downloads with its own course", async () => {
 	const descriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
 	const before = globalThis.fetch;

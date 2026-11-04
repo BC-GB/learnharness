@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { PlusIcon, FolderOpenIcon } from "lucide-react";
 import { useCourse } from "./course-navigation";
 import { courseFetch, courseUrlForId } from "@/lib/course-client";
@@ -17,8 +18,10 @@ export function CoursePicker() {
 	const [busy, setBusy] = useState(false);
 	const [files, setFiles] = useState<{ name: string; bytes: number }[]>([]);
 	const [notice, setNotice] = useState("");
+	const [mounted, setMounted] = useState(false);
 	const dialog = useRef<HTMLDialogElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
+	useEffect(() => setMounted(true), []);
 	useEffect(() => {
 		const controller = new AbortController();
 		void courseFetch("/api/courses", { signal: controller.signal, cache: "no-store" }).then(async response => {
@@ -80,7 +83,7 @@ export function CoursePicker() {
 		</div>
 		<button type="button" className="mt-1 flex items-center gap-2 rounded px-1 py-1 text-xs text-muted-foreground hover:text-foreground" onClick={() => setMode("materials")}><FolderOpenIcon className="size-3.5" />{current.readOnlyLibrary ? "Course materials" : "Add / view materials"}</button>
 		{error && !mode && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
-		<dialog ref={dialog} aria-labelledby="course-dialog-title" onCancel={event => { if (busy) event.preventDefault(); }} onClose={() => setMode(null)} className="fixed inset-0 m-auto max-h-[85dvh] w-[min(92vw,32rem)] overflow-y-auto rounded-xl border bg-background p-6 text-foreground shadow-xl backdrop:bg-black/60">
+		{mounted && createPortal(<dialog ref={dialog} aria-labelledby="course-dialog-title" aria-modal="true" onKeyDown={event => event.stopPropagation()} onCancel={event => { if (busy) event.preventDefault(); }} onClose={() => setMode(null)} className="fixed inset-0 m-auto max-h-[85dvh] w-[min(92vw,32rem)] overflow-y-auto rounded-xl border bg-background p-6 text-foreground shadow-xl backdrop:bg-black/60">
 			<h2 id="course-dialog-title" className="mb-4 text-lg font-semibold">{mode === "add" ? "Add course" : `${current.name} materials`}</h2>
 			{mode === "add" ? <form onSubmit={create}>
 				<label htmlFor="new-course-name" className="mb-2 block text-sm">Course name</label>
@@ -95,6 +98,6 @@ export function CoursePicker() {
 			</>}
 			{error && mode && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
 			{notice && <p role="status" className="mt-3 text-sm text-muted-foreground">{notice}</p>}
-		</dialog>
+		</dialog>, document.body)}
 	</div>;
 }
