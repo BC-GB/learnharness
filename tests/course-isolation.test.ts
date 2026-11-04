@@ -36,6 +36,11 @@ const { registerJobAbort, fireJobAbort } = await import("../src/agent/subagents/
 const { parkDismissal, takeParkedDismissal } = await import("../src/server/dismissal-park.ts");
 const { subscribe, emit } = await import("../src/core/events.ts");
 const { courseRoute } = await import("../src/server/course-http.ts");
+const { courseMaintenanceStatus } = await import("../src/server/course-maintenance.ts");
+const { createExtractionPipeline } = await import("../src/agent/subagents/extraction.ts");
+const { createJobRunner } = await import("../src/agent/subagents/runner.ts");
+const { ensureCompacted } = await import("../src/server/compaction.ts");
+const { newUserMessage, activeCompactionOf } = await import("../src/core/native-messages.ts");
 const recordRoute = await import("../app/api/chats/[id]/route.ts");
 const markdownRoute = await import("../app/api/chats/[id]/markdown/route.ts");
 const snapshotRoute = await import("../app/api/chats/[id]/images/[snapshotId]/route.ts");
@@ -152,6 +157,7 @@ test("live registries separate identical chat and job IDs and event streams", ()
 	assert.equal(abortedA, false); assert.equal(abortedB, true);
 	assert.equal(controllerA.signal.aborted, false); assert.equal(controllerB.signal.aborted, true);
 	runInCourse(a, () => { assert.equal(isTurnRunning(shared), true); assert.equal(turnFailure(shared), own(a)); assert.deepEqual(takeParkedDismissal(shared), { text: own(a) }); endTurn(shared); });
+	runInCourse(a, () => fireJobAbort("job_same"));
 	offA(); offB();
 });
 
@@ -214,4 +220,66 @@ test("a new process restores each course independently without inference or migr
 	const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { cwd: process.cwd(), env: process.env, encoding: "utf8", timeout: 30_000 });
 	assert.equal(child.status, 0, child.stderr);
 	assert.deepEqual(JSON.parse(child.stdout), scopes.map(own));
+});
+
+test("shared extraction orchestration can import the same source ID concurrently without borrowing identity candidates", async () => {
+	const payloads = new Map(scopes.map(scope => [scope.id, [] as string[]]));
+	const pipeline = createExtractionPipeline({ ...stores, engineFor: role => {
+		const scope = currentCourse()!;
+		const faux = createFauxCore({});
+		faux.setResponses([async context => {
+			payloads.get(scope.id)!.push(JSON.stringify(context));
+			await new Promise(resolve => setTimeout(resolve, 25));
+			return fauxAssistantMessage([fauxToolCall(role === "extractor" ? "submit_findings" : "submit_review", role === "extractor" ? { propositions: [{ id: "p1", name: "New shared term", statement: own(scope), aliases: [] }], chains: [] } : { links: [] }, { id: role + "-call" })], { stopReason: "toolUse" });
+		}]);
+		return { model: faux.getModel(), streamFn: faux.streamSimple };
+	} });
+	const outcomes = await Promise.allSettled(scopes.map(scope => runInCourse(scope, () => pipeline.importNotes({ filePath: "same-course-relative-name.md", text: own(scope) }))));
+	assert.ok(outcomes.every(result => result.status === "fulfilled"), JSON.stringify(outcomes));
+	for (const scope of scopes) runInCourse(scope, () => {
+		assert.ok(payloads.get(scope.id)!.length >= 2);
+		assert.ok(!payloads.get(scope.id)!.join().includes(foreign(scope)));
+		assert.ok(!JSON.stringify(graphView()).includes(foreign(scope)));
+	});
+});
+
+test("a shared background runner binds identical job IDs, delivery and mock-provider contexts to each course", async () => {
+	const delivered: string[] = [];
+	for (const scope of scopes) runInCourse(scope, () => {
+		const job = stores.jobStore.createJob({ kind: "research", chatId: shared, toolCallId: "job-fixture", input: { question: own(scope), context: "Only this course" } });
+		fs.writeFileSync(path.join(scope.dataRoot, "jobs", "job_shared.json"), JSON.stringify({ ...job, id: "job_shared" }));
+		stores.jobStore.updateJob(job.id, { status: "done" });
+	});
+	const runner = createJobRunner({ ...stores, engineFor: () => {
+		const scope = currentCourse()!; const faux = createFauxCore({});
+		faux.setResponses([async context => { assert.ok(!JSON.stringify(context).includes(foreign(scope))); await new Promise(resolve => setTimeout(resolve, 25)); return fauxAssistantMessage(own(scope)); }]);
+		return { model: faux.getModel(), streamFn: faux.streamSimple };
+	}, deliver: async steer => { const scope = currentCourse()!; const text = JSON.stringify(steer); assert.ok(text.includes(own(scope)) && !text.includes(foreign(scope))); delivered.push(scope.id); } });
+	await Promise.all(scopes.map(scope => runInCourse(scope, () => runner.runJob("job_shared"))));
+	assert.deepEqual(new Set(delivered), new Set(scopes.map(scope => scope.id)));
+	for (const scope of scopes) runInCourse(scope, () => assert.ok(JSON.stringify(stores.jobStore.getJob("job_shared")!.result).includes(own(scope))));
+});
+
+test("compaction of identical chat IDs uses only that course's history, summary and registry", async () => {
+	const calls: string[] = [];
+	const faux = createFauxCore({});
+	await Promise.all(scopes.map(scope => runInCourse(scope, async () => {
+		stores.chatStore.saveMessages(shared, [newUserMessage(own(scope) + "x".repeat(100_000)), newUserMessage(own(scope) + "y".repeat(100_000)), newUserMessage(own(scope) + "z".repeat(100_000)), newUserMessage("Recent " + own(scope))]);
+		await ensureCompacted({ chatStore: stores.chatStore, engine: { model: faux.getModel(), streamFn: faux.streamSimple }, modelId: "faux:fixture", kind: "teach", thresholdTokens: 1000, systemPromptTokens: 0, summarize: async prompt => {
+			assert.ok(prompt.includes(own(scope)) && !prompt.includes(foreign(scope)));
+			calls.push(scope.id); await new Promise(resolve => setTimeout(resolve, 25));
+			return { summary: own(scope), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
+		} }, shared);
+		assert.equal(activeCompactionOf(stores.chatStore.getChat(shared)!.messages)?.content, own(scope));
+	})));
+	assert.deepEqual(new Set(calls), new Set(scopes.map(scope => scope.id)));
+});
+
+test("update activity covers all courses but returns no learning content and starts no jobs", () => {
+	runInCourse(b, () => beginTurn(shared));
+	try {
+		const status = runInCourse(a, courseMaintenanceStatus);
+		assert.equal(status.courseCount, 2); assert.equal(status.activeTurns, 1);
+		assert.ok(!JSON.stringify(status).includes(own(a)) && !JSON.stringify(status).includes(own(b)));
+	} finally { runInCourse(b, () => endTurn(shared)); }
 });

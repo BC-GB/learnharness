@@ -133,6 +133,9 @@ export function compactionInFlight(chatId: string): boolean {
 	return state().inFlight.has(chatId);
 }
 
+/** Pure status for the private update gate; never starts or resumes work. */
+export function runningCompactionCount(): number { return state().inFlight.size; }
+
 /** Await any in-flight compaction for the chat — the structural gate
  *  every model interaction for the chat passes through. */
 export async function awaitCompaction(chatId: string): Promise<void> {

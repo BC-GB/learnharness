@@ -49,6 +49,8 @@ export function isJobLive(jobId: string): boolean {
 	return registry().has(jobId);
 }
 
+export function liveJobCount(): number { return registry().size; }
+
 /** Abort a running job's loop. Returns false when no controller is live —
  * the job's loop is not executing. The endpoint separately refuses abort
  * for a finished worker, even while its session delivery remains pending. */

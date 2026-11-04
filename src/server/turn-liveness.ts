@@ -35,6 +35,9 @@ function registry(): Map<string, number> {
 
 const MAX_TURN_MS = 30 * 60_000;
 
+/** Runtime status includes turns whose records are temporarily unavailable. */
+export function runningTurnCount(): number { return [...registry().keys()].filter(isTurnRunning).length; }
+
 /**
  * Mark a turn as starting. Returns false if one is already running for the
  * chat — the caller rejects the request (only one turn may own a chat).
