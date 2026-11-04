@@ -12,7 +12,8 @@ import { liveJobCount } from "../agent/subagents/aborts.ts";
 /** Counts only: the installer must see all active courses, while learning
  * APIs never receive another course's titles, records or graph. Deliberately
  * avoids recovery/listJobs service calls that can start model work. */
-export function courseMaintenanceStatus() {
+export interface CourseMaintenanceStatus { courseCount: number; activeTurns: number; compactions: number; extractions: number; backgroundJobs: number }
+export function courseMaintenanceStatus(): CourseMaintenanceStatus {
 	const courses = eachCourseForMaintenance(() => {
 		let backgroundJobs = 0;
 		const folder = courseStatePath(path.join(PATHS.data, "jobs"));
@@ -27,5 +28,5 @@ export function courseMaintenanceStatus() {
 		}
 		return { activeTurns: runningTurnCount(), compactions: runningCompactionCount(), extractions: extractionStatuses().length, backgroundJobs: Math.max(backgroundJobs, liveJobCount()) };
 	});
-	return courses.reduce((total, course) => ({ courseCount: total.courseCount + 1, activeTurns: total.activeTurns + course.activeTurns, compactions: total.compactions + course.compactions, extractions: total.extractions + course.extractions, backgroundJobs: total.backgroundJobs + course.backgroundJobs }), { courseCount: 0, activeTurns: 0, compactions: 0, extractions: 0, backgroundJobs: 0 });
+	return courses.reduce<CourseMaintenanceStatus>((total, course) => ({ courseCount: total.courseCount + 1, activeTurns: total.activeTurns + course.activeTurns, compactions: total.compactions + course.compactions, extractions: total.extractions + course.extractions, backgroundJobs: total.backgroundJobs + course.backgroundJobs }), { courseCount: 0, activeTurns: 0, compactions: 0, extractions: 0, backgroundJobs: 0 });
 }
