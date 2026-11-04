@@ -266,7 +266,12 @@ describe("live policy and all learner-source surfaces", () => {
 			await tools[kind]!.execute!("queued-call", input);
 			assert.equal(spawned, 1);
 			const runner = createJobRunner({ chatStore, jobStore, engineFor: () => engine, deliver: async () => {} });
-			await runner.runJob(id);
+			// Exercise the configured-parser path. Source denial must happen
+			// before any IPC or inference; disabled-parser admission is a separate gate.
+			const previousRenderer = process.env.LH_ISOLATED_RENDERER;
+			process.env.LH_ISOLATED_RENDERER = "1";
+			try { await runner.runJob(id); }
+			finally { if (previousRenderer === undefined) delete process.env.LH_ISOLATED_RENDERER; else process.env.LH_ISOLATED_RENDERER = previousRenderer; }
 			const job = jobStore.getJob(id)!;
 			assert.match(JSON.stringify(job.result), /Access denied:.*allowed folders/);
 			assert.deepEqual(job.input, input);
