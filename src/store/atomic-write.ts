@@ -54,12 +54,19 @@ function statePath(file: string): string {
 	const absolute = path.resolve(file);
 	const auth = path.resolve(AUTH_FILE);
 	const root = path.resolve(PATHS.data);
-	if (absolute !== auth && !absolute.startsWith(root + path.sep)) throw new Error("Store path is outside the active application state.");
-	const allowed = absolute === auth ? path.dirname(auth) : root;
-	const parent = canonicalDirectory(path.dirname(absolute));
+	if (absolute === auth) {
+		checkParent(auth, path.dirname(auth));
+		return auth;
+	}
+	if (!absolute.startsWith(root + path.sep)) throw new Error("Store path is outside the active application state.");
+	checkParent(absolute, root);
+	return absolute;
+}
+
+function checkParent(file: string, allowed: string): void {
+	const parent = canonicalDirectory(path.dirname(file));
 	const canonical = canonicalDirectory(allowed);
 	if (parent !== canonical && !parent.startsWith(canonical + path.sep)) throw new Error("Store parent escapes the active application state.");
-	return absolute;
 }
 
 /** Replace `file` with `text` (UTF-8). Throws on failure, with the old file
