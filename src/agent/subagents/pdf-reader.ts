@@ -175,7 +175,6 @@ export async function runPdfReaderAgent(
 	opts: PdfReaderOptions = {},
 ): Promise<PdfResult> {
  if (!isolatedRendererEnabled()) return { path: input.path, question: input.question, brief: "PDF failed: PDF processing is disabled: an isolated parser is required.", pagesRead: [], pagesConsulted: [] };
- const headless = opts.headless ?? getHeadless();
  const maxIterations = Math.max(1, Math.min(opts.maxIterations ?? MAX_ITERATIONS, MAX_ITERATIONS));
  let pdfPath = input.path;
  let openError: string | null;
