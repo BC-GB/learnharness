@@ -10,17 +10,18 @@ import { createFauxCore } from "@earendil-works/pi-ai";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ChatStore, JobStore } from "../src/core/ports.ts";
 import type { FileAccessPolicy } from "../src/agent/tools/file-access.ts";
+import { SOURCE_NOTICE } from "../src/agent/tools/untrusted-source.ts";
 
 (globalThis as Record<string, unknown>).React = React;
 const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "lh-folder-access-")));
-const home = path.join(root, "home");
+const home = root;
 const a = path.join(home, "StudyA");
 const b = path.join(root, "mount", "StudyB");
 const outside = path.join(home, "Outside");
 const auth = path.join(root, "private", "keys.json");
 const data = path.join(root, "private", "data");
-const prior = Object.fromEntries(["HOME", "USERPROFILE", "LH_AUTH_FILE", "LH_DATA_DIR"].map((key) => [key, process.env[key]]));
-Object.assign(process.env, { HOME: home, USERPROFILE: home, LH_AUTH_FILE: auth, LH_DATA_DIR: data });
+const prior = Object.fromEntries(["HOME", "USERPROFILE", "LH_AUTH_FILE", "LH_DATA_DIR", "LH_SOURCE_ROOT"].map((key) => [key, process.env[key]]));
+Object.assign(process.env, { HOME: home, USERPROFILE: home, LH_AUTH_FILE: auth, LH_DATA_DIR: data, LH_SOURCE_ROOT: root });
 async function write(file: string, text: string | Buffer): Promise<void> { await fs.mkdir(path.dirname(file), { recursive: true }); await fs.writeFile(file, text); }
 const notesA = path.join(a, "notes.md");
 const notesB = path.join(b, "notes.md");
@@ -70,13 +71,14 @@ after(async () => {
 async function text(tool: AgentTool<any>, input: unknown): Promise<string> {
 	const result = await tool.execute!("folder-test", input);
 	assert.equal(result.content[0]?.type, "text");
-	return (result.content[0] as { text: string }).text;
+	const output = (result.content[0] as { text: string }).text;
+	return output.startsWith(SOURCE_NOTICE) ? output.slice(SOURCE_NOTICE.length) : output;
 }
 const boundary = /Access denied: .*allowed folders/;
 const mandatory = /Access denied: .*protected location/;
 
 describe("optional folder policy (finishing lickbot #157)", () => {
-	it("OFF retains broad reads even with a saved folder list, and no whole app-data ban", async () => {
+	it("OFF retains reads inside the explicitly approved fixture library", async () => {
 		policy = { restricted: false, folders: [a] };
 		assert.match(await text(readTool, { path: path.join(outside, "secret.txt") }), /OUTSIDE_ONLY/);
 		assert.match(await text(readTool, { path: path.join(data, "chats", "session.json") }), /ordinary learning/);
@@ -92,10 +94,10 @@ describe("optional folder policy (finishing lickbot #157)", () => {
 		await assert.rejects(grepTool.execute!("x", { pattern: "course" }), /no accessible allowed folders/);
 		await assert.rejects(walkFiles(a, () => assert.fail("must not walk")), boundary);
 	});
-	it("explicit relative and tilde paths remain HOME-relative, never first-folder-relative", async () => {
+	it("relative paths remain approved-root-relative and tilde cannot select home", async () => {
 		policy = { restricted: true, folders: [a, b] };
 		assert.equal(resolveSourcePath("StudyA/notes.md"), notesA);
-		assert.equal(resolveSourcePath("~/StudyA/notes.md"), notesA);
+		assert.throws(() => resolveSourcePath("~/StudyA/notes.md"), /Home-directory expansion is disabled/);
 		assert.equal(resolveSourcePath(path.join(a, "..notes", "literal.md")), path.join(a, "..notes", "literal.md"));
 		assert.throws(() => resolveSourcePath("notes.md"), boundary);
 		assert.throws(() => resolveSourcePath("StudyA/../Outside/secret.txt"), boundary);

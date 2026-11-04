@@ -8,6 +8,7 @@ import { createCanvas } from "@napi-rs/canvas";
 import { createFauxCore } from "@earendil-works/pi-ai";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ChatStore, JobStore } from "../src/core/ports.ts";
+import { SOURCE_NOTICE } from "../src/agent/tools/untrusted-source.ts";
 
 // Set this test process's locations BEFORE importing config/agent modules.
 // Never read or modify the developer's actual home, keys or learning data.
@@ -15,8 +16,8 @@ const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "lh-sourc
 const home = path.join(root, "home");
 const auth = path.join(root, "private", "custom-keys.json");
 const data = path.join(root, "private", "data");
-const previous = Object.fromEntries(["HOME", "USERPROFILE", "LH_AUTH_FILE", "LH_DATA_DIR"].map((key) => [key, process.env[key]]));
-Object.assign(process.env, { HOME: home, USERPROFILE: home, LH_AUTH_FILE: auth, LH_DATA_DIR: data });
+const previous = Object.fromEntries(["HOME", "USERPROFILE", "LH_AUTH_FILE", "LH_DATA_DIR", "LH_SOURCE_ROOT"].map((key) => [key, process.env[key]]));
+Object.assign(process.env, { HOME: home, USERPROFILE: home, LH_AUTH_FILE: auth, LH_DATA_DIR: data, LH_SOURCE_ROOT: root });
 after(async () => {
 	for (const [key, value] of Object.entries(previous)) {
 		if (value === undefined) delete process.env[key]; else process.env[key] = value;
@@ -76,7 +77,8 @@ const { practiceTools } = await import("../src/agent/tools/practice.ts");
 async function text(tool: AgentTool<any>, args: unknown): Promise<string> {
 	const result = await tool.execute!("synthetic", args);
 	assert.equal(result.content[0]?.type, "text");
-	return (result.content[0] as { text: string }).text;
+	const output = (result.content[0] as { text: string }).text;
+	return output.startsWith(SOURCE_NOTICE) ? output.slice(SOURCE_NOTICE.length) : output;
 }
 const denied = /Access denied: .* is a protected location/;
 
@@ -104,8 +106,8 @@ describe("source access: configured credentials only", () => {
 		for (const file of ["home/notes/topic.md", "home/..notes/also.md", "home/.claudette/ok.md", "unrelated/.ssh/notes.md", "keyfiles/custom-keys.json.backup-not-managed", `keyfiles/other.json.tmp-${uuid}`, "keyfiles/custom-keys.json.tmp-not-a-uuid", `unrelated/custom-keys.json.tmp-${uuid}`, "private/logs/main.log"]) {
 			assert.match(await text(readTool, { path: path.join(root, file) }), /ordinary/);
 		}
-		assert.match(await text(lsTool, { path: path.dirname(auth) }), /chatgpt-credentials\.json/);
-		assert.match(await text(lsTool, { path: home }), /\.ssh\//);
+		assert.doesNotMatch(await text(lsTool, { path: path.dirname(auth) }), /chatgpt-credentials\.json/);
+		assert.doesNotMatch(await text(lsTool, { path: home }), /\.ssh\//);
 	});
 
 	it("root-wide discovery omits credential targets, temp files, transcripts and dotenv contents", async () => {
@@ -156,13 +158,13 @@ describe("source access: canonical roots and all tool paths", () => {
 		await assert.rejects(readTool.execute!("s", { path: path.join(root, "transcripts", "projects", "session.jsonl") }), denied);
 	});
 
-	it("canonicalizes an aliased HOME, including default and relative paths", async () => {
+	it("changing HOME cannot change the approved library or enable tilde", async () => {
 		process.env.HOME = process.env.USERPROFILE = path.join(root, "home-alias");
 		try {
-			assert.equal(resolveSourcePath(), home);
-			assert.equal(resolveSourcePath("~"), home);
-			assert.equal(resolveSourcePath("~/notes/topic.md"), path.join(home, "notes", "topic.md"));
-			assert.match(await text(readTool, { path: "notes/topic.md" }), /ordinary study notes/);
+			assert.equal(resolveSourcePath(), root);
+			assert.throws(() => resolveSourcePath("~"), /Home-directory expansion is disabled/);
+			assert.throws(() => resolveSourcePath("~/notes/topic.md"), /Home-directory expansion is disabled/);
+			assert.match(await text(readTool, { path: "home/notes/topic.md" }), /ordinary study notes/);
 			assert.equal(await text(grepTool, { pattern: "LH_SYNTHETIC_SECRET_MARKER" }), "No matches found");
 		} finally { process.env.HOME = process.env.USERPROFILE = home; }
 	});
@@ -173,7 +175,7 @@ describe("source access: canonical roots and all tool paths", () => {
 		await link(protectedLoop, protectedLoop, true);
 		await link(ordinaryLoop, ordinaryLoop, true);
 		try {
-			assert.match(await text(readTool, { path: "notes/topic.md" }), /ordinary study notes/);
+			assert.match(await text(readTool, { path: "home/notes/topic.md" }), /ordinary study notes/);
 			await assert.rejects(readTool.execute!("s", { path: protectedLoop }), denied);
 			await assert.rejects(readTool.execute!("s", { path: ordinaryLoop }), /ELOOP/);
 		} finally {
