@@ -52,7 +52,7 @@ const shared = "chat_shared_fixture";
 for (const scope of scopes) runInCourse(scope, () => {
 	fs.writeFileSync(path.join(scope.sourceRoot!, "notes.md"), own(scope));
 	const chat = stores.chatStore.createChat(own(scope));
-	stores.chatStore.saveMessages(chat.id, [{ role: "user", content: own(scope), timestamp: 1 }]);
+	stores.chatStore.saveMessages(chat.id, [{ id: "m1", role: "user", content: own(scope), timestamp: 1 }]);
 	ids.set(scope.id, chat.id);
 	const record = stores.chatStore.getChat(chat.id)!;
 	fs.writeFileSync(path.join(scope.dataRoot, "chats", shared + ".json"), JSON.stringify({ ...record, id: shared }));
@@ -195,12 +195,12 @@ test("the real agent's complete mock model context contains only its own file, h
 	for (const scope of scopes) await runInCourse(scope, async () => {
 		const faux = createFauxCore({}); const payloads: string[] = [];
 		faux.setResponses([
-			context => { payloads.push(JSON.stringify(context)); return fauxAssistantMessage([fauxToolCall("read-one", "read", { path: "notes.md" })]); },
-			context => { payloads.push(JSON.stringify(context)); return fauxAssistantMessage([fauxToolCall("graph-one", "list_sessions", {})]); },
+			context => { payloads.push(JSON.stringify(context)); return fauxAssistantMessage([fauxToolCall("read", { path: "notes.md" }, { id: "read-one" })], { stopReason: "toolUse" }); },
+			context => { payloads.push(JSON.stringify(context)); return fauxAssistantMessage([fauxToolCall("list_sessions", {}, { id: "graph-one" })], { stopReason: "toolUse" }); },
 			context => { payloads.push(JSON.stringify(context)); return fauxAssistantMessage([fauxText("Fixture finished")]); },
 		]);
 		const chatId = ids.get(scope.id)!;
-		const agent = createProberAgent({ ...stores, chatId, spawn: () => assert.fail("No background job requested") }, { engine: { model: faux.getModel(), streamFn: faux.streamSimple }, messages: stores.chatStore.getChat(chatId)!.messages, promptSwitches: stores.settingsStore.readSettings()?.agent?.prompts ?? {} });
+		const agent = createProberAgent({ ...stores, chatId, spawn: () => assert.fail("No background job requested"), deliver: async () => assert.fail("No background result expected") }, { engine: { model: faux.getModel(), streamFn: faux.streamSimple }, messages: stores.chatStore.getChat(chatId)!.messages, promptSwitches: stores.settingsStore.readSettings()?.agent?.prompts ?? {} });
 		await agent.prompt("Read the material and list this course's sessions.");
 		assert.equal(payloads.length, 3);
 		assert.ok(payloads.join().includes(own(scope)));

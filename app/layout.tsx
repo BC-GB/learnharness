@@ -20,6 +20,8 @@ export const metadata: Metadata = {
 	description: "A teacher agent with a memory — sessions, quizzes, and a knowledge graph of what you know.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
 	return coursePage(() => (
 		<html lang="en" data-course-id={currentCourse()!.id} className={`dark ${ui.variable} ${prose.variable}`}>
