@@ -20,6 +20,7 @@ export type PathInputProps = Omit<React.HTMLAttributes<HTMLDivElement>, "childre
 	defaultDropTarget?: boolean;
 	/** Native text-input semantics: strip CR/LF and leave Enter to the caller. */
 	singleLine?: boolean;
+	onPasteImages?: (files: File[]) => void;
 };
 
 type ChipHost = { host: HTMLElement; path: string };
@@ -33,13 +34,13 @@ type Controller = {
  * views of it. React never reconciles the editable DOM after a native mutation.
  */
 export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(function PathInput({
-	value, onValueChange, placeholder, autoFocus, defaultDropTarget = false, singleLine = false, className,
+	value, onValueChange, placeholder, autoFocus, defaultDropTarget = false, singleLine = false, className, onPasteImages,
 	onKeyDown, onFocus, onBlur, onInput, onPaste, onCopy, onCut,
 	onCompositionStart, onCompositionEnd, ...props
 }, forwardedRef) {
 	const rootRef = React.useRef<HTMLDivElement>(null);
 	const controllerRef = React.useRef<Controller | null>(null);
-	const callbacks = React.useRef({ onValueChange, singleLine });
+	const callbacks = React.useRef({ onValueChange, singleLine, onPasteImages });
 	const composing = React.useRef(false);
 	const [chips, setChips] = React.useState<ChipHost[]>([]);
 	// Keep this text child immutable: SSR/hydration gets the complete draft,
@@ -47,7 +48,7 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 	const initial = React.useRef({ value: normalizePathInputValue(value, singleLine), autoFocus, singleLine });
 
 	React.useImperativeHandle(forwardedRef, () => rootRef.current!, []);
-	React.useLayoutEffect(() => { callbacks.current = { onValueChange, singleLine }; }, [onValueChange, singleLine]);
+	React.useLayoutEffect(() => { callbacks.current = { onValueChange, singleLine, onPasteImages }; }, [onValueChange, singleLine, onPasteImages]);
 
 	React.useLayoutEffect(() => {
 		const root = rootRef.current!;
@@ -174,6 +175,8 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 		function paste(event: ClipboardEvent) {
 			if (event.defaultPrevented) return;
 			event.preventDefault();
+			const images = Array.from(event.clipboardData?.files ?? []).filter(file => file.type.startsWith("image/"));
+			if (images.length && callbacks.current.onPasteImages) { callbacks.current.onPasteImages(images); return; }
 			const text = event.clipboardData?.getData("text/plain") ?? "";
 			// Image/file/HTML-only clipboard contents are not text replacement.
 			if (text === "") return;

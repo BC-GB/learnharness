@@ -5,6 +5,7 @@ import { ArrowRightIcon, CornerDownLeftIcon, SquareIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PathInput } from "@/components/path-input";
 import { AttachFilesButton } from "@/components/attach-files-button";
+import { usePastedImages } from "@/components/use-pasted-images";
 
 /**
  * The chat composer — content row ONLY (the persistent rounded shell lives in
@@ -140,26 +141,39 @@ export function Composer({
 	onNext?: () => void;
 }) {
 	const act = () => {
-		const action = enterAction({ busy, canSend, nextProblem });
+		if (attachments.uploading && !busy) return;
+		const action = enterAction({ busy, canSend: readyToSend, nextProblem });
 		if (action === "stop") onStop();
 		else if (action === "send") onSend();
 		else if (action === "next") onNext?.();
 	};
 	const ownInputRef = useRef<HTMLDivElement>(null);
 	const editorRef = inputRef ?? ownInputRef;
+	const attachments = usePastedImages(editorRef, value, onChange);
+	const readyToSend = canSend && !attachments.uploading;
 	return (
 		<form
 			data-testid="composer"
-			className="flex items-end gap-1.5 p-1.5"
+			className="flex flex-wrap items-end gap-1.5 p-1.5"
 			onSubmit={(e) => {
 				e.preventDefault();
 				act();
 			}}
 		>
+			{attachments.images.length > 0 && <div className="flex w-full flex-wrap gap-2 px-2" data-testid="pasted-image-previews">
+				{attachments.images.map(image => <div key={image.start} className="relative rounded border bg-muted/50 p-1">
+					{/* eslint-disable-next-line @next/next/no-img-element -- authenticated same-origin, already normalized raster */}
+					<img src={image.url} alt="Attached image" className="h-20 max-w-40 rounded object-contain" />
+					<button type="button" aria-label="Remove attached image" onClick={() => attachments.remove(image.start, image.end)} className="absolute right-0 top-0 rounded bg-background px-1.5 text-sm">×</button>
+				</div>)}
+			</div>}
+			{attachments.uploading && <div role="status" className="w-full px-2 text-xs text-muted-foreground">Attaching image…</div>}
+			{attachments.error && <div role="alert" className="w-full px-2 text-xs text-destructive">{attachments.error}</div>}
 			<PathInput
 				ref={editorRef}
 				value={value}
 				onValueChange={onChange}
+				onPasteImages={files => { void attachments.paste(files); }}
 				defaultDropTarget
 				onKeyDown={(e) => {
 					// Esc ends dictation before anything else Esc might someday mean
@@ -184,7 +198,7 @@ export function Composer({
 				autoFocus={autoFocus}
 				className="field-sizing-content lh-input max-h-48 min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground"
 			/>
-			<AttachFilesButton editorRef={editorRef} />
+			<AttachFilesButton editorRef={editorRef} onImagesSelected={files => { void attachments.paste(files); }} />
 			{/* The button follows the text (owner report 2026-10-03): while
 				 a turn runs WITH text typed it stays the SEND affordance
 				 (click = steer — steering must be clickable, not Enter-only);
@@ -199,7 +213,7 @@ export function Composer({
 				 (click and Enter share one lane), and typing anything
 				 returns the regular send. The green is the app's correct-
 				 answer register (answered-card's green-500/600). */}
-				{nextProblem && !busy && !canSend ? (
+				{nextProblem && !busy && !canSend && !attachments.uploading ? (
 					<button
 						type="submit"
 						data-testid="next-problem-button"
@@ -212,16 +226,16 @@ export function Composer({
 				) : (
 					<button
 						type="submit"
-						aria-label={busy && !canSend ? "Stop" : "Send"}
-						disabled={!busy && !canSend}
+						aria-label={busy && !readyToSend ? "Stop" : "Send"}
+						disabled={!busy && !readyToSend}
 						className={cn(
 							"flex size-10 shrink-0 items-center justify-center rounded-[10px] transition-colors",
-							busy && !canSend
+							busy && !readyToSend
 								? "bg-secondary text-foreground hover:bg-accent"
 								: "bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40",
 						)}
 					>
-						{busy && !canSend ? <SquareIcon className="size-4" /> : <CornerDownLeftIcon className="size-5" />}
+						{busy && !readyToSend ? <SquareIcon className="size-4" /> : <CornerDownLeftIcon className="size-5" />}
 					</button>
 				)}
 		</form>

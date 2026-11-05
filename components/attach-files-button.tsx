@@ -55,7 +55,7 @@ function useDesktopPaths(): boolean {
  * folder choice returns the directory itself, including an empty directory.
  * aria-disabled, not disabled, so the tooltip still shows.
  */
-export function AttachFilesButton({ editorRef }: { editorRef: React.RefObject<HTMLDivElement | null> }) {
+export function AttachFilesButton({ editorRef, onImagesSelected }: { editorRef: React.RefObject<HTMLDivElement | null>; onImagesSelected?: (files: File[]) => void }) {
 	const pickerRef = useRef<HTMLInputElement>(null);
 	const desktop = useDesktopPaths();
 	const buttonRef = useRef<HTMLButtonElement>(null);
@@ -122,26 +122,30 @@ export function AttachFilesButton({ editorRef }: { editorRef: React.RefObject<HT
 			<input
 				ref={pickerRef}
 				type="file"
+				accept={desktop ? undefined : "image/png,image/jpeg,image/gif,image/webp,image/bmp"}
 				multiple
 				hidden
 				data-testid="attach-files-input"
 				onChange={(e) => {
+					if (!desktop && onImagesSelected) {
+						onImagesSelected(Array.from(e.currentTarget.files ?? [])); e.currentTarget.value = ""; return;
+					}
 					const resolve = window.lh?.getPathForFile;
 					const { paths } = resolve ? pathsForFiles(Array.from(e.currentTarget.files ?? []), resolve) : { paths: [] };
 					if (paths.length > 0) editorRef.current?.dispatchEvent(new CustomEvent(INSERT_FILE_PATHS_EVENT, { detail: paths }));
 					e.currentTarget.value = ""; // allow re-picking the same file
 				}}
 			/>
-			<Hint label={desktop ? "Attach files or a folder" : BROWSER_NOTICE}>
+			<Hint label={desktop ? "Attach files or a folder" : onImagesSelected ? "Attach images (or paste with Ctrl+V)" : BROWSER_NOTICE}>
 				<button
 					ref={buttonRef}
 					type="button"
 					aria-label="Attach files"
-					aria-disabled={!desktop}
+					aria-disabled={!desktop && !onImagesSelected}
 					aria-haspopup="menu"
 					aria-expanded={open}
 					data-testid="attach-files"
-					onClick={() => { if (desktop) { setNotice(""); setOpen(!open); } }}
+					onClick={() => { if (desktop) { setNotice(""); setOpen(!open); } else if (onImagesSelected) pickerRef.current?.click(); }}
 					className="flex size-10 shrink-0 items-center justify-center rounded-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground aria-disabled:cursor-default aria-disabled:opacity-40 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground"
 				>
 					<PaperclipIcon className="size-4" />
