@@ -31,6 +31,9 @@ export interface ServerEvents {
 	 *  by this event reads a durable record; ordering is guaranteed in
 	 *  chat-handler's onFinish). */
 	"turn-settled": { chatId: string };
+	/** New persisted learner-facing response. Identity only: no lesson text,
+	 * titles, course names or provider/account data reach desktop alerts. */
+	"response-ready": { chatId: string; messageId: string };
 	/** A job record changed (dispatch, progress, settle, abort, recovery).
 	 *  chatId when known — consumers that own one chat filter on it. */
 	"jobs-changed": { chatId?: string };
@@ -62,6 +65,7 @@ export type ServerEventType = keyof ServerEvents;
 export const SERVER_EVENT_TYPES = [
 	"turn-started",
 	"turn-settled",
+	"response-ready",
 	"jobs-changed",
 	"activity-changed",
 	"chats-changed",

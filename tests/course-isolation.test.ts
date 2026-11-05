@@ -174,6 +174,16 @@ test("live registries separate identical chat and job IDs and event streams", ()
 	offA(); offB();
 });
 
+test("response-ready identities stay inside their originating course", () => {
+	const gotA: unknown[] = [], gotB: unknown[] = [];
+	const offA = runInCourse(a, () => subscribe(event => { if (event.type === "response-ready") gotA.push(event); }));
+	const offB = runInCourse(b, () => subscribe(event => { if (event.type === "response-ready") gotB.push(event); }));
+	try {
+		runInCourse(a, () => emit("response-ready", { chatId: shared, messageId: "msg_ready" }));
+		assert.equal(gotA.length, 1); assert.equal(gotB.length, 0);
+	} finally { offA(); offB(); }
+});
+
 test("delayed and concurrent operations retain their original binding after the caller exits", async () => {
 	const values = await Promise.all(scopes.map(scope => runInCourse(scope, async () => {
 		await new Promise(resolve => setTimeout(resolve, scope.id === a.id ? 30 : 1));
