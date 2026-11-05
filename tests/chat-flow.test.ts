@@ -41,6 +41,7 @@ import { danglingQuestionOf, endsInDismissal, needsContinuation, newAnswerResult
 import { projectView } from "../src/core/view.ts";
 import type { PiEngine } from "../src/agent/models.ts";
 import type { LhMessage } from "../src/core/native-messages.ts";
+import { subscribe } from "../src/core/events.ts";
 
 // Route-level pin (the chat-birth-stamp pattern): the dismiss route's
 // handler, driven directly. Env is the runner's (the same the static
@@ -106,6 +107,22 @@ function defaultLesson(calls: string[][]): FauxResponseStep[] {
 function agentFactory(engine: PiEngine): Parameters<typeof handleChatRequest>[1] {
 	return (opts) => createTeacherAgent(undefined, { engine, messages: opts.messages });
 }
+
+it("response-ready is emitted only after a new learner-facing reply is durable", async () => {
+	const chat = createConfiguredChat("Test: ready notification");
+	const received: { chatId: string; messageId: string }[] = [];
+	const off = subscribe(event => {
+		if (event.type !== "response-ready" || !("messageId" in event) || event.chatId !== chat.id) return;
+		assert.equal(isTurnRunning(chat.id), false);
+		assert.ok(chatStore.getChat(chat.id)?.messages.some(message => message.id === event.messageId));
+		assert.deepEqual(Object.keys(event).sort(), ["chatId", "messageId", "type"]);
+		received.push({ chatId: event.chatId, messageId: event.messageId });
+	});
+	try {
+		await drainTurn(post(chat.id, { type: "text", text: "teach" }), agentFactory(scriptedTeacher(defaultLesson).engine));
+		assert.equal(received.length, 1);
+	} finally { off(); }
+});
 
 /** The graded answer a client sends for a quiz (the shared grading seam). */
 function gradedAnswer(input: typeof QUIZ_INPUT, values: string[]) {

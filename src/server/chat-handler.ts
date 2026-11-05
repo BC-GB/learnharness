@@ -52,6 +52,7 @@ import { composeInstructions } from "../agent/teacher-agent.ts";
 import { ensureCompacted, kickCompaction, effectiveThresholdTokens } from "./compaction.ts";
 import { catalogContextLimits, refreshConnectionCatalog } from "./model-catalog.ts";
 import { emit } from "../core/events.ts";
+import { responseReadyId } from "../core/response-ready.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 import { asAgentMessages } from "../core/native-messages.ts";
 import {
@@ -629,6 +630,8 @@ export async function handleChatInput(
 				// nothing must find the persisted record current — the same
 				// ordering rule as endTurn.
 				unregisterTurn(chatId);
+				const readyId = responseReadyId(stamped, isAborted);
+				if (readyId) emit("response-ready", { chatId, messageId: readyId });
 				// Wave C steer settlement: the live agent is dead (no more
 				// followUp handoffs) - reconcile the steer registry against
 				// what this run actually persisted (in-run injections
