@@ -5,6 +5,7 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute, type ImageFileResult } from "../tool-execute.ts";
 import { resolveSourcePath } from "./fs-shared.ts";
+import { pastedImagePath } from "../../runtime/pasted-images.ts";
 import { detectSupportedImageMimeType, processImage } from "../image-processing/index.ts";
 
 /**
@@ -99,7 +100,7 @@ export function createReadTool(model?: ReadModel): AgentTool<typeof readInput> {
 		description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50.0KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete. File access settings and protected-location denials apply; use ls without a path to discover allowed folders when restricted.`,
 		parameters: readInput,
 		execute: serverExecute("read", readInput, async ({ path: rawPath, offset, limit }, { signal }): Promise<string | ImageFileResult> => {
-			const absolute = resolveSourcePath(rawPath);
+			const absolute = pastedImagePath(rawPath) ?? resolveSourcePath(rawPath);
 			const buffer = await readBoundedFile(absolute, 8 * 1024 * 1024, signal);
 			const mime = detectSupportedImageMimeType(buffer);
 			if (mime) {

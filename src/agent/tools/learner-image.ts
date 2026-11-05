@@ -3,6 +3,7 @@ import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { createHash } from "node:crypto";
 import { resolveSourcePath } from "./fs-shared.ts";
+import { pastedImagePath } from "../../runtime/pasted-images.ts";
 import { detectSupportedImageMimeType, detectSupportedImageMimeTypeFromFile, type ResizedImage } from "../image-processing/index.ts";
 import { checkImageDimensions, MAX_LEARNER_IMAGE_BYTES } from "./learner-image-dimensions.ts";
 import type { ImageSnapshot } from "../../core/contracts.ts";
@@ -15,7 +16,7 @@ export interface LearnerImage extends ImageSnapshot {
 
 export async function checkLearnerImage(rawPath: string): Promise<string> {
 	// Reuse the shared file-access policy, including canonical/symlink checks.
-	const absolute = resolveSourcePath(rawPath);
+	const absolute = pastedImagePath(rawPath) ?? resolveSourcePath(rawPath);
 	try {
 		const stat = await fs.stat(absolute);
 		if (!stat.isFile()) throw new Error("it is not a regular file");
@@ -52,8 +53,9 @@ async function normalize(bytes: Uint8Array, signal?: AbortSignal): Promise<Resiz
 	const worker = new Worker(path.join(process.cwd(), "src/agent/image-processing/learner-image-worker.mjs"));
 	try {
 		return await new Promise((resolve, reject) => {
+			const timeout = setTimeout(() => reject(new Error("Image processing timed out")), 15_000);
 			const abort = () => reject(signal?.reason ?? new Error("Operation aborted"));
-			const cleanup = () => signal?.removeEventListener("abort", abort);
+			const cleanup = () => { clearTimeout(timeout); signal?.removeEventListener("abort", abort); };
 			worker.once("message", (message: { result?: ResizedImage; error?: string }) => {
 				cleanup();
 				if (message.result) resolve(message.result);
@@ -66,6 +68,16 @@ async function normalize(bytes: Uint8Array, signal?: AbortSignal): Promise<Resiz
 			else worker.postMessage({ bytes });
 		});
 	} finally { await worker.terminate(); }
+}
+
+export async function normalizeLearnerImageBytes(bytes: Uint8Array, signal?: AbortSignal): Promise<ResizedImage> {
+	if (!bytes.length || bytes.length > MAX_LEARNER_IMAGE_BYTES) throw new Error("Image must be between 1 byte and 25 MiB");
+	const mime = detectSupportedImageMimeType(bytes);
+	if (!mime) throw new Error("Not a supported image");
+	checkImageDimensions(bytes, mime);
+	const image = await normalize(bytes, signal);
+	signal?.throwIfAborted();
+	return image;
 }
 
 export async function loadLearnerImage(rawPath: string, signal?: AbortSignal): Promise<LearnerImage> {
