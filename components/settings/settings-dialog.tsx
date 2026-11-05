@@ -1,4 +1,7 @@
 "use client";
+
+import { courseFetch as fetch } from "@/lib/course-client";
+
 /**
  * THE SETTINGS DIALOG (settings-app wave, 2026-09-20): the thin settings
  * page graduated into the designed surface — a centered modal over

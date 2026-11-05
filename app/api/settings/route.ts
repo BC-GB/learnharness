@@ -1,3 +1,4 @@
+import { courseRoute } from "@/src/server";
 /**
  * GET /api/settings — THE user settings record (settings-storage wave,
  * 2026-09-19): the whole delta record at data/settings.json (config.
@@ -18,7 +19,9 @@ import { settingsStore, fileAccessConfigurationError } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function handleCourseGET() {
 	const fileAccessError = fileAccessConfigurationError();
 	return Response.json({ settings: settingsStore.readSettings(), ...(fileAccessError ? { fileAccessError } : {}) });
 }
+
+export const GET = courseRoute(handleCourseGET);

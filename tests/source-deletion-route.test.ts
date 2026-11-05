@@ -1,3 +1,4 @@
+import { courseRuntimeSlot } from "./helpers/course-runtime.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -137,14 +138,14 @@ it("preflights every selected session's running turn/jobs before deleting any se
 });
 it("refuses contribution deletion during extraction without cancelling it; metadata-only empty folder removal is safe", async () => {
 	book("a"); folders({});
-	const g = globalThis as { __lhExtractionRuns?: unknown }, saved = g.__lhExtractionRuns;
+	const registry = courseRuntimeSlot<unknown>("extraction-runs"), saved = registry.current;
 	const controller = new AbortController();
 	try {
-		g.__lhExtractionRuns = { running: new Map([["other", { chatId: "other", kind: "notes", phase: "extracting", startedAt: 1, usage: {}, controller }]]), inFlight: new Set(), lastStartedAt: 0 };
+		registry.current = { running: new Map([["other", { chatId: "other", kind: "notes", phase: "extracting", startedAt: 1, usage: {}, controller }]]), inFlight: new Set(), lastStartedAt: 0 };
 		const response = await remove(["a"]); assert.equal(response.status, 409); assert.equal((await response.json()).code, "extraction_running");
 		assert.equal(controller.signal.aborted, false); assert.equal(stores.graphStore.readSources().length, 1);
 		assert.equal((await remove([], ["empty"])).status, 200);
-	} finally { g.__lhExtractionRuns = saved; }
+	} finally { registry.current = saved; }
 });
 it("invalid and oversized bodies and corrupt organization refuse before destructive writes", async () => {
 	book("a"); folders({ a: { folderId: "inner" } });

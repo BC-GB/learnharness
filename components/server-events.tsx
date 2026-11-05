@@ -1,4 +1,5 @@
 "use client";
+import { courseUrl } from "@/lib/course-client";
 
 /**
  * THE NOTIFICATION CHANNEL'S CLIENT HALF (push-architecture slice 3,
@@ -36,7 +37,7 @@ export interface NotifySource {
 }
 
 export function openEventsChannel(): NotifySource {
-	const es = new EventSource("/api/events");
+	const es = new EventSource(courseUrl("/api/events"));
 	return {
 		close: () => es.close(),
 		onOpen: (cb) => {

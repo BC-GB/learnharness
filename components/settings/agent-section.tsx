@@ -1,4 +1,7 @@
 "use client";
+
+import { courseFetch as fetch } from "@/lib/course-client";
+
 /**
  * The Agent section (settings-app wave): the THREE MODEL SLOTS, the tool
  * toggles + the search-engine preference, and the prompt override

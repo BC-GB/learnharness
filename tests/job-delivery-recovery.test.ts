@@ -1,3 +1,4 @@
+import { courseRuntimeSlot } from "./helpers/course-runtime.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -38,8 +39,8 @@ async function until(predicate: () => boolean): Promise<void> {
 	while (!predicate()) { assert(Date.now() < end, "fixture condition timed out"); await delay(10); }
 }
 function sweep(): void {
-	const global = globalThis as { __lhWakePipeline?: { lastSweepAt: number } };
-	if (global.__lhWakePipeline) global.__lhWakePipeline.lastSweepAt = 0;
+	const registry = courseRuntimeSlot<{ lastSweepAt: number }>("wake-pipeline");
+	if (registry.current) registry.current.lastSweepAt = 0;
 	recoverStaleJobs();
 }
 function chat(blocked = false) {

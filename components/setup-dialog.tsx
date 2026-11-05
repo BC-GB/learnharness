@@ -1,4 +1,7 @@
 "use client";
+
+import { courseFetch as fetch } from "@/lib/course-client";
+
 /**
  * The first-run setup flow (model-slots wave, 2026-09-20, owner design
  * "A — composer CTA + send interception"): chats cannot start until the

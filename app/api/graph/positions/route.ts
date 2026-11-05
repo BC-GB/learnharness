@@ -1,3 +1,4 @@
+import { courseRoute } from "@/src/server";
 /**
  * PUT /api/graph/positions — the live-physics drag commit. The client
  * anneals a drag to rest and sends the new positions; the server
@@ -13,7 +14,7 @@ import { commitPositions } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
-export async function PUT(request: Request) {
+async function handleCoursePUT(request: Request) {
 	let body: unknown;
 	try {
 		body = await request.json();
@@ -22,3 +23,5 @@ export async function PUT(request: Request) {
 	}
 	return Response.json({ positions: commitPositions(body) });
 }
+
+export const PUT = courseRoute(handleCoursePUT);

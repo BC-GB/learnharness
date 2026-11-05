@@ -1,3 +1,4 @@
+import { courseRoute } from "@/src/server";
 /**
  * THE NOTIFICATION CHANNEL ROUTE (push-architecture slice 1, 2026-10-02):
  * one SSE connection per open window over the core event bus — the
@@ -10,6 +11,8 @@ import { eventsResponse } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
-export function GET(): Response {
+function handleCourseGET(): Response {
 	return eventsResponse();
 }
+
+export const GET = courseRoute(handleCourseGET);

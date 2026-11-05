@@ -1,4 +1,7 @@
 "use client";
+
+import { courseFetch as fetch } from "@/lib/course-client";
+
 /**
  * The Keys section (wave-5 polish, 2026-09-21 — owner design): a MINIMAL
  * key-value table. Provider left, masked key right, no description hints

@@ -38,7 +38,11 @@ interface CaptureRecord {
 }
 
 /** Test seam; production always follows the configured app data root. */
-export const backgroundCaptureDir = { current: path.join(PATHS.debug, "background-captures") };
+let backgroundCaptureDirOverride: string | undefined;
+export const backgroundCaptureDir = {
+	get current(): string { return backgroundCaptureDirOverride ?? path.join(PATHS.debug, "background-captures"); },
+	set current(value: string) { backgroundCaptureDirOverride = value; },
+};
 
 export function backgroundCaptureEnabled(role: ModelRole): boolean {
 	const selected = process.env.LH_BACKGROUND_CAPTURE?.split(",").map((value) => value.trim());

@@ -1,3 +1,4 @@
+import { courseRuntimeSlot } from "./helpers/course-runtime.ts";
 /**
  * Graph merger + trigger + derivation tests (vision §1, 2026-09-02 redesign;
  * events cleanup 2026-09-27).
@@ -948,9 +949,9 @@ describe("single-node deletion (deleteNodeTraces + deleteGraphNode, node interlu
 		// belongs to another session), the caller retries. The registry is
 		// the pipeline's globalThis store — a fake entry is the honest way
 		// to pin the gate without staging a real run.
-		const g = globalThis as { __lhExtractionRuns?: unknown };
-		const realRuns = g.__lhExtractionRuns;
-		g.__lhExtractionRuns = {
+		const registry = courseRuntimeSlot<unknown>("extraction-runs");
+		const realRuns = registry.current;
+		registry.current = {
 			running: new Map([
 				["chat_busy", { chatId: "chat_busy", kind: "chat", phase: "extracting", startedAt: 1, usage: {}, controller: new AbortController() }],
 			]),
@@ -965,7 +966,7 @@ describe("single-node deletion (deleteNodeTraces + deleteGraphNode, node interlu
 				error: "An extraction is running — try again when it finishes",
 			});
 		} finally {
-			g.__lhExtractionRuns = realRuns;
+			registry.current = realRuns;
 		}
 
 		// Success — the node dies, the version stamp moves.
@@ -1028,10 +1029,10 @@ describe("session coverage read (extraction-UX redesign, 2026-09-24)", () => {
 
 	it("running: true only for THIS session's chat-kind run (the registry pin)", () => {
 		const chat = fixtureChat("coverage running", [user("cov_r1", "running pin")].flat());
-		const g = globalThis as { __lhExtractionRuns?: unknown };
-		const realRuns = g.__lhExtractionRuns;
+		const registry = courseRuntimeSlot<unknown>("extraction-runs");
+		const realRuns = registry.current;
 		try {
-			g.__lhExtractionRuns = {
+			registry.current = {
 				running: new Map([
 					// a notes run for the same id is NOT this session's chat run
 					["src_notes", { chatId: "src_notes", kind: "notes", phase: "extracting", startedAt: 1, usage: {}, controller: new AbortController() }],
@@ -1041,7 +1042,7 @@ describe("session coverage read (extraction-UX redesign, 2026-09-24)", () => {
 				lastStartedAt: 0,
 			};
 			assert.equal(sessionCoverage(chat.id)!.running, false, "no chat-kind run for this id");
-			g.__lhExtractionRuns = {
+			registry.current = {
 				running: new Map([
 					[chat.id, { chatId: chat.id, kind: "chat", phase: "extracting", startedAt: 3, usage: {}, controller: new AbortController() }],
 				]),
@@ -1050,7 +1051,7 @@ describe("session coverage read (extraction-UX redesign, 2026-09-24)", () => {
 			};
 			assert.equal(sessionCoverage(chat.id)!.running, true);
 		} finally {
-			g.__lhExtractionRuns = realRuns;
+			registry.current = realRuns;
 		}
 	});
 

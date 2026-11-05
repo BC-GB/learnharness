@@ -19,19 +19,29 @@ function request(names: string[]) {
 	return new Request("http://localhost/api/graph/import", { method: "POST", body: form });
 }
 
-it("route keeps three-worker batching, request positions and mixed per-file outcomes/config details", async () => {
+it("route keeps three-worker batching, request positions and mixed per-file outcomes/config details", { timeout: 5000 }, async () => {
 	let active = 0;
 	let peak = 0;
+	let releaseSlow!: () => void;
+	const slowGate = new Promise<void>(resolve => { releaseSlow = resolve; });
 	extraction.importNotes = async ({ filePath }) => {
 		active++; peak = Math.max(peak, active);
 		try {
-			await new Promise((resolve) => setTimeout(resolve, filePath === "slow.md" ? 25 : 1));
+			// Gate completion explicitly: a loaded CI runner can start the
+			// second timer after 25ms, defeating the old 25ms-vs-1ms race.
+			if (filePath === "slow.md") await slowGate;
+			else await new Promise<void>(resolve => setImmediate(resolve));
 			if (filePath === "models.md") throw new ModelsNotConfiguredError(["cheap"]);
 			if (filePath === "key.md") throw new ProviderKeyMissingError("openai", ["cheap"]);
 			if (["failed", "partial", "aborted", "busy"].includes(filePath)) throw new NotesImportError(filePath as NotesImportError["outcome"], { nodes: 2, chains: 1 }, `synthetic ${filePath}`);
 			if (filePath === "unknown.md") throw new Error("synthetic unknown error");
 			return { nodes: 0, chains: 0 };
-		} finally { active--; }
+		} finally {
+			active--;
+			// Allow the fast worker's route continuation to publish its result
+			// before releasing the slow file. A serial route times out honestly.
+			if (filePath !== "slow.md") setImmediate(releaseSlow);
+		}
 	};
 	const names = ["slow.md", "same.md", "same.md", "failed", "partial", "aborted", "busy", "models.md", "key.md", "unknown.md"];
 	const response = await POST(request(names));

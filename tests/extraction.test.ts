@@ -1,3 +1,4 @@
+import { courseRuntimeSlot } from "./helpers/course-runtime.ts";
 /**
  * The extraction pipeline tests (vision §1 construction, 2026-09-02 redesign;
  * relinked 2026-09-27): extractor → auditor → merger, the sole graph writer —
@@ -1040,14 +1041,14 @@ describe("the extraction pipeline (extractor → auditor → merger)", () => {
 			extractionStatuses().some((run) => run.chatId === chatId && run.phase === "extracting"),
 			"the run is registered at start",
 		);
-		const g = globalThis as { __lhExtractionRuns?: { running: Map<string, unknown> } };
-		assert.ok(g.__lhExtractionRuns?.running.has(chatId), "the registry lives on globalThis — no module-instance split can hide runs");
+		const registry = courseRuntimeSlot<{ running: Map<string, unknown> }>("extraction-runs");
+		assert.ok(registry.current?.running.has(chatId), "the registry lives on globalThis — no module-instance split can hide runs");
 		assert.deepEqual(await observer.runExtraction(chatId), { nodes: 0, chains: 0 }, "single-flight spans pipeline instances");
 
 		release();
 		assert.deepEqual(await first, { nodes: 0, chains: 0 }, "isolated job failure — the run resolves zeros");
 		assert.ok(!extractionStatuses().some((run) => run.chatId === chatId), "the registry entry clears when the run ends (however it ends)");
-		assert.ok(!g.__lhExtractionRuns?.running.has(chatId), "nothing leaks into the global registry");
+		assert.ok(!registry.current?.running.has(chatId), "nothing leaks into the global registry");
 	});
 
 	it("throws for unknown chats", async () => {

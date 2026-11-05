@@ -1,3 +1,4 @@
+import { courseRoute } from "@/src/server";
 /**
  * PUT/DELETE /api/settings/prompts/[...segment] — the override TEXT for
  * one prompt segment (settings-storage wave, 2026-09-19).
@@ -42,7 +43,7 @@ function segmentPathFrom(segments: string[]): string | null {
 	return isValidSegmentPath(joined) ? joined : null;
 }
 
-export async function PUT(request: Request, ctx: { params: Promise<{ segment: string[] }> }) {
+async function handleCoursePUT(request: Request, ctx: { params: Promise<{ segment: string[] }> }) {
 	const { segment } = await ctx.params;
 	const path = segmentPathFrom(segment);
 	if (!path) return Response.json({ error: "invalid segment path" }, { status: 400 });
@@ -60,7 +61,7 @@ export async function PUT(request: Request, ctx: { params: Promise<{ segment: st
 	return Response.json({ path, text: body.text });
 }
 
-export async function DELETE(_request: Request, ctx: { params: Promise<{ segment: string[] }> }) {
+async function handleCourseDELETE(_request: Request, ctx: { params: Promise<{ segment: string[] }> }) {
 	const { segment } = await ctx.params;
 	const path = segmentPathFrom(segment);
 	if (!path) return Response.json({ error: "invalid segment path" }, { status: 400 });
@@ -78,3 +79,6 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ segment
 	// (additive; the GET view derives the same truth from record+file).
 	return Response.json({ path, deleted: true, switchCleared: hadSwitch });
 }
+
+export const PUT = courseRoute(handleCoursePUT);
+export const DELETE = courseRoute(handleCourseDELETE);

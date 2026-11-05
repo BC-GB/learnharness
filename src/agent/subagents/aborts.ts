@@ -1,3 +1,4 @@
+import { courseLocal } from "../../runtime/course-context.ts";
 /**
  * Job abort registry — WHO can actually kill a running sub-agent.
  *
@@ -24,7 +25,7 @@ interface LhAbortGlobal {
 
 function registry(): Map<string, AbortController> {
 	const g = globalThis as typeof globalThis & LhAbortGlobal;
-	return (g.__lhJobAborts ??= new Map());
+	return courseLocal("job-aborts", () => new Map<string, AbortController>());
 }
 
 /** The runner registers its controller at job start (idempotent overwrite). */
@@ -47,6 +48,8 @@ export function unregisterJobAbort(jobId: string): void {
 export function isJobLive(jobId: string): boolean {
 	return registry().has(jobId);
 }
+
+export function liveJobCount(): number { return registry().size; }
 
 /** Abort a running job's loop. Returns false when no controller is live —
  * the job's loop is not executing. The endpoint separately refuses abort

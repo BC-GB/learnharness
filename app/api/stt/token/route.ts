@@ -1,3 +1,4 @@
+import { courseRoute } from "@/src/server";
 /**
  * POST-less BYOK mint: the renderer never holds the real Deepgram key.
  *
@@ -15,7 +16,7 @@
  */
 import { keyValue } from "@/src/server";
 
-export async function GET() {
+async function handleCourseGET() {
 	const key = keyValue("DEEPGRAM_API_KEY");
 	if (!key) {
 		return Response.json(
@@ -46,3 +47,5 @@ export async function GET() {
 		return Response.json({ message: "Deepgram unreachable" }, { status: 502 });
 	}
 }
+
+export const GET = courseRoute(handleCourseGET);

@@ -1,3 +1,4 @@
+import { courseLocal } from "../runtime/course-context.ts";
 /**
  * PARKED DISMISSALS (owner, 2026-10-04): ESC-discard while the turn is
  * still working. Mid-turn the STORED record holds no pending question or
@@ -39,7 +40,7 @@ interface LhGlobal {
 
 function registry(): Map<string, ParkedDismissal> {
 	const g = globalThis as typeof globalThis & LhGlobal;
-	return (g.__lhParkedDismissals ??= new Map<string, ParkedDismissal>());
+	return courseLocal("parked-dismissals", () => new Map<string, ParkedDismissal>());
 }
 
 /** Park (or overwrite) the chat's dismissal intent. Called by the dismiss

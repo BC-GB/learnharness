@@ -1,3 +1,4 @@
+import { courseLocal } from "../../runtime/course-context.ts";
 import { isolatedRendererEnabled } from "./render-client.ts";
 import type { PiEngine } from "../models.ts";
 import type { SearchProvider } from "../../core/search.ts";
@@ -132,7 +133,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 
 	/** Running usage totals per live job (the loop's onUsage folds here,
 	 * then writes through the job store so the poll sees progress). */
-	const usageTotals = new Map<string, JobUsage>();
+	const usageTotals = () => courseLocal("job-usage", () => new Map<string, JobUsage>());
 
 	function makeLoopContext(jobId: string, engine: PiEngine): LoopContext {
 		const chatId = jobStore.getJob(jobId)?.chatId;
@@ -148,8 +149,8 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			abortSignal: controller.signal,
 			chatId,
 			onUsage: (step) => {
-				const next = accumulateJobUsage(usageTotals.get(jobId), model, step);
-				usageTotals.set(jobId, next);
+				const next = accumulateJobUsage(usageTotals().get(jobId), model, step);
+				usageTotals().set(jobId, next);
 				jobStore.updateJob(jobId, { usage: next }); // merge patch — status untouched
 			},
 		};
@@ -271,9 +272,9 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			// The last usage write may have been mid-flight when the loop died;
 			// persist what was folded (the abort path patches only status, so
 			// this never resurrects an aborted job — merge patch).
-			const usage = usageTotals.get(jobId);
+			const usage = usageTotals().get(jobId);
 			if (usage) jobStore.updateJob(jobId, { usage });
-			usageTotals.delete(jobId);
+			usageTotals().delete(jobId);
 		}
 	}
 

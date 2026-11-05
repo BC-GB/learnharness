@@ -5,6 +5,7 @@ import * as os from "node:os";
 
 import * as path from "node:path";
 import { AUTH_FILE } from "../../../config.ts";
+import { currentCourse } from "../../runtime/course-context.ts";
 import { comparisonPath, guardSourcePath, isWithin, realSourcePath as realOrMissing, resolvePolicy, type ResolvedFileAccessPolicy } from "./file-access.ts";
 
 /** Read-only model tools confined to an explicitly approved source library. */
@@ -161,9 +162,11 @@ function checkedSourcePath(absolute: string, denied: (absolute: string) => boole
 /** The deployment source root is mandatory; user folder preferences can
  * narrow it but never expand it into another course, profile or home. */
 export function approvedSourceRoot(): string {
- const configured = process.env.LH_SOURCE_ROOT;
+ const bound = currentCourse();
+ const configured = bound ? bound.sourceRoot : process.env.LH_SOURCE_ROOT;
  if (!configured) throw new Error("Source access requires an explicitly configured LH_SOURCE_ROOT.");
  const root = realpathSync(configured);
+ if (bound && root !== path.resolve(configured)) throw new Error("The course library binding changed; source access is blocked.");
  if (!fsSync.statSync(root).isDirectory()) throw new Error("The approved source root is not a directory.");
  return root;
 }

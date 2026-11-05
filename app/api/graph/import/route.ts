@@ -1,3 +1,4 @@
+import { courseRoute } from "@/src/server";
 /**
  * POST /api/graph/import — the format-agnostic front door's transport
  * (vision §1, 2026-09-13): raw personal-notes files in, one extraction run
@@ -97,7 +98,7 @@ async function readImportForm(request: Request): Promise<FormData> {
 	}
 }
 
-export async function POST(request: Request) {
+async function handleCoursePOST(request: Request) {
 	let form: FormData;
 	try {
 		form = await readImportForm(request);
@@ -160,3 +161,4 @@ export async function POST(request: Request) {
 	await Promise.all(workers);
 	return Response.json({ results });
 }
+export const POST = courseRoute(handleCoursePOST);

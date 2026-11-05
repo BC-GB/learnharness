@@ -25,7 +25,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useBackdropDismiss } from "@/components/backdrop-dismiss";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/components/course-navigation";
 import {
 	actionForBinding,
 	bindingForAction,

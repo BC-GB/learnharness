@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { coursePage, currentCourse } from "@/src/server";
 
 /**
  * The settings surface graduated into a centered dialog over the app
@@ -7,5 +8,5 @@ import { redirect } from "next/navigation";
  * page; the dialog opens via the sidebar row or mod+,.
  */
 export default function SettingsPage() {
-	redirect("/chat/new");
+	return coursePage(() => redirect(`/chat/new?course=${currentCourse()!.id}`));
 }

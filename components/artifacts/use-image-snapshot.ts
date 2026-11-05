@@ -1,5 +1,8 @@
 "use client";
 
+import { courseFetch as fetch } from "@/lib/course-client";
+
+
 import { useContext, useEffect, useState } from "react";
 import { ChatActionsContext } from "@/components/chat";
 import type { ImageSnapshot } from "@/src/core";

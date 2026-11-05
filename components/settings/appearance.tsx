@@ -1,4 +1,7 @@
 "use client";
+
+import { courseFetch as fetch } from "@/lib/course-client";
+
 /**
  * THE APPEARANCE APPLICATION (thin settings wave, 2026-09-19): the settings
  * record's appearance section actually DOES something — resolved against

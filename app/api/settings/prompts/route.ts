@@ -1,3 +1,4 @@
+import { courseRoute } from "@/src/server";
 /**
  * GET /api/settings/prompts — the system-prompt segment view
  * (settings-storage wave, 2026-09-19): the effective prompt segments for
@@ -20,7 +21,7 @@ import { effectivePromptSegments, readSettingsRecord } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function handleCourseGET() {
 	const switches = readSettingsRecord()?.agent?.prompts ?? {};
 	return Response.json({
 		prober: effectivePromptSegments("prober", switches),
@@ -28,3 +29,5 @@ export async function GET() {
 		practice: effectivePromptSegments("practice", switches),
 	});
 }
+
+export const GET = courseRoute(handleCourseGET);
