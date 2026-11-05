@@ -146,14 +146,14 @@ describe("composer attach button", () => {
 		assert.deepEqual(result, { paths: ["/notes/a.pdf"], skipped: 2 });
 	});
 
-	it("server render is the browser case: a disabled-looking paperclip between the input and Send", () => {
+	it("server render offers browser image selection between the input and Send", () => {
 		const html = renderToStaticMarkup(<Composer busy={false} value="" onChange={() => {}} onSend={() => {}} onStop={() => {}} canSend={false} />);
-		assert.match(html, /aria-label="Attach files"[^>]*aria-disabled="true"|aria-disabled="true"[^>]*aria-label="Attach files"/);
+		assert.match(html, /aria-label="Attach files"[^>]*aria-disabled="false"|aria-disabled="false"[^>]*aria-label="Attach files"/);
 		const editor = html.indexOf("data-file-path-input");
 		const attach = html.indexOf('data-testid="attach-files"');
 		const send = html.indexOf('aria-label="Send"');
 		assert.ok(editor >= 0 && editor < attach && attach < send, "the paperclip follows the input and precedes Send");
-		assert.ok(html.includes('type="file"') && !html.includes("accept="), "any file type");
+		assert.ok(html.includes('type="file"') && html.includes('accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"'), "browser attachments are raster images");
 	});
 
 	it("desktop: the button offers Files/Folder, and Files keeps multi-file any-type chips at the caret", async () => {
@@ -259,12 +259,14 @@ describe("composer attach button", () => {
 		assert.equal(f.sends, 0);
 	});
 
-	it("browser: the button stays inert and the picker never opens", async () => {
+	it("browser: the button opens image selection and refuses non-image files without sending", async () => {
 		const f = await fixture({ desktop: false });
-		assert.equal(f.button.getAttribute("aria-disabled"), "true");
+		assert.equal(f.button.getAttribute("aria-disabled"), "false");
 		await act(async () => { f.button.click(); });
-		assert.equal(f.pickerClicks, 0);
+		assert.equal(f.pickerClicks, 1);
 		await f.pick([f.file("a.pdf", "/a.pdf")]);
 		assert.equal(f.value, "readthis");
+		assert.equal(f.sends, 0);
+		assert.match(f.doc.querySelector('[role="alert"]')?.textContent ?? "", /Use PNG/);
 	});
 });

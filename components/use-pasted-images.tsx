@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseFilePaths } from "@/src/core";
-import { courseUrlForId, documentCourse } from "@/lib/course-client";
+import { courseFetch as fetch, courseUrlForId, documentCourse } from "@/lib/course-client";
 import { useCourse } from "@/components/course-navigation";
 import { INSERT_FILE_PATHS_EVENT } from "@/components/path-input";
 
