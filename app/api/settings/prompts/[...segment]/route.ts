@@ -39,17 +39,22 @@ export const dynamic = "force-dynamic";
 /** Re-join the catch-all segments into the mirror-layout path; null when
  *  the shape is invalid (traversal, wrong layout — the store re-guards). */
 function segmentPathFrom(segments: string[]): string | null {
-	const joined = segments.map(decodeURIComponent).join("/");
-	return isValidSegmentPath(joined) ? joined : null;
+	try {
+		const joined = segments.map(decodeURIComponent).join("/");
+		return isValidSegmentPath(joined) ? joined : null;
+	} catch { return null; }
 }
 
 async function handleCoursePUT(request: Request, ctx: { params: Promise<{ segment: string[] }> }) {
 	const { segment } = await ctx.params;
 	const path = segmentPathFrom(segment);
 	if (!path) return Response.json({ error: "invalid segment path" }, { status: 400 });
-	const body = (await request.json().catch(() => null)) as { text?: unknown } | null;
+	const body = (await request.json().catch(() => null)) as { text?: unknown; mode?: unknown } | null;
 	if (!body || typeof body.text !== "string") {
 		return Response.json({ error: "body must be {text: string}" }, { status: 400 });
+	}
+	if (body.mode !== undefined && body.mode !== "append" && body.mode !== "replace") {
+		return Response.json({ error: 'mode must be "append" or "replace"' }, { status: 400 });
 	}
 	if (!new Set(allSegmentPaths()).has(path)) {
 		return Response.json(
@@ -57,8 +62,10 @@ async function handleCoursePUT(request: Request, ctx: { params: Promise<{ segmen
 			{ status: 400 },
 		);
 	}
-	promptOverrides.writeOverride(path, body.text);
-	return Response.json({ path, text: body.text });
+	// Missing mode preserves legacy clients' replacement semantics.
+	const mode = body.mode === "append" ? "append" : "replace";
+	promptOverrides.writeOverride(path, body.text, mode);
+	return Response.json({ path, text: body.text, mode });
 }
 
 async function handleCourseDELETE(_request: Request, ctx: { params: Promise<{ segment: string[] }> }) {

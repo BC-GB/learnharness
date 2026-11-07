@@ -15,6 +15,7 @@
 import { useEffect, useRef } from "react";
 
 export const SETTINGS_SAVED_EVENT = "lh:settings-saved";
+const SETTINGS_STORAGE_EVENT = "lh:global-settings-saved:v1";
 
 /** The settings sections a writer can land (the write seam's union). */
 // "keys" joined the roster (zero-keys wave, 2026-09-25): keys-section
@@ -28,6 +29,8 @@ export function notifySettingsSaved(section: SettingsSection): void {
 	window.dispatchEvent(
 		new CustomEvent(SETTINGS_SAVED_EVENT, { detail: { section } }),
 	);
+	// Notify other course tabs without sharing setting values or course data.
+	try { window.localStorage.setItem(SETTINGS_STORAGE_EVENT, JSON.stringify({ section, nonce: `${Date.now()}:${Math.random()}` })); } catch { /* Storage can be unavailable; next open still reads the shared record. */ }
 }
 
 /** Non-hook listener (imperative seams, tests). Returns an unsubscribe. */
@@ -37,7 +40,15 @@ export function onSettingsSaved(handler: (section: SettingsSection) => void): ()
 		if (section !== undefined) handler(section);
 	};
 	window.addEventListener(SETTINGS_SAVED_EVENT, listener);
-	return () => window.removeEventListener(SETTINGS_SAVED_EVENT, listener);
+	const storage = (event: StorageEvent) => {
+		if (event.key !== SETTINGS_STORAGE_EVENT || !event.newValue) return;
+		try {
+			const section = JSON.parse(event.newValue).section;
+			if (["general", "keys", "agent", "models", "appearance", "graph", "compaction", "dictation", "claudeCode"].includes(section)) handler(section);
+		} catch { /* Malformed browser metadata is not a settings change. */ }
+	};
+	window.addEventListener("storage", storage);
+	return () => { window.removeEventListener(SETTINGS_SAVED_EVENT, listener); window.removeEventListener("storage", storage); };
 }
 
 /** Reader subscription: re-invokes whenever a writer lands, with the

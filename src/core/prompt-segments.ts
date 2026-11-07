@@ -22,6 +22,14 @@ export const FRAGMENT_RE = /^\d+-[\w.-]+\.md$/;
  *  teaching philosophy; its 00-base.md plays the base role). */
 export type PromptAgent = "prober" | "teacher" | "practice";
 
+export type PromptMode = "append" | "replace";
+
+/** One composition rule for the runtime and the editor's preview. */
+export function composePromptSegment(source: string, custom: string, mode: PromptMode = "replace"): string {
+	if (mode === "replace") return custom;
+	return custom.trim() ? `${source}\n\n${custom}` : source;
+}
+
 /** One segment of one agent's composed prompt. */
 export interface PromptSegmentInfo {
 	/** The override/store key — mirrors the source layout ("system-prompt.md",
@@ -33,6 +41,8 @@ export interface PromptSegmentInfo {
 	sourceText: string;
 	/** The user's override text, or null when no file exists on disk. */
 	overrideText: string | null;
+	/** Missing on older clients/fixtures means the original replacement mode. */
+	mode?: PromptMode;
 	/** Effective state: the settings switch AND the file both present. */
 	enabled: boolean;
 	/** True for segments BOTH agents compose — the base and shared/ fragments. */

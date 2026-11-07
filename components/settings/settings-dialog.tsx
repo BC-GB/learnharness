@@ -151,6 +151,7 @@ export function SettingsDialogBody({
 		undefined,
 	);
 	const [error, setError] = useState<string | null>(null);
+	const [globalScope, setGlobalScope] = useState(false);
 	const [fileAccessError, setFileAccessError] = useState<string | null>(null);
 	// MenuShell open-count — drives the content column's scroll lock.
 	const [openMenus, setOpenMenus] = useState(0);
@@ -202,8 +203,9 @@ export function SettingsDialogBody({
 			.then((r) =>
 				r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`)),
 			)
-			.then((body: { settings: UserSettings | null; fileAccessError?: string }) => {
+			.then((body: { settings: UserSettings | null; fileAccessError?: string; scope?: string }) => {
 				setRecord(body.settings ?? { version: CURRENT_SETTINGS_VERSION });
+				setGlobalScope(body.scope === "global");
 				setFileAccessError(body.fileAccessError ?? null);
 			})
 			.catch(() => setRecord(null));
@@ -279,6 +281,7 @@ export function SettingsDialogBody({
 			{/* Header — the app's quiet CMU title language. */}
 			<header className="flex h-15 shrink-0 items-center gap-3 border-b border-border px-5">
 				<h2 className="font-title text-2xl tracking-tight">Settings</h2>
+				{globalScope && <span className="text-xs text-muted-foreground" data-testid="global-settings-label">All courses</span>}
 				<Hint
 						// Esc closes the dialog (its own listener) — surface it.
 						label="Close"

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { currentCourse, courseStatePath } from "./src/runtime/course-context.ts";
+import { sharedPreferencePath, sharedPreferencesExist, sharedPreferenceFile } from "./src/runtime/global-preferences-path.ts";
 
 /** Repository root (this file is at <root>/config.ts). */
 export const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -134,8 +135,13 @@ export const PROMPTS_OVERRIDE_DIR = path.join(DATA_ROOT, "prompts");
 
 /** Legacy constant exports remain compatible with fixtures and recovery
  * tooling. Runtime stores MUST call these scope-aware functions instead. */
-export const settingsFile = () => courseStatePath(path.join(PATHS.data, "settings.json"));
-export const promptsOverrideDir = () => courseStatePath(path.join(PATHS.data, "prompts"));
+export const courseSettingsFile = () => courseStatePath(path.join(PATHS.data, "settings.json"));
+export const coursePromptsDir = () => courseStatePath(path.join(PATHS.data, "prompts"));
+export const globalPreferencesEnabled = () => sharedPreferencesExist(DATA_ROOT);
+export const globalPreferencePath = (relative: string) => sharedPreferencePath(DATA_ROOT, relative);
+export const globalWritablePreference = (file: string) => globalPreferencesEnabled() ? sharedPreferenceFile(DATA_ROOT, file) : undefined;
+export const settingsFile = () => globalPreferencesEnabled() ? globalPreferencePath("global-settings.json") : courseSettingsFile();
+export const promptsOverrideDir = () => globalPreferencesEnabled() ? globalPreferencePath("global-prompts") : coursePromptsDir();
 export const sourcesFile = () => courseStatePath(path.join(PATHS.graph, "sources.json"));
 export const sourceOrganizationFile = () => courseStatePath(path.join(PATHS.graph, "source-organization.json"));
 export const positionsFile = () => courseStatePath(path.join(PATHS.graph, "positions.json"));
