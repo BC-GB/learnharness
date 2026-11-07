@@ -49,7 +49,7 @@ import { NotificationSettings } from "./notification-settings.tsx";
 import { AgentSection } from "./agent-section.tsx";
 import type { ModelsSettings } from "@/src/core";
 import { MENU_CLOSE_EVENT, MENU_OPEN_EVENT } from "@/components/menu-shell";
-import { notifySettingsSaved } from "@/components/settings-signal";
+import { notifySettingsSaved, useSettingsSaved } from "@/components/settings-signal";
 import { KeysSection } from "./keys-section.tsx";
 import { Hint } from "@/components/ui/hint";
 import { AppearanceSection, GraphSection } from "./appearance-section.tsx";
@@ -152,6 +152,14 @@ export function SettingsDialogBody({
 	);
 	const [error, setError] = useState<string | null>(null);
 	const [globalScope, setGlobalScope] = useState(false);
+	useSettingsSaved(() => {
+		fetch("/api/settings").then(response => response.ok ? response.json() : null).then(body => {
+			if (!body) return;
+			setRecord(body.settings ?? { version: CURRENT_SETTINGS_VERSION });
+			setGlobalScope(body.scope === "global");
+			setFileAccessError(body.fileAccessError ?? null);
+		}).catch(() => { /* Keep the last saved view on transport failure. */ });
+	});
 	const [fileAccessError, setFileAccessError] = useState<string | null>(null);
 	// MenuShell open-count — drives the content column's scroll lock.
 	const [openMenus, setOpenMenus] = useState(0);
