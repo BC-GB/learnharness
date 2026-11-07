@@ -29,9 +29,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { PATHS, promptsOverrideDir } from "../../config.ts";
-import { courseStatePath } from "../runtime/course-context.ts";
-import { FRAGMENT_RE, isValidSegmentPath, type PromptAgent, type PromptSegmentInfo } from "../core/prompt-segments.ts";
+import { PATHS } from "../../config.ts";
+import { readPromptCustomization, readCoursePromptGuidance } from "../runtime/prompt-customizations.ts";
+import { FRAGMENT_RE, composePromptSegment, type PromptAgent, type PromptSegmentInfo } from "../core/prompt-segments.ts";
 
 const PROMPTS_DIR = path.join(PATHS.root, "src", "agent", "prompts");
 
@@ -44,20 +44,11 @@ const PROMPTS_DIR = path.join(PATHS.root, "src", "agent", "prompts");
 const PRACTICE_SHARED_FRAGMENTS = ["10-voice.md", "15-accuracy.md", "16-mental-model.md", "40-formatting.md"];
 
 /** Absolute path for an override file (unchecked — validate first). */
-function overrideFileFor(segmentPath: string): string {
-	return courseStatePath(path.join(promptsOverrideDir(), ...segmentPath.split("/")));
-}
-
 /** Read one override file, or null when absent/invalid — the composition
  *  side's reader (the store's readOverride is the same mirror layout,
  *  kept separate because the layers may not import each other). */
 export function readPromptOverride(segmentPath: string): string | null {
-	if (!isValidSegmentPath(segmentPath)) return null;
-	try {
-		return fs.readFileSync(overrideFileFor(segmentPath), "utf-8");
-	} catch {
-		return null;
-	}
+	return readPromptCustomization(segmentPath)?.text ?? null;
 }
 
 /** List the SOURCE segments for one agent, in composition order — the
@@ -106,6 +97,7 @@ export function listSourceSegments(agent: PromptAgent): Array<{ path: string; sh
 export function effectivePromptSegments(
 	agent: PromptAgent,
 	switches: Record<string, boolean>,
+	includeCourseGuidance = false,
 ): PromptSegmentInfo[] {
 	return listSourceSegments(agent).map((segment) => {
 		let sourceText: string;
@@ -114,11 +106,15 @@ export function effectivePromptSegments(
 		} catch {
 			sourceText = ""; // source unreadable — the agent loader would crash anyway
 		}
-		const overrideText = readPromptOverride(segment.path);
+		const guidance = includeCourseGuidance ? readCoursePromptGuidance(segment.path) : null;
+		if (guidance) sourceText = composePromptSegment(sourceText, guidance.text, guidance.mode);
+		const custom = readPromptCustomization(segment.path);
+		const overrideText = custom?.text ?? null;
 		return {
 			path: segment.path,
 			sourceText,
 			overrideText,
+			mode: custom?.mode ?? "replace",
 			enabled: switches[segment.path] === true && overrideText !== null,
 			shared: segment.shared,
 		};

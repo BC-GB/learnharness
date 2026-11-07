@@ -15,13 +15,13 @@ import { courseRoute } from "@/src/server";
  * (core/settings-resolution.ts resolveSettings — browser-safe).
  */
 
-import { settingsStore, fileAccessConfigurationError } from "@/src/server";
+import { settingsStore, fileAccessConfigurationError, globalPreferencesEnabled } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
-async function handleCourseGET() {
+async function handleCourseGET(_request?: Request) {
 	const fileAccessError = fileAccessConfigurationError();
-	return Response.json({ settings: settingsStore.readSettings(), ...(fileAccessError ? { fileAccessError } : {}) });
+	return Response.json({ settings: settingsStore.readSettings(), scope: globalPreferencesEnabled() ? "global" : "course", ...(fileAccessError ? { fileAccessError } : {}) });
 }
 
 export const GET = courseRoute(handleCourseGET);

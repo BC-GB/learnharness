@@ -49,7 +49,7 @@ import { NotificationSettings } from "./notification-settings.tsx";
 import { AgentSection } from "./agent-section.tsx";
 import type { ModelsSettings } from "@/src/core";
 import { MENU_CLOSE_EVENT, MENU_OPEN_EVENT } from "@/components/menu-shell";
-import { notifySettingsSaved } from "@/components/settings-signal";
+import { notifySettingsSaved, useSettingsSaved } from "@/components/settings-signal";
 import { KeysSection } from "./keys-section.tsx";
 import { Hint } from "@/components/ui/hint";
 import { AppearanceSection, GraphSection } from "./appearance-section.tsx";
@@ -151,6 +151,19 @@ export function SettingsDialogBody({
 		undefined,
 	);
 	const [error, setError] = useState<string | null>(null);
+	const [globalScope, setGlobalScope] = useState(false);
+	const notifyingOwnSave = useRef(false);
+	useSettingsSaved(() => {
+		// Our PUT already returned the authoritative record. Other writers
+		// (including other tabs) need a refresh; our own signal does not.
+		if (notifyingOwnSave.current) return;
+		fetch("/api/settings").then(response => response.ok ? response.json() : null).then(body => {
+			if (!body) return;
+			setRecord(body.settings ?? { version: CURRENT_SETTINGS_VERSION });
+			setGlobalScope(body.scope === "global");
+			setFileAccessError(body.fileAccessError ?? null);
+		}).catch(() => { /* Keep the last saved view on transport failure. */ });
+	});
 	const [fileAccessError, setFileAccessError] = useState<string | null>(null);
 	// MenuShell open-count — drives the content column's scroll lock.
 	const [openMenus, setOpenMenus] = useState(0);
@@ -202,8 +215,9 @@ export function SettingsDialogBody({
 			.then((r) =>
 				r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`)),
 			)
-			.then((body: { settings: UserSettings | null; fileAccessError?: string }) => {
+			.then((body: { settings: UserSettings | null; fileAccessError?: string; scope?: string }) => {
 				setRecord(body.settings ?? { version: CURRENT_SETTINGS_VERSION });
+				setGlobalScope(body.scope === "global");
 				setFileAccessError(body.fileAccessError ?? null);
 			})
 			.catch(() => setRecord(null));
@@ -260,7 +274,9 @@ export function SettingsDialogBody({
 				(prev) =>
 					stored ?? ({ ...(prev ?? {}), [section]: body }) as UserSettings,
 			);
-			notifySettingsSaved(section);
+			notifyingOwnSave.current = true;
+			try { notifySettingsSaved(section); }
+			finally { notifyingOwnSave.current = false; }
 			if (section === "appearance")
 				onAppearanceChange(body as AppearanceSettings);
 		},
@@ -279,6 +295,7 @@ export function SettingsDialogBody({
 			{/* Header — the app's quiet CMU title language. */}
 			<header className="flex h-15 shrink-0 items-center gap-3 border-b border-border px-5">
 				<h2 className="font-title text-2xl tracking-tight">Settings</h2>
+				{globalScope && <span className="text-xs text-muted-foreground" data-testid="global-settings-label">All courses</span>}
 				<Hint
 						// Esc closes the dialog (its own listener) — surface it.
 						label="Close"

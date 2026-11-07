@@ -24,6 +24,7 @@ import { courseFetch as fetch } from "@/lib/course-client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { FACTORY_SETTINGS, type AppearanceSettings } from "@/src/core";
+import { useSettingsSaved } from "@/components/settings-signal";
 
 /** The resolved, fully-concrete appearance view (delta + factory merged). */
 export function resolveAppearance(delta: AppearanceSettings | undefined) {
@@ -133,6 +134,8 @@ export function useAppearance() {
 export function AppearanceProvider({ children }: { children: React.ReactNode }) {
 	const [delta, setDelta] = useState<AppearanceSettings | undefined>(undefined);
 	const appliedRef = useRef<string>("");
+	const mounted = useRef(false);
+	const request = useRef(0);
 
 	// The vars apply on every change — stringified as the change signal.
 	const vars = useMemo(() => appearanceVars(resolveAppearance(delta)), [delta]);
@@ -160,12 +163,12 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
 
 	// One fetch per app load: the record (sanitized server-side) carries the
 	// delta; resolution happens here against the compiled factory.
-	useEffect(() => {
-		let alive = true;
-		fetch("/api/settings")
+	const refreshAppearance = useCallback(() => {
+		const revision = ++request.current;
+		return fetch("/api/settings")
 			.then((r) => r.json())
 			.then((body: { settings?: Record<string, unknown> }) => {
-				if (!alive) return;
+				if (!mounted.current || revision !== request.current) return;
 				// The record arrives sanitized server-side; the appearance
 				// slice is unknown-shaped here, so it goes through the same
 				// resolve (absent/invalid fields = factory anyway).
@@ -175,12 +178,16 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
 				);
 			})
 			.catch(() => {/* settings stay factory — not worth a crash */});
-		return () => {
-			alive = false;
-		};
 	}, []);
+	useEffect(() => {
+		mounted.current = true;
+		void refreshAppearance();
+		return () => { mounted.current = false; };
+	}, [refreshAppearance]);
+	useSettingsSaved(section => { if (section === "appearance") void refreshAppearance(); });
 
 	const onAppearanceChange = useCallback((next: AppearanceSettings | undefined) => {
+		request.current++;
 		setDelta(next);
 	}, []);
 

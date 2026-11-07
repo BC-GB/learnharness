@@ -6,6 +6,7 @@
 
 export * from "./chat-handler.ts";
 export * from "./course-http.ts";
+export { globalPreferencesEnabled } from "../../config.ts";
 export { boundedCourseBody, courseMaterials, uploadCourseMaterials } from "./course-materials.ts";
 export { uploadPastedImage, pastedImageResponse } from "./pasted-images.ts";
 export { courseMaintenanceStatus } from "./course-maintenance.ts";

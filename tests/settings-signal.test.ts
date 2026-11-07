@@ -64,4 +64,19 @@ describe("settings-signal — the seam's contract", () => {
 		assert.deepEqual(got, []);
 		off();
 	});
+
+	it("global cross-tab signals carry only section/nonce and ignore malformed storage events", () => {
+		const writes: { key: string; body: Record<string, unknown> }[] = [];
+		Object.defineProperty(window, "localStorage", { configurable: true, value: { setItem: (key: string, value: string) => writes.push({ key, body: JSON.parse(value) }) } });
+		notifySettingsSaved("appearance");
+		assert.equal(writes.length, 1);
+		assert.deepEqual(Object.keys(writes[0]!.body).sort(), ["nonce", "section"]);
+		const got: string[] = []; const off = onSettingsSaved(section => got.push(section));
+		for (const value of [JSON.stringify({ section: "appearance" }), "broken", JSON.stringify({ section: "arbitrary" })]) {
+			const event = new Event("storage");
+			Object.defineProperties(event, { key: { value: writes[0]!.key }, newValue: { value } });
+			window.dispatchEvent(event);
+		}
+		assert.deepEqual(got, ["appearance"]); off();
+	});
 });

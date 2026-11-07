@@ -6,6 +6,9 @@ import type { Usage } from "@earendil-works/pi-ai";
 import { PATHS } from "../../config.ts";
 import { APP_IDENTITY, piEngineFor, type PiEngine } from "./models.ts";
 import { effectivePromptSegments } from "./prompt-segments.ts";
+import { composePromptSegment } from "../core/prompt-segments.ts";
+import { globalPreferencesEnabled } from "../../config.ts";
+import { globalPromptSwitches } from "../runtime/prompt-customizations.ts";
 import {
 	askUserQuestionTool,
 	createProberTools,
@@ -75,9 +78,9 @@ export type AgentKind = "prober" | "teacher" | "practice";
  *  through config paths, not request state — the store import carries no
  *  chat/job machinery. */
 export function composeInstructions(kind: AgentKind, switches?: Record<string, boolean>): string {
-	const segments = effectivePromptSegments(kind, switches ?? {});
+	const segments = effectivePromptSegments(kind, switches ?? {}, switches !== undefined);
 	return segments
-		.map((s) => (s.enabled ? s.overrideText! : s.sourceText))
+		.map((s) => s.enabled ? composePromptSegment(s.sourceText, s.overrideText!, s.mode) : s.sourceText)
 		.map((t) => t.trim())
 		.filter(Boolean)
 		.join("\n\n---\n\n");
@@ -184,8 +187,8 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	const engine = opts.engine ?? piEngineFor(kind as "prober" | "teacher");
 	const stopper = makeQuestionStopper(kind);
 	const narrationGuard = narrationGuardApplies(kind, engine.model, opts.tools !== undefined);
-	const composedPrompt = opts.promptSwitches
-		? composeInstructions(kind, opts.promptSwitches)
+	const composedPrompt = opts.promptSwitches || globalPreferencesEnabled()
+		? composeInstructions(kind, opts.promptSwitches ?? globalPromptSwitches())
 		: composedInstructions[kind]!;
 	const systemPrompt = narrationGuard ? `${composedPrompt}\n\n---\n\n${SEND_TO_USER_DELIVERY_RULE}` : composedPrompt;
 	// Debug recorder (owner, 2026-10-04): raw provider events when

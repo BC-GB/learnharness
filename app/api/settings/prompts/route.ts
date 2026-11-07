@@ -21,7 +21,7 @@ import { effectivePromptSegments, readSettingsRecord } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
-async function handleCourseGET() {
+async function handleCourseGET(_request?: Request) {
 	const switches = readSettingsRecord()?.agent?.prompts ?? {};
 	return Response.json({
 		prober: effectivePromptSegments("prober", switches),

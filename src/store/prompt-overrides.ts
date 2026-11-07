@@ -33,14 +33,12 @@ import path from "node:path";
 import { promptsOverrideDir } from "../../config.ts";
 import { courseStatePath } from "../runtime/course-context.ts";
 import { isValidSegmentPath } from "../core/prompt-segments.ts";
+import type { PromptMode } from "../core/prompt-segments.ts";
+import { promptCustomizationFile, readPromptCustomization, promptStoreDirectory } from "../runtime/prompt-customizations.ts";
 import type { PromptOverrideStore } from "../core/ports.ts";
 import { removeLeftoverTemps, writeFileAtomicSync } from "./atomic-write.ts";
 
 /** Absolute path for an override file (unchecked — validate first). */
-function overrideFileFor(segmentPath: string): string {
-	return courseStatePath(path.join(promptsOverrideDir(), ...segmentPath.split("/")));
-}
-
 /** The store adapter (core/ports.ts). */
 export const promptOverrides: PromptOverrideStore = {
 	listOverrides(): string[] {
@@ -48,43 +46,46 @@ export const promptOverrides: PromptOverrideStore = {
 		const walk = (dir: string, prefix: string) => {
 			let entries: fs.Dirent[];
 			try {
-				entries = fs.readdirSync(dir, { withFileTypes: true });
+				entries = fs.readdirSync(promptStoreDirectory(dir), { withFileTypes: true });
 			} catch {
 				return; // no dir yet = no overrides
 			}
 			for (const entry of entries) {
+				if (entry.name === ".additions") continue;
 				const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
 				if (entry.isDirectory()) walk(path.join(dir, entry.name), rel);
 				else if (entry.isFile() && entry.name.endsWith(".md") && isValidSegmentPath(rel)) out.push(rel);
 			}
 		};
 		walk(promptsOverrideDir(), "");
-		return out.sort();
+		walk(path.join(promptsOverrideDir(), ".additions"), "");
+		return [...new Set(out)].filter(segment => readPromptCustomization(segment) !== null).sort();
 	},
 
 	readOverride(segmentPath: string): string | null {
-		if (!isValidSegmentPath(segmentPath)) return null;
-		try {
-			return fs.readFileSync(overrideFileFor(segmentPath), "utf-8");
-		} catch {
-			return null;
-		}
+		return readPromptCustomization(segmentPath)?.text ?? null;
 	},
 
-	writeOverride(segmentPath: string, text: string): void {
+	writeOverride(segmentPath: string, text: string, mode: PromptMode = "replace"): void {
 		if (!isValidSegmentPath(segmentPath)) return;
-		const file = overrideFileFor(segmentPath);
+		const file = promptCustomizationFile(segmentPath, mode);
 		fs.mkdirSync(path.dirname(file), { recursive: true });
 		writeFileAtomicSync(file, text, { allowInPlaceFallback: true });
+		if (mode === "replace") {
+			// Publish the replacement first, then remove the addition. A
+			// crash before removal leaves the source-preserving addition active.
+			const addition = promptCustomizationFile(segmentPath, "append");
+			try { fs.unlinkSync(addition); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+			removeLeftoverTemps(addition);
+		}
 	},
 
 	deleteOverride(segmentPath: string): void {
 		if (!isValidSegmentPath(segmentPath)) return;
-		try {
-			fs.unlinkSync(overrideFileFor(segmentPath));
-		} catch {
-			// absent already = done
+		for (const mode of ["append", "replace"] as const) {
+			const file = promptCustomizationFile(segmentPath, mode);
+			try { fs.unlinkSync(file); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+			removeLeftoverTemps(file);
 		}
-		removeLeftoverTemps(overrideFileFor(segmentPath));
 	},
 };

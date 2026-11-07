@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { BASE_DATA_ROOT } from "../../config.ts";
+import { BASE_DATA_ROOT, globalPreferencesEnabled } from "../../config.ts";
 import { courseName, DEFAULT_COURSE_ID, isCourseId, type CourseInfo } from "../core/courses.ts";
 import { runInCourse, type CourseScope } from "../runtime/course-context.ts";
 import { sanitizeUserSettings } from "../core/settings.ts";
@@ -81,7 +81,7 @@ export function addCourse(rawName: unknown): CourseInfo {
 	// folder policies, transcripts, graph, notes or course content are copied.
 	let preferences;
 	try { preferences = sanitizeUserSettings(JSON.parse(fs.readFileSync(path.join(BASE_DATA_ROOT, "settings.json"), "utf8"))); } catch { /* Fresh course can configure models normally. */ }
-	if (preferences) runInCourse({ id: entry.id, name: entry.name, dataRoot: directory, sourceRoot: path.join(directory, "materials") }, () => writeFileAtomicSync(path.join(directory, "settings.json"), JSON.stringify({ version: preferences.version, models: preferences.models, appearance: preferences.appearance, general: preferences.general }, null, "\t")));
+	if (preferences && !globalPreferencesEnabled()) runInCourse({ id: entry.id, name: entry.name, dataRoot: directory, sourceRoot: path.join(directory, "materials") }, () => writeFileAtomicSync(path.join(directory, "settings.json"), JSON.stringify({ version: preferences.version, models: preferences.models, appearance: preferences.appearance, general: preferences.general }, null, "\t")));
 	registry.courses.push(entry);
 	runInCourse({ id: "legacy", name: registry.courses[0]!.name, dataRoot: BASE_DATA_ROOT, sourceRoot: process.env.LH_SOURCE_ROOT }, () => writeFileAtomicSync(registryFile, JSON.stringify(registry, null, "\t") + "\n"));
 	return entry;

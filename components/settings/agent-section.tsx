@@ -68,6 +68,7 @@ import {
 	MODEL_SLOTS,
 	SEARCH_ENGINES,
 	resolveSettings,
+	composePromptSegment,
 	isFileAccessFolder,
 	type AgentSettings,
 	type CompactionSettings,
@@ -75,6 +76,7 @@ import {
 	type ModelSlotName,
 	type ModelsSettings,
 	type SearchEngineId,
+	type PromptMode,
 } from "@/src/core";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { prettyModel } from "@/components/usage-format";
@@ -103,6 +105,7 @@ interface SegmentInfo {
 	path: string;
 	sourceText: string;
 	overrideText: string | null;
+	mode?: PromptMode;
 	enabled: boolean;
 	shared: boolean;
 }
@@ -352,6 +355,7 @@ export function AgentSection({
 	const [prompts, setPrompts] = useState<PromptView | null>(null);
 	const [openSegment, setOpenSegment] = useState<string | null>(null);
 	const [segmentDraft, setSegmentDraft] = useState<Record<string, string>>({});
+	const [segmentModes, setSegmentModes] = useState<Record<string, PromptMode>>({});
 	const [segmentStatus, setSegmentStatus] = useState<string | null>(null);
 	/** One open dropdown for the whole section: which slot (or the search
 	 *  row), which kind. */
@@ -444,12 +448,12 @@ export function AgentSection({
 		};
 	}, [openMenu]);
 
-	async function saveSegment(path: string, text: string) {
+	async function saveSegment(path: string, text: string, mode: PromptMode) {
 		setSegmentStatus(null);
 		const res = await fetch(`/api/settings/prompts/${path}`, {
 			method: "PUT",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ text }),
+			body: JSON.stringify({ text, mode }),
 		});
 		if (!res.ok) {
 			setSegmentStatus(`Save failed: ${(await res.json().catch(() => ({}))).error ?? res.status}`);
@@ -486,6 +490,8 @@ export function AgentSection({
 		}
 		readPrompts();
 		setSegmentStatus("Deleted");
+		setSegmentDraft(previous => { const next = { ...previous }; delete next[path]; return next; });
+		setSegmentModes(previous => { const next = { ...previous }; delete next[path]; return next; });
 	}
 
 		/** The search-engine menu row — label + the quiet live-key mark. */
@@ -521,7 +527,9 @@ export function AgentSection({
 		// (the always-active button was the "doesn't feel like it does
 		// anything" half of the report).
 		const draft = segmentDraft[info.path] ?? info.overrideText ?? "";
-		const dirty = draft !== (info.overrideText ?? "");
+		const savedMode = fileExists ? info.mode ?? "replace" : "append";
+		const mode = segmentModes[info.path] ?? savedMode;
+		const dirty = draft !== (info.overrideText ?? "") || mode !== savedMode;
 		return (
 			<div key={info.path} data-testid={`prompt-segment-${info.path}`}>
 				<SettingsRow
@@ -532,7 +540,7 @@ export function AgentSection({
 					// on disk unused), "Your version is in use" when the
 					// switch is on. The switch's meaning becomes legible
 					// through this line.
-					hint={[info.usageHint, info.enabled ? PROMPT_IN_USE_HINT : undefined].filter(Boolean).join(" · ") || undefined}
+					hint={[info.usageHint, info.enabled ? info.mode === "append" ? "Original + your addition are in use" : PROMPT_IN_USE_HINT : undefined].filter(Boolean).join(" · ") || undefined}
 					testid={`prompt-row-${info.path}`}
 				>
 					{/* Graying ruling: ONLY the toggle dims without an
@@ -559,6 +567,15 @@ export function AgentSection({
 				</button>
 				{open && (
 					<div className="mt-1 flex flex-col gap-2">
+						<label className="flex items-center gap-2 text-xs">
+							How to apply
+							<select aria-label="How to apply your instructions" value={mode}
+								onChange={event => setSegmentModes({ ...segmentModes, [info.path]: event.target.value as PromptMode })}
+								className="rounded border bg-background px-2 py-1">
+								<option value="append">Add to original</option>
+								<option value="replace">Replace original</option>
+							</select>
+						</label>
 						<div>
 							<p className="mb-1 text-xs uppercase tracking-widest text-muted-foreground/70">Source</p>
 							<textarea
@@ -569,7 +586,7 @@ export function AgentSection({
 							/>
 						</div>
 						<div>
-							<p className="mb-1 text-xs uppercase tracking-widest text-muted-foreground/70">Override</p>
+							<p className="mb-1 text-xs uppercase tracking-widest text-muted-foreground/70">{mode === "append" ? "Your addition" : "Your replacement"}</p>
 							<textarea
 								value={segmentDraft[info.path] ?? info.overrideText ?? ""}
 								onChange={(e) => setSegmentDraft({ ...segmentDraft, [info.path]: e.target.value })}
@@ -578,11 +595,16 @@ export function AgentSection({
 								className="h-24 w-full resize-y rounded-sm border border-border bg-background p-2 font-ui text-xs text-foreground outline-none"
 							/>
 						</div>
+						<div>
+							<p className="mb-1 text-xs uppercase tracking-widest text-muted-foreground/70">Preview when enabled</p>
+							<textarea readOnly aria-label="Combined instructions preview" value={composePromptSegment(info.sourceText, draft, mode)}
+								className="h-28 w-full resize-y rounded-sm border border-border bg-muted p-2 font-ui text-xs text-muted-foreground" />
+						</div>
 						<div className="flex items-center gap-3">
 							<button
 								type="button"
 								disabled={!dirty}
-								onClick={() => void saveSegment(info.path, segmentDraft[info.path] ?? "")}
+								onClick={() => void saveSegment(info.path, draft, mode)}
 								className={
 									dirty
 										? "text-xs text-foreground underline-offset-2 hover:underline"

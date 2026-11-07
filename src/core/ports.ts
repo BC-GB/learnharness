@@ -207,7 +207,7 @@ export interface PromptOverrideStore {
 	/** The override text, or null when the path has no file. */
 	readOverride(segmentPath: string): string | null;
 	/** Persist override text for a segment path (creates parents). */
-	writeOverride(segmentPath: string, text: string): void;
+	writeOverride(segmentPath: string, text: string, mode?: import("./prompt-segments.ts").PromptMode): void;
 	/** Remove the override file, if present (switches are untouched — an
 	 *  on-switch with no file composes the source default, inert). */
 	deleteOverride(segmentPath: string): void;

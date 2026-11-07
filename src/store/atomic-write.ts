@@ -31,7 +31,7 @@
 import fs from "node:fs"; // default import on purpose: tests patch fs.renameSync on this object, namespace imports would not see it
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { AUTH_FILE, PATHS } from "../../config.ts";
+import { AUTH_FILE, PATHS, globalWritablePreference } from "../../config.ts";
 
 const TEMP_MARKER = ".tmp-";
 const RENAME_RETRY_MS = 100;
@@ -58,6 +58,10 @@ function statePath(file: string): string {
 		checkParent(auth, path.dirname(auth));
 		return auth;
 	}
+	// Only the named global preference record and grammar-checked prompt
+	// files are shared. Chats, graph, materials and other state remain scoped.
+	const shared = globalWritablePreference(absolute);
+	if (shared) return shared;
 	if (!absolute.startsWith(root + path.sep)) throw new Error("Store path is outside the active application state.");
 	checkParent(absolute, root);
 	return absolute;
