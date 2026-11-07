@@ -3,11 +3,11 @@ import path from "node:path";
 import { PATHS } from "../../config.ts";
 import { courseStatePath } from "../runtime/course-context.ts";
 import { writeFileAtomicSync } from "./atomic-write.ts";
-import { validOutlineId, type LessonOutline } from "../core/lesson-outline.ts";
+import { validOutlineId, type LessonOutline, type LegacyLessonOutline } from "../core/lesson-outline.ts";
 
-function file(id: string): string {
+function file(id: string, legacy = false): string {
 	if (!validOutlineId(id)) throw new Error("Invalid lesson identity");
-	const target = courseStatePath(path.join(PATHS.data, "lesson-outlines", id + ".json"));
+	const target = courseStatePath(path.join(PATHS.data, legacy ? "lesson-outlines" : "lesson-outlines-v2", id + ".json"));
 	let at = target;
 	for (;;) {
 		try { if (fs.realpathSync(at) !== path.resolve(at)) throw new Error("Outline aliases are not allowed"); break; }
@@ -20,7 +20,16 @@ export function readLessonOutline(id: string): LessonOutline | null {
 	try {
 		const target = file(id); if (fs.statSync(target).size > 512 * 1024) throw new Error("Outline too large");
 		const value = JSON.parse(fs.readFileSync(target, "utf8"));
-		if (value.version !== 1 || value.chatId !== id || !Array.isArray(value.topics) || value.topics.length > 100) throw new Error("Invalid saved outline");
+		if (value.version !== 2 || value.chatId !== id || !Array.isArray(value.groups) || value.groups.length > 8) throw new Error("Invalid saved outline");
+		return value;
+	} catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
+}
+/** Earlier files remain unchanged and usable by rollback. */
+export function readLegacyLessonOutline(id: string): LegacyLessonOutline | null {
+	try {
+		const target = file(id, true); if (fs.statSync(target).size > 512 * 1024) throw new Error("Outline too large");
+		const value = JSON.parse(fs.readFileSync(target, "utf8"));
+		if (value.version !== 1 || value.chatId !== id || !Array.isArray(value.topics) || value.topics.length > 100) throw new Error("Invalid legacy outline");
 		return value;
 	} catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
 }
