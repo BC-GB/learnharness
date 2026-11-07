@@ -191,7 +191,7 @@ test("readings and records stay course-scoped, prefer revised sources and reject
 	});
 });
 
-test("broad material pack retains prior supporting quotes beyond the former single-excerpt limit", () => {
+test("broad material pack retains prior supporting quotes beyond the former single-excerpt limit", () => runInCourse(resolveCourse("legacy"), () => {
 	const quotes = Array.from({ length: 18 }, (_, n) => ("Evidence passage " + n + ": ").padEnd(300, String.fromCharCode(97 + n)));
 	fs.writeFileSync(path.join(process.env.LH_SOURCE_ROOT!, "panel-evidence.md"), "# Panel observations\n" + quotes.join("\n"));
 	const refs = quotes.map(quote => ({ path: "panel-evidence.md", quote }));
@@ -199,4 +199,4 @@ test("broad material pack retains prior supporting quotes beyond the former sing
 	const source = pack.sources.find(s => s.path === "panel-evidence.md"); assert.ok(source);
 	assert.ok(quotes.every(q => source.text.includes(q)));
 	assert.ok(pack.sources.reduce((n, s) => n + s.text.length, 0) < 80000);
-});
+}));
