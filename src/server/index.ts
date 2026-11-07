@@ -5,6 +5,7 @@
  */
 
 export * from "./chat-handler.ts";
+export { lessonOutlineView, refreshLessonOutline } from "./lesson-outline.ts";
 export * from "./course-http.ts";
 export { globalPreferencesEnabled } from "../../config.ts";
 export { boundedCourseBody, courseMaterials, uploadCourseMaterials } from "./course-materials.ts";

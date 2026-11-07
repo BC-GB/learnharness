@@ -335,6 +335,8 @@ export const ROLE_SLOT: Readonly<Record<ModelRole, ModelSlotName>> = {
 export interface GeneralSettings {
 	/** Automatic startup/24h update checks (default ON). Manual checks bypass this. */
 	autoUpdate?: boolean;
+	/** Independent navigation observer. Off until explicitly enabled. */
+	lessonOutline?: boolean;
 }
 
 /** One app-wide dictation preference, shared by every composer. */
@@ -498,7 +500,7 @@ export interface UserSettings {
  *  prompts default off — hence their absence here. */
 export interface FactorySettings {
 	version: number;
-	general: Required<GeneralSettings>;
+	general: Required<Omit<GeneralSettings, "lessonOutline">> & Pick<GeneralSettings, "lessonOutline">;
 	dictation: Required<DictationSettings>;
 	appearance: {
 		mode: "dark" | "light";
@@ -568,6 +570,8 @@ function sanitizeGeneral(raw: Record<string, unknown>): GeneralSettings {
 	const out: GeneralSettings = {};
 	const autoUpdate = boolOrDrop(raw.autoUpdate);
 	if (autoUpdate !== undefined) out.autoUpdate = autoUpdate;
+	const lessonOutline = boolOrDrop(raw.lessonOutline);
+	if (lessonOutline !== undefined) out.lessonOutline = lessonOutline;
 	return out;
 }
 

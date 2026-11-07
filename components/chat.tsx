@@ -53,6 +53,7 @@ import {
 } from "@/src/core";
 import { PlanBlock, PlanPopup, latestTree } from "@/components/plan-block";
 import { PlanMarginalia, planExists } from "@/components/plan-window";
+import { LessonOutline } from "@/components/lesson-outline";
 import { MermaidOverlay, SessionMermaidContext } from "@/components/session-overlay";
 import { AbortTurnDialog, type AbortMode } from "@/components/abort-turn-dialog";
 import { ArrowRightIcon, DumbbellIcon, WaypointsIcon } from "lucide-react";
@@ -1795,6 +1796,7 @@ export function Chat({
 				<AbortTurnDialog mode={abortAsk} onClose={() => setAbortAsk(null)} onConfirm={confirmAbort} busy={busy} />
 				</div>
 			</div>
+			{kind !== "practice" && <LessonOutline key={chatId} chatId={chatId} revision={nativeMessages.length} />}
 		</div>
 		</JobsContext.Provider>
 		</SessionMermaidContext.Provider>
