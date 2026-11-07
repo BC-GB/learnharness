@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type KeyboardEvent } from "react";
-import { GripVertical, ChevronDown, ChevronUp } from "lucide-react";
+import { GripVertical, ChevronDown, ChevronUp, Settings2 } from "lucide-react";
+import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { courseFetch as fetch, documentCourse } from "@/lib/course-client";
 import { useSettingsSaved } from "@/components/settings-signal";
 
@@ -35,6 +36,7 @@ export function LessonOutline({ chatId, revision }: { chatId: string; revision: 
 }
 
 export function OutlinePanel({ view }: { view: OutlineView }) {
+	const settingsDialog = useSettingsDialog();
 	const [collapsed, setCollapsed] = useState(false);
 	const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
 	const card = useRef<HTMLElement>(null);
@@ -65,6 +67,7 @@ export function OutlinePanel({ view }: { view: OutlineView }) {
 			<button type="button" aria-label="Move outline" title="Drag or use arrow keys to move" onPointerDown={start} onPointerMove={move} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} onKeyDown={keyboardMove} className="touch-none cursor-grab text-muted-foreground active:cursor-grabbing"><GripVertical size={15} /></button>
 			<h2 className="flex-1 text-sm font-semibold">Outline</h2>
 			{view.busy && <span role="status" className="text-xs text-muted-foreground">Updating…</span>}
+			<button type="button" aria-label="Outline settings" title="Outline model and reasoning" onClick={() => settingsDialog.open("general", "outline-model")} className="rounded p-1 text-muted-foreground hover:bg-muted"><Settings2 size={15} /></button>
 			<button type="button" aria-label={collapsed ? "Expand outline" : "Minimize outline"} aria-expanded={!collapsed} onClick={() => setCollapsed(c => !c)} className="rounded p-1 text-muted-foreground hover:bg-muted">{collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}</button>
 		</div>
 		{!collapsed && <div className="min-h-0 max-h-[min(60dvh,32rem)] overflow-y-auto overscroll-contain px-4 py-3">

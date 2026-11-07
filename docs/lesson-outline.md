@@ -1,6 +1,6 @@
 # Independent AI lesson outline
 
-Settings → General → Lesson outline enables an independent navigation observer. It uses the existing extraction/background model and connection. These additional requests consume the existing provider allowance; no API fallback, new credentials or billing controls are introduced.
+Settings → General → Lesson outline enables an independent navigation observer. The panel's settings button opens its own model and reasoning controls. Until explicitly changed, these retain the existing extraction/background defaults, including a saved extractor override. Selecting an outline model changes only the global outline preference; teacher and extraction models remain unchanged. Choices use the original connected-model catalog, unsupported reasoning levels clamp on write, and a saved unavailable selection remains visible and repairable. Changes apply to the next outline update and do not trigger a model call by themselves. These additional observer requests consume the existing provider allowance; no API fallback, new credentials or billing controls are introduced.
 
 ## Structure and evidence
 

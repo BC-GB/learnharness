@@ -337,6 +337,8 @@ export interface GeneralSettings {
 	autoUpdate?: boolean;
 	/** Independent navigation observer. Off until explicitly enabled. */
 	lessonOutline?: boolean;
+	/** Independent outline model/reasoning. Absent fields retain existing background defaults. */
+	outlineModel?: RoleModelOverride;
 }
 
 /** One app-wide dictation preference, shared by every composer. */
@@ -500,7 +502,7 @@ export interface UserSettings {
  *  prompts default off — hence their absence here. */
 export interface FactorySettings {
 	version: number;
-	general: Required<Omit<GeneralSettings, "lessonOutline">> & Pick<GeneralSettings, "lessonOutline">;
+	general: Required<Pick<GeneralSettings, "autoUpdate">> & Omit<GeneralSettings, "autoUpdate">;
 	dictation: Required<DictationSettings>;
 	appearance: {
 		mode: "dark" | "light";
@@ -572,6 +574,8 @@ function sanitizeGeneral(raw: Record<string, unknown>): GeneralSettings {
 	if (autoUpdate !== undefined) out.autoUpdate = autoUpdate;
 	const lessonOutline = boolOrDrop(raw.lessonOutline);
 	if (lessonOutline !== undefined) out.lessonOutline = lessonOutline;
+	const outlineModel = sanitizeRoleOverride(raw.outlineModel);
+	if (outlineModel) out.outlineModel = outlineModel;
 	return out;
 }
 

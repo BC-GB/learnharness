@@ -47,9 +47,33 @@ async function connection(value: boolean) { connected = value; revision++; await
 async function put(body: unknown) {
 	return PUT(new Request("http://localhost/api/settings/models", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }), { params: Promise.resolve({ section: "models" }) });
 }
+async function putOutline(body: unknown) {
+	return PUT(new Request("http://localhost/api/settings/general", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }), { params: Promise.resolve({ section: "general" }) });
+}
 beforeEach(async () => {
 	await connection(false);
 	writeSettingsRecord({ version: 1, models: initial, general: { autoUpdate: false }, graph: { rendering: false } });
+});
+
+test("outline model route validates new choices and preserves the other settings sections", async () => {
+	const before = readSettingsRecord()!;
+	assert.equal((await putOutline({ ...before.general, outlineModel: { model: { provider: "unconfigured-provider", id: "unknown" } } })).status, 400);
+	assert.deepEqual(readSettingsRecord(), before);
+	await connection(true);
+	const response = await putOutline({ ...before.general, lessonOutline: true, outlineModel: { model: copilot, thinkingLevel: "high" } });
+	assert.equal(response.status, 200);
+	const after = readSettingsRecord()!; assert.deepEqual(after.models, before.models); assert.deepEqual(after.agent, before.agent);
+	assert.equal(after.general!.outlineModel!.thinkingLevel, clampThinkingLevel(native, "high"));
+	assert.deepEqual(after.general!.outlineModel!.model, copilot);
+});
+
+test("unchanged unavailable outline choice is retained while repairing general preferences", async () => {
+	writeSettingsRecord({ version: 1, models: initial, general: { autoUpdate: false, lessonOutline: true, outlineModel: { model: copilot, thinkingLevel: "high" } } });
+	assert.equal((await putOutline({ autoUpdate: true, lessonOutline: true, outlineModel: { model: copilot, thinkingLevel: "medium" } })).status, 200);
+	assert.deepEqual(readSettingsRecord()!.general!.outlineModel!.model, copilot);
+	assert.equal(readSettingsRecord()!.general!.outlineModel!.thinkingLevel, "medium");
+	assert.equal((await putOutline({ autoUpdate: true, lessonOutline: true })).status, 200);
+	assert.equal(readSettingsRecord()!.general!.outlineModel, undefined);
 });
 after(() => {
 	if (originalSend) Object.defineProperty(process, "send", originalSend); else delete process.send;

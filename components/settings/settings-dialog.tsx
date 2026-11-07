@@ -46,6 +46,7 @@ import { useAppearance } from "./appearance.tsx";
 import { SettingsSection, SettingsRow, Toggle } from "./controls.tsx";
 import { UpdateSettings } from "./update-settings.tsx";
 import { NotificationSettings } from "./notification-settings.tsx";
+import { OutlineModelSettings } from "./outline-model-settings.tsx";
 import { AgentSection } from "./agent-section.tsx";
 import type { ModelsSettings } from "@/src/core";
 import { MENU_CLOSE_EVENT, MENU_OPEN_EVENT } from "@/components/menu-shell";
@@ -393,6 +394,7 @@ export function SettingsDialogBody({
 									<SettingsRow label="Lesson outline" hint="A separate AI organises the lesson using its plan and course readings. Teaching stays unchanged." testid="row-lesson-outline">
 										<Toggle checked={record.general?.lessonOutline ?? false} onChange={on => void write("general", { ...record.general, lessonOutline: on })} label="Lesson outline" />
 									</SettingsRow>
+									<OutlineModelSettings settings={record} onChange={next => write("general", next)} autofocus={initialRow === "outline-model"} />
 								</SettingsSection>
 							)}
 							{active === "keys" && (

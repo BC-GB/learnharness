@@ -31,7 +31,7 @@ import { courseRoute } from "@/src/server";
  * lands here.
  */
 
-import type { AgentSettings, ChatSettings, ModelsSettings } from "@/src/core";
+import { resolveOutlineModelSpec, type AgentSettings, type ChatSettings, type GeneralSettings, type ModelsSettings } from "@/src/core";
 import {
 	SETTINGS_SECTIONS,
 	allSegmentPaths,
@@ -69,6 +69,7 @@ async function handleCoursePUT(request: Request, ctx: { params: Promise<{ sectio
 	// Compare against the same record that this whole-section write replaces.
 	const record = readSettingsRecord() ?? { version: 1 };
 	let agentHealed: AgentSettings | undefined;
+	let generalClamped: GeneralSettings | undefined;
 
 	// Section-specific cross-validation (against the catalog / the prompt
 	// store) — the parsers only see shapes.
@@ -85,6 +86,15 @@ async function handleCoursePUT(request: Request, ctx: { params: Promise<{ sectio
 		const verdict = validateModelsSettings(parsed.settings as ModelsSettings, record.models);
 		if (!verdict.ok) {
 			return Response.json({ error: verdict.error, supported: verdict.supported }, { status: 400 });
+		}
+	}
+	if (section === "general") {
+		const general = parsed.settings as GeneralSettings;
+		if (general.outlineModel) {
+			const verdict = validateModelsSettings({ cheap: general.outlineModel }, { cheap: record.general?.outlineModel });
+			if (!verdict.ok) return Response.json({ error: verdict.error, supported: verdict.supported }, { status: 400 });
+			const effective = resolveOutlineModelSpec({ ...record, general });
+			generalClamped = { ...general, outlineModel: clampChatLevel(general.outlineModel, effective ?? null) };
 		}
 	}
 	if (section === "agent") {
@@ -125,7 +135,7 @@ async function handleCoursePUT(request: Request, ctx: { params: Promise<{ sectio
 				? clampModelsLevels(parsed.settings as ModelsSettings)
 				: section === "agent" && agentHealed
 					? agentHealed
-					: parsed.settings;
+					: generalClamped ?? parsed.settings;
 
 	// Read-modify-write ONE section of the record; everything else rides
 	// along untouched (other sections, unknown keys — sanitize preserves).
