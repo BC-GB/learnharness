@@ -43,7 +43,7 @@ import {
 	type UserSettings,
 } from "@/src/core";
 import { useAppearance } from "./appearance.tsx";
-import { SettingsSection } from "./controls.tsx";
+import { SettingsSection, SettingsRow, Toggle } from "./controls.tsx";
 import { UpdateSettings } from "./update-settings.tsx";
 import { NotificationSettings } from "./notification-settings.tsx";
 import { AgentSection } from "./agent-section.tsx";
@@ -390,6 +390,9 @@ export function SettingsDialogBody({
 										}
 									/>
 									<NotificationSettings />
+									<SettingsRow label="Lesson outline" hint="A separate AI organises the lesson using its plan and course readings. Teaching stays unchanged." testid="row-lesson-outline">
+										<Toggle checked={record.general?.lessonOutline ?? false} onChange={on => void write("general", { ...record.general, lessonOutline: on })} label="Lesson outline" />
+									</SettingsRow>
 								</SettingsSection>
 							)}
 							{active === "keys" && (

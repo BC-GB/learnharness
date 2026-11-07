@@ -87,6 +87,10 @@ export function parseGeneralSettingsBody(body: unknown): SettingsBodyResult<Gene
 	const raw = asRecord(body);
 	if (!raw) return { ok: false, error: "Invalid JSON body" };
 	const settings: GeneralSettings = {};
+	if (raw.lessonOutline !== undefined) {
+		if (typeof raw.lessonOutline !== "boolean") return { ok: false, error: "lessonOutline must be a boolean" };
+		settings.lessonOutline = raw.lessonOutline;
+	}
 	if (raw.autoUpdate !== undefined) {
 		if (typeof raw.autoUpdate !== "boolean") {
 			return { ok: false, error: "autoUpdate must be a boolean" };
