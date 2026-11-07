@@ -152,7 +152,11 @@ export function SettingsDialogBody({
 	);
 	const [error, setError] = useState<string | null>(null);
 	const [globalScope, setGlobalScope] = useState(false);
+	const notifyingOwnSave = useRef(false);
 	useSettingsSaved(() => {
+		// Our PUT already returned the authoritative record. Other writers
+		// (including other tabs) need a refresh; our own signal does not.
+		if (notifyingOwnSave.current) return;
 		fetch("/api/settings").then(response => response.ok ? response.json() : null).then(body => {
 			if (!body) return;
 			setRecord(body.settings ?? { version: CURRENT_SETTINGS_VERSION });
@@ -270,7 +274,9 @@ export function SettingsDialogBody({
 				(prev) =>
 					stored ?? ({ ...(prev ?? {}), [section]: body }) as UserSettings,
 			);
-			notifySettingsSaved(section);
+			notifyingOwnSave.current = true;
+			try { notifySettingsSaved(section); }
+			finally { notifyingOwnSave.current = false; }
 			if (section === "appearance")
 				onAppearanceChange(body as AppearanceSettings);
 		},
