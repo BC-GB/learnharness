@@ -72,7 +72,7 @@ export type EffectiveAppearance = FactorySettings["appearance"];
 
 /** The concrete view: every knob resolved, no absent fields. */
 export interface EffectiveSettings {
-	general: Required<Omit<GeneralSettings, "lessonOutline">> & Pick<GeneralSettings, "lessonOutline">;
+	general: Required<Pick<GeneralSettings, "autoUpdate">> & Omit<GeneralSettings, "autoUpdate">;
 	dictation: Required<DictationSettings>;
 	agent: {
 		models: Record<BackgroundModelRole, EffectiveModelSpec | undefined>;
@@ -134,6 +134,16 @@ export function resolveRoleSpec(role: ModelRole, record: UserSettings | null): E
 	return resolveModelSpec(role, override, record?.models);
 }
 
+/** Separate outline preference, preserving pre-existing extractor defaults until set. */
+export function resolveOutlineModelSpec(record: UserSettings | null): EffectiveModelSpec | undefined {
+	const legacy = record?.agent?.models?.extractor;
+	const own = record?.general?.outlineModel;
+	return resolveModelSpec("extractor", {
+		...(legacy ?? {}), ...(own ?? {}),
+		...(own?.model || legacy?.model ? { model: own?.model ?? legacy?.model } : {}),
+	}, record?.models);
+}
+
 /** Resolve one slot to its configured view, or null when the tier holds
  *  no model (a thinkingLevel-only slot is inert — the level has nothing
  *  to ride without the factory floor). */
@@ -187,6 +197,7 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 		general: {
 			autoUpdate: record?.general?.autoUpdate ?? FACTORY_SETTINGS.general.autoUpdate,
 			...(record?.general?.lessonOutline !== undefined ? { lessonOutline: record.general.lessonOutline } : {}),
+			...(record?.general?.outlineModel !== undefined ? { outlineModel: record.general.outlineModel } : {}),
 		},
 		dictation: {
 			language: record?.dictation?.language ?? FACTORY_SETTINGS.dictation.language,

@@ -91,6 +91,11 @@ export function parseGeneralSettingsBody(body: unknown): SettingsBodyResult<Gene
 		if (typeof raw.lessonOutline !== "boolean") return { ok: false, error: "lessonOutline must be a boolean" };
 		settings.lessonOutline = raw.lessonOutline;
 	}
+	if (raw.outlineModel !== undefined) {
+		const parsed = parseRoleOverride(raw.outlineModel, "outlineModel");
+		if (!parsed.ok) return parsed;
+		if (Object.keys(parsed.override).length) settings.outlineModel = parsed.override;
+	}
 	if (raw.autoUpdate !== undefined) {
 		if (typeof raw.autoUpdate !== "boolean") {
 			return { ok: false, error: "autoUpdate must be a boolean" };

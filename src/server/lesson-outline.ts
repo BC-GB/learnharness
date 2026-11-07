@@ -9,7 +9,7 @@ import { observeLessonOutline } from "../agent/lesson-outline.ts";
 import { piEngineForSpec, type PiEngine } from "../agent/models.ts";
 import { connectionBackgroundAllowed } from "../agent/subscription-connections.ts";
 import { withBgLlmSlot } from "../agent/subagents/bg-llm-semaphore.ts";
-import { resolveRoleSpec } from "../core/settings-resolution.ts";
+import { resolveOutlineModelSpec } from "../core/settings-resolution.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
 import { compactionInFlight } from "./compaction.ts";
@@ -122,7 +122,7 @@ export async function refreshLessonOutline(id: string, options: { force?: boolea
 				if (controller.signal.aborted || !enabled() || isTurnRunning(id) || compactionInFlight(id)) return;
 				const fresh = stores.chatStore.getChat(id);
 				if (!fresh || hash(fresh.messages) !== hash(record.messages) || planKey(fresh) !== state.planKey) return;
-				const spec = resolveRoleSpec("extractor", stores.settingsStore.readSettings());
+				const spec = resolveOutlineModelSpec(stores.settingsStore.readSettings());
 				if (!options.engine && (!spec || !connectionBackgroundAllowed(spec.provider))) throw new Error("Outline connection unavailable");
 				const legacy = old ? null : readLegacyLessonOutline(id);
 				const sourceLookup = [...state.sources, ...(legacy?.sources ?? [])];
