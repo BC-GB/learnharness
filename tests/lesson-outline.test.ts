@@ -123,6 +123,13 @@ test("course files, observer records and delayed output remain course-scoped; al
 		writeSettings({ version: 1, general: { lessonOutline: true } }); const record = fixture(); aId = record.id;
 		assert.ok(JSON.stringify(outlineMaterials("Panel same units")).includes("CANARY_A"));
 		assert.ok(!JSON.stringify(outlineMaterials("Panel same units")).includes("CANARY_B"));
+		fs.writeFileSync(path.join(a.sourceRoot!, "lecture (v2).md"), "Panel same units CURRENT_READING");
+		const readings = outlineMaterials("Panel same units");
+		assert.ok(readings.some(s => s.path === "lecture (v2).md"));
+		assert.ok(!readings.some(s => s.path === "lecture.md"), "Retained earlier editions cannot outrank their revision");
+		fs.writeFileSync(path.join(a.sourceRoot!, "lecture.md"), "retiredsubject appears only in the obsolete reading");
+		fs.writeFileSync(path.join(a.sourceRoot!, "lecture (v2).md"), "Updated content with different scope.");
+		assert.deepEqual(outlineMaterials("retiredsubject"), [], "An obsolete edition cannot re-enter because its removed content matches the query");
 		await refreshLessonOutline(record.id, { engine: engine(), materials: () => sources }); assert.ok(readLessonOutline(record.id));
 	});
 	await runInCourse(b, async () => {

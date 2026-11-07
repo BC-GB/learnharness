@@ -115,7 +115,7 @@ export async function refreshLessonOutline(id: string, options: { force?: boolea
 				const sources = options.materials ? options.materials(query) : outlineMaterials(query, references);
 				if (!sources.length) throw new Error("Course reading copies unavailable");
 				const engine = options.engine ?? piEngineForSpec(spec!, true);
-				const result = await observeLessonOutline(engine, { goal: record.title ?? "Current lesson", topic, passages: selected, sources }, controller.signal);
+				const result = await observeLessonOutline(engine, { goal: record.title ?? "Current lesson", plan: record.tree!, topic, passages: selected, sources }, controller.signal);
 				const latest = stores.chatStore.getChat(id);
 				if (controller.signal.aborted || !enabled() || !latest || planKey(latest) !== state.planKey || hash(latest.messages.slice(0, record.messages.length)) !== hash(record.messages)) return;
 				const next = { ...state };

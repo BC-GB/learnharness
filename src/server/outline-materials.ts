@@ -25,11 +25,19 @@ export function outlineMaterials(query: string, previous: { path: string; quote:
 			bytes += size; const text = fs.readFileSync(target, "utf8"); const relative = path.relative(root!, target).split(path.sep).join("/");
 			const fileWords = words(relative); const bodyWords = words(text);
 			const score = (previous.some(p => p.path === relative) ? 1000 : 0) + [...wanted].reduce((sum, word) => sum + (fileWords.has(word) ? 8 : 0) + (bodyWords.has(word) ? 1 : 0), 0);
-			if (score > 0 && !/^(?:materials|index|readme|agents)\.(?:md|txt)$/i.test(e.name)) candidates.push({ path: relative, text, score });
+			if (!/^(?:materials|index|readme|agents)\.(?:md|txt)$/i.test(e.name)) candidates.push({ path: relative, text, score });
 		}
 	}
 	walk(root, 0);
-	return candidates.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path)).slice(0, 3).map((source) => {
+	// Retained earlier editions do not compete with their numbered revision.
+	const editions = new Map<string, { version: number; source: typeof candidates[number] }>();
+	for (const source of candidates) {
+		const revision = source.path.match(/\s*\(v(\d+)\)(?=\.md$)/i);
+		const key = source.path.replace(/\s*\(v\d+\)(?=\.md$)/i, "").toLowerCase();
+		const version = revision ? Number(revision[1]) : 1;
+		if (!editions.has(key) || editions.get(key)!.version < version) editions.set(key, { version, source });
+	}
+	return [...editions.values()].map(v => v.source).filter(s => s.score > 0).sort((a, b) => b.score - a.score || a.path.localeCompare(b.path)).slice(0, 3).map((source) => {
 		const lines = source.text.split("\n"); let at = 0; let best = -1;
 		for (let index = 0; index < lines.length; index += 10) {
 			const score = [...words(lines.slice(index, index + 20).join(" "))].filter(w => wanted.has(w)).length;
