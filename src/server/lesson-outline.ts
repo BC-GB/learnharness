@@ -50,7 +50,7 @@ function base(record: ChatRecord, previous: LessonOutline | null): LessonOutline
 		prefixKey: prefixUnchanged ? previous.prefixKey : hash([]), currentNode: current,
 		updatedAt: previous?.updatedAt ?? "", sources: previous?.sources ?? [],
 		previous: previous?.previous ?? [],
-		...(prefixUnchanged ? { lastAttempt: previous.lastAttempt, error: previous.error, usage: previous.usage } : {}),
+		...(prefixUnchanged ? { lastAttempt: previous.lastAttempt, pending: previous.pending, error: previous.error, usage: previous.usage } : {}),
 	};
 }
 
@@ -85,10 +85,10 @@ export async function refreshLessonOutline(id: string, options: { force?: boolea
 		const changedPlan = old?.planKey !== state.planKey;
 		const entered = old?.currentNode !== state.currentNode;
 		const newTokens = Math.ceil(newer.reduce((sum, p) => sum + p.text.length, 0) / 4);
-		if (old && !changedPlan && !entered && !newer.length && !old.error) return;
+		if (old && !old.pending && !changedPlan && !entered && !newer.length && !old.error) return;
 		if (!options.force && !changedPlan && !entered && topic.items.length && newTokens < 2048) return;
 		const attempt = hash([state.planKey, state.currentNode, state.cursor, record.messages]);
-		if (old?.lastAttempt === attempt && !(options.force && old.error && Date.now() - Date.parse(old.updatedAt) >= 60000)) return;
+		if (old?.lastAttempt === attempt && !old.pending && !(options.force && old.error && Date.now() - Date.parse(old.updatedAt) >= 60000)) return;
 		if (!options.force && old?.error && Date.now() - Date.parse(old.updatedAt) < 60000) return;
 		// Bound the observer's independent context. First backfill uses the current
 		// topic's recent passages; subsequent batches have a monotonic raw cursor.
@@ -102,6 +102,7 @@ export async function refreshLessonOutline(id: string, options: { force?: boolea
 		}
 		const generationNode = topic.id;
 		state.lastAttempt = attempt; state.updatedAt = new Date().toISOString(); state.error = undefined;
+		state.pending = true;
 		writeLessonOutline(state);
 		try {
 			await withBgLlmSlot(controller.signal, async () => {
@@ -124,12 +125,12 @@ export async function refreshLessonOutline(id: string, options: { force?: boolea
 				next.sources = [...new Map([...state.sources, ...sources.map(({ id, path, sha256 }) => ({ id, path, sha256 }))].map(s => [s.id, s])).values()].slice(-300);
 				next.cursor = backfill || !selected.length ? record.messages.length : selected.at(-1)!.index + 1;
 				next.prefixKey = hash(record.messages.slice(0, next.cursor)); next.usage = result.usage;
-				next.updatedAt = new Date().toISOString(); next.error = undefined;
+				next.updatedAt = new Date().toISOString(); next.error = undefined; next.pending = false;
 				writeLessonOutline(next);
 			});
 		} catch {
 			// An observer failure has no teacher wake, steer, retry loop or transcript marker.
-			if (enabled() && stores.chatStore.getChat(id)) writeLessonOutline({ ...state, error: "Outline update unavailable", updatedAt: new Date().toISOString() });
+			if (enabled() && stores.chatStore.getChat(id)) writeLessonOutline({ ...state, pending: false, error: "Outline update unavailable", updatedAt: new Date().toISOString() });
 		}
 	} finally {
 		clearTimeout(deadline); active().delete(id); resolve();

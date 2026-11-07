@@ -20,6 +20,7 @@ export interface LessonOutline {
 	currentNode: string | null;
 	updatedAt: string;
 	lastAttempt?: string;
+	pending?: boolean;
 	error?: string;
 	sources: { id: string; path: string; sha256: string }[];
 	usage?: { model: string; input: number; output: number };
@@ -64,7 +65,7 @@ export function validateOutlineSubmission(raw: unknown, sources: OutlineSource[]
 		const citations = item.sources.map((entry: unknown) => {
 			if (!entry || typeof entry !== "object") throw new Error("Invalid course evidence");
 			const c = entry as Record<string, unknown>; const source = sources.find(s => s.id === c.sourceId);
-			if (!source || typeof c.quote !== "string" || c.quote.length < 8 || c.quote.length > 400 || !compact(source.text).includes(compact(c.quote))) throw new Error("Course quote not found in supplied source");
+			if (!source || typeof c.quote !== "string" || compact(c.quote).length < 8 || c.quote.length > 400 || !compact(source.text).includes(compact(c.quote))) throw new Error("Course quote not found in supplied source");
 			return { sourceId: source.id, quote: c.quote };
 		});
 		if (!Array.isArray(item.messageIds) || item.messageIds.length > 24 || item.messageIds.some(id => typeof id !== "string" || !evidence.has(id))) throw new Error("Unknown conversation evidence");

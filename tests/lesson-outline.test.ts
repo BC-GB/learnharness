@@ -48,6 +48,7 @@ test("quotes and message anchors are verified; current needs latest teacher evid
 	assert.deepEqual(validateOutlineSubmission(submission, sources, passages), submission);
 	assert.throws(() => validateOutlineSubmission({ ...submission, items: [{ ...submission.items[0], messageIds: ["foreign"] }] }, sources, passages));
 	assert.throws(() => validateOutlineSubmission({ ...submission, items: [{ ...submission.items[0], sources: [{ sourceId: "s1", quote: "Invented unsupported course claim" }] }] }, sources, passages));
+	assert.throws(() => validateOutlineSubmission({ ...submission, items: [{ ...submission.items[0], sources: [{ sourceId: "s1", quote: "          " }] }] }, sources, passages));
 	assert.throws(() => validateOutlineSubmission({ ...submission, items: [{ ...submission.items[0], label: "<script>" }] }, sources, passages));
 	assert.equal(validateOutlineSubmission(submission, sources, [...passages, { ...passages[0]!, id: "m2" }]).currentItem, null);
 });
@@ -99,6 +100,10 @@ test("parallel requests share one observer; delayed disabling before a provider 
 	writeSettings({ version: 1, general: { lessonOutline: false } });
 	release(); await Promise.all([...holders, work, duplicate]);
 	assert.equal(calls, 0); assert.ok(!readLessonOutline(record.id)?.topics[0]?.items.length);
+	writeSettings({ version: 1, general: { lessonOutline: true } });
+	await refreshLessonOutline(record.id, { engine: slow, materials: () => sources });
+	assert.equal(calls, 1, "An interrupted observer can resume after re-enabling, without changing the teacher transcript");
+	assert.ok(readLessonOutline(record.id)?.topics[0]?.items.length);
 });
 
 test("replanning preserves stable topic items and revises only the independent observer view", async () => {
