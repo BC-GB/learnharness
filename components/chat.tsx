@@ -276,6 +276,9 @@ export function Chat({
 		return sendMessage(...args).then(accepted => {
 			if (!accepted) responseIntent(RESPONSE_CANCEL_EVENT);
 			return accepted;
+		}, error => {
+			responseIntent(RESPONSE_CANCEL_EVENT);
+			throw error; // Preserve the original rejection for the caller.
 		});
 	}, [sendMessage, responseIntent]);
 	const submitAnswer = useCallback((...args: Parameters<typeof answerQuestion>) => {
