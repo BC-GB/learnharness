@@ -75,6 +75,9 @@ test("Providers is the first/default page; General is last and other pages keep 
  assert.deepEqual(ids, ["keys", "agent", "preferences", "appearance", "graph", "keyboard", "general"]);
  assert.match(html, /settings-nav-keys[^>]*aria-current="true"/); assert.match(html, />Providers<\/button>/);
  assert.doesNotMatch(html, />Model providers<\/button>/);
+ const preferences = renderToStaticMarkup(<SettingsDialogBody onClose={() => {}} initialSection="preferences" />);
+ assert.match(preferences, /settings-nav-preferences[^>]*aria-current="true"/);
+ assert.match(preferences, /data-testid="preference-chat"/);
 });
 
 test("Providers has five ordered sections including External CLI; unknown variables stay masked/read-only at the end of Model API keys", async () => {
