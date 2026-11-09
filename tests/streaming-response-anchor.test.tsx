@@ -13,6 +13,7 @@ function fixture(atBottom = true) {
 	let calls = 0;
 	main.scrollTop = 300;
 	Object.defineProperty(main, "clientHeight", { value: 600 });
+	Object.defineProperty(main, "scrollHeight", { get: () => natural + (parseFloat(tail.style.height) || 0) });
 	main.getBoundingClientRect = () => ({ top: 50 } as DOMRect);
 	content.getBoundingClientRect = () => ({ height: natural + (parseFloat(tail.style.height) || 0) } as DOMRect);
 	main.scrollTo = ((options: ScrollToOptions) => { calls++; main.scrollTop = options.top!; }) as typeof main.scrollTo;
@@ -27,99 +28,68 @@ function fixture(atBottom = true) {
 	return { main, content, tail, context, controller, add, calls: () => calls, grow: (height: number) => { natural = height; controller.measure(); } };
 }
 
-test("fresh response snaps once, tokens consume tail, finish never jumps", () => {
-	const f = fixture(); f.controller.update(false); f.controller.update(true);
-	assert.ok(f.context.targetScrollTop, "hold begins before first token");
-	const node = f.add("new"); f.controller.update(true);
-	assert.equal(f.main.scrollTop, 634); assert.equal(f.calls(), 1);
-	assert.equal(f.tail.style.height, "334px");
-	node.textContent += " more tokens"; f.grow(1100); f.controller.update(true);
-	assert.equal(f.tail.style.height, "134px"); assert.equal(f.main.scrollTop, 634);
-	f.add("tool-followup"); f.controller.update(true); assert.equal(f.calls(), 1);
-	f.controller.update(false); assert.equal(f.calls(), 1); assert.equal(f.context.targetScrollTop, null);
-	assert.equal(f.tail.style.height, "134px", "short answer completion retains room instead of clamping");
-	f.controller.bottom(); assert.equal(f.tail.style.height, "0px");
+
+test("explicit reply snaps once, consumes reserve, and finishes without moving", () => {
+ const f = fixture(); f.controller.begin(); f.controller.update(true);
+ const node=f.add("new"); f.controller.update(true);
+ assert.equal(f.main.scrollTop,634); assert.equal(f.calls(),1); assert.equal(f.tail.style.height,"334px");
+ node.textContent += " more";f.grow(1100);f.controller.update(true);assert.equal(f.tail.style.height,"134px");assert.equal(f.calls(),1);
+ f.add("provider-followup");f.controller.update(true);assert.equal(f.calls(),1);
+ f.controller.update(false);assert.equal(f.main.scrollTop,634);assert.equal(f.tail.style.height,"134px");assert.equal(f.context.targetScrollTop,null);
 });
 
-test("long response and user scrolling stay put while streaming", () => {
-	const f = fixture(); f.controller.update(false); f.controller.update(true); f.add("new"); f.controller.update(true);
-	f.main.scrollTop = 750; f.grow(2200); f.controller.update(true);
-	assert.equal(f.tail.style.height, "0px"); assert.equal(f.calls(), 1);
-	assert.equal(f.context.targetScrollTop!(1600, { scrollElement: f.main, contentElement: f.content }), 750);
-	f.controller.bottom(); assert.equal(f.context.targetScrollTop, null);
-	f.add("later"); f.controller.update(true); assert.equal(f.calls(), 1);
+test("explicit new submissions intentionally anchor even from earlier reading positions", () => {
+ const f=fixture(false);f.main.scrollTop=100;f.controller.onScroll();f.controller.begin();f.controller.update(true);f.add("new");f.controller.update(true);
+ assert.equal(f.calls(),1);
+ f.grow(2400);f.controller.update(false);f.controller.begin();f.controller.update(true);f.add("second");f.controller.update(true);assert.equal(f.calls(),2);
 });
 
-test("reading history, pre-token navigation, and live reattachment are never stolen", () => {
-	for (const mode of ["history", "wheel", "reattach"]) {
-		const f = fixture(mode !== "history");
-		f.controller.update(mode === "reattach"); f.controller.update(true);
-		if (mode === "wheel") f.controller.cancelPending();
-		f.add("new"); f.controller.update(true); assert.equal(f.calls(), 0, mode);
-		f.controller.dispose(); assert.equal(f.context.targetScrollTop, null);
-	}
+test("passive and reattached streams never acquire a snap without a submission", () => {
+ for(const initial of [false,true]){const f=fixture();f.controller.update(initial);f.add("new");f.controller.update(true);f.controller.update(false);assert.equal(f.calls(),0);assert.equal(f.context.targetScrollTop,null);}
 });
 
-test("empty text waits, next turn can anchor inside the same assistant group", () => {
-	const f = fixture(); f.controller.update(false); f.controller.update(true);
-	const first = f.add("one", ""); f.controller.update(true); assert.equal(f.calls(), 0);
-	first.textContent = "Now visible"; first.dataset.responsePartId = "one"; f.controller.update(true); assert.equal(f.calls(), 1);
-	f.controller.update(false); f.controller.update(true); f.add("two"); f.controller.update(true);
-	assert.equal(f.calls(), 2);
+test("manual navigation after submit cancels pending snap", () => {
+ for(const wheel of [false,true]){const f=fixture();f.controller.begin();f.controller.update(true);
+ if(wheel)f.controller.cancelPending();else{f.main.scrollTop=100;f.controller.onScroll();}
+ f.add("new");f.controller.update(true);assert.equal(f.calls(),0);}
 });
 
-test("a new empty session holds its opening response instead of following tokens", () => {
- const f = fixture(); f.content.querySelector("p")!.remove();
- f.controller.update(true); f.add("opening"); f.controller.update(true);
- assert.equal(f.calls(), 1);
- f.grow(2400); f.controller.update(true); assert.equal(f.calls(), 1);
-});
-test("consecutive long replies anchor even while the previous reply is not at bottom", () => {
- const f = fixture(); f.controller.update(false); f.controller.update(true); f.add("one"); f.controller.update(true);
- f.grow(2400); f.context.isAtBottom = false; f.context.state.isAtBottom = false; f.context.escapedFromLock = true;
- f.controller.onScroll(); // delayed event for our own snap must not cancel the next one
- f.controller.update(false); f.controller.update(true); f.add("two"); f.controller.update(true);
- assert.equal(f.calls(), 2);
+test("manual reading during tokens and explicit Bottom remain available", () => {
+ const f=fixture();f.controller.begin();f.add("new");f.controller.update(true);
+ f.main.scrollTop=750;f.controller.onScroll();f.grow(2200);f.controller.update(true);
+ assert.equal(f.calls(),1);assert.equal(f.tail.style.height,"0px");assert.equal(f.context.targetScrollTop!(1600,{scrollElement:f.main,contentElement:f.content}),750);
+ f.controller.bottom();assert.equal(f.context.targetScrollTop,null);assert.equal(f.tail.style.height,"0px");f.add("later");f.controller.update(true);assert.equal(f.calls(),1);
 });
 
-test("actual scrolling while waiting or between replies suppresses the next snap", () => {
- for (const between of [false, true]) {
-  const f = fixture(); f.controller.update(false); f.controller.update(true);
-  if (between) { f.add("one"); f.controller.update(true); f.controller.update(false); }
-  f.main.scrollTop = 100; f.controller.onScroll(); f.context.isAtBottom = false; f.context.state.isAtBottom = false; f.context.escapedFromLock = true;
-  f.controller.update(true); f.add("two"); f.controller.update(true);
-  assert.equal(f.calls(), between ? 1 : 0);
- }
+test("empty source waits, then the source-ready wrapper anchors before Markdown renders", () => {
+ const f=fixture();f.controller.begin();f.controller.update(true);const p=f.add("new","");f.controller.update(true);assert.equal(f.calls(),0);
+ p.dataset.responsePartId="new";f.controller.update(true);assert.equal(f.calls(),1);
+ p.textContent="Deferred Markdown appeared";f.controller.update(true);assert.equal(f.calls(),1);
 });
 
-
-test("source-ready passage anchors before deferred Markdown DOM text appears", () => {
- const f = fixture(); f.controller.update(false); f.controller.update(true);
- const passage = f.add("delayed", "Source text ready"); passage.textContent = "";
- f.controller.update(true); assert.equal(f.calls(), 1);
- passage.textContent = "Visible after the parent effect"; f.controller.update(true); assert.equal(f.calls(), 1);
+test("single-chunk terminal reply consumes only its existing explicit intent", () => {
+ const f=fixture();f.controller.begin();f.controller.update(true);const p=f.add("terminal","Ready source");p.textContent="";
+ f.controller.update(false);assert.equal(f.calls(),1);p.textContent="Rendered later";f.controller.update(false);assert.equal(f.calls(),1);assert.equal(f.context.targetScrollTop,null);
 });
 
-test("single-chunk terminal reply consumes intent once, without a post-completion jump", () => {
- const f = fixture(); f.controller.update(false); f.controller.update(true);
- const passage = f.add("terminal", "Source ready"); passage.textContent = "";
- f.controller.update(false); assert.equal(f.calls(), 1);
- passage.textContent = "Deferred rendering finished"; f.controller.update(false); assert.equal(f.calls(), 1);
- assert.equal(f.context.targetScrollTop, null);
+test("question-to-composer bottom clamp is layout, not manual navigation", () => {
+ const f=fixture();f.controller.begin();f.controller.update(true);f.grow(850);f.main.scrollTop=249;f.controller.onScroll();
+ f.add("answer-reply");f.controller.update(true);assert.equal(f.calls(),1);
 });
 
-
-test("explicit Bottom lock remains eligible despite its stale escaped flag and queued scroll", () => {
- const f = fixture(); f.controller.update(false);
- f.context.escapedFromLock = true; f.context.state.isAtBottom = true;
- f.main.scrollTop += 5; // prior Bottom spring moved before the new turn committed
- f.controller.update(true); f.controller.onScroll(); // delayed event for that old motion
- f.add("short", "Source ready"); f.controller.update(false);
- assert.equal(f.calls(), 1);
+test("actual movement away from a shrunken bottom still cancels", () => {
+ const f=fixture();f.controller.begin();f.controller.update(true);f.grow(850);f.main.scrollTop=180;f.controller.onScroll();
+ f.add("answer-reply");f.controller.update(true);assert.equal(f.calls(),0);
 });
 
-test("mere near-bottom proximity without the follow lock never steals a reader", () => {
- const f = fixture(); f.context.isAtBottom = true; f.context.state.isAtBottom = false;
- f.controller.update(false); f.controller.update(true); f.add("new"); f.controller.update(true);
- assert.equal(f.calls(), 0);
+test("fresh session explicit intent does not depend on old bottom flags", () => {
+ const f=fixture(false);f.content.querySelector("p")!.remove();f.controller.begin();f.controller.update(true);f.add("opening");f.controller.update(true);assert.equal(f.calls(),1);
+});
+
+test("queued pre-submit spring motion and stale escaped flags cannot cancel explicit intent", () => {
+ const f=fixture();f.context.escapedFromLock=true;f.main.scrollTop+=5;f.controller.begin();f.controller.onScroll();f.add("short");f.controller.update(false);assert.equal(f.calls(),1);
+});
+
+test("failed submissions and disposal release their hold and cannot anchor later passive text", () => {
+ for(const dispose of [false,true]){const f=fixture();f.controller.begin();if(dispose)f.controller.dispose();else f.controller.cancel();f.add("late");f.controller.update(true);assert.equal(f.calls(),0);assert.equal(f.context.targetScrollTop,null);}
 });

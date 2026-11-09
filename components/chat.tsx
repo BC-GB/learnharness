@@ -60,7 +60,7 @@ import { ArrowRightIcon, DumbbellIcon, WaypointsIcon } from "lucide-react";
 import type { PlanBlockData } from "@/src/core";
 import { QuestionDock } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
-import { RESPONSE_BOTTOM_EVENT, StreamingResponseAnchor } from "@/components/streaming-response-anchor";
+import { RESPONSE_START_EVENT, RESPONSE_CANCEL_EVENT, RESPONSE_BOTTOM_EVENT, StreamingResponseAnchor } from "@/components/streaming-response-anchor";
 import { SessionMessageNavigation } from "@/components/session-navigation";
 import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
@@ -260,12 +260,29 @@ export function Chat({
 	// (core/view.ts projectView); sends are ONE explicit input event each
 	// ({chatId, input} — the stash indirection died with the SDK), and the
 	// turn stream is the VERBATIM AgentEvent passthrough the server emits.
-	const { messages, nativeMessages, hasConfirmedConversation, contextTokens, send, continueIfOwed, steer, steerQueue, submitAnswer, dismissQuestion, dismissProblem, questionDraft, saveQuestionDraft, setMessages, adoptRecord, status, error, stop, clearError, resumeStream, setReattachSettled } =
+	const { messages, nativeMessages, hasConfirmedConversation, contextTokens, send: sendMessage, continueIfOwed, steer, steerQueue, submitAnswer: answerQuestion, dismissQuestion, dismissProblem, questionDraft, saveQuestionDraft, setMessages, adoptRecord, status, error, stop, clearError, resumeStream, setReattachSettled } =
 		useChatSession({ chatId, initialMessages, initialError, initiallyInFlight });
 
 	const sessionFindScopeRef = useRef<HTMLDivElement | null>(null);
 	const scrollContextRef = useRef<StickToBottomContext | null>(null);
 	const sourceTextParts = useMemo(() => firstSourceTextParts(messages), [messages]);
+	// Explicit learner actions acquire a single response-start intent. The
+	// passive continue/reattach paths retain their original scroll behavior.
+	const responseIntent = useCallback((event: string) => {
+		scrollContextRef.current?.scrollRef.current?.dispatchEvent(new Event(event));
+	}, []);
+	const send = useCallback((...args: Parameters<typeof sendMessage>) => {
+		responseIntent(RESPONSE_START_EVENT);
+		return sendMessage(...args).then(accepted => {
+			if (!accepted) responseIntent(RESPONSE_CANCEL_EVENT);
+			return accepted;
+		});
+	}, [sendMessage, responseIntent]);
+	const submitAnswer = useCallback((...args: Parameters<typeof answerQuestion>) => {
+		responseIntent(RESPONSE_START_EVENT);
+		return answerQuestion(...args);
+	}, [answerQuestion, responseIntent]);
+
 
 	// The reattach settled terminal → the sync-and-continue seam (below).
 	setReattachSettled(() => reattachSettledRef.current());
