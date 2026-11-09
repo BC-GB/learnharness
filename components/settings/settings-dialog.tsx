@@ -47,6 +47,7 @@ import { SettingsSection, SettingsRow, Toggle } from "./controls.tsx";
 import { UpdateSettings } from "./update-settings.tsx";
 import { NotificationSettings } from "./notification-settings.tsx";
 import { OutlineModelSettings } from "./outline-model-settings.tsx";
+import { PreferenceChat } from "./preference-chat.tsx";
 import { AgentSection } from "./agent-section.tsx";
 import type { ModelsSettings } from "@/src/core";
 import { MENU_CLOSE_EVENT, MENU_OPEN_EVENT } from "@/components/menu-shell";
@@ -64,6 +65,7 @@ import { NativeSubscriptionUIProvider } from "./subscription-connections.tsx";
 const SECTIONS = [
 	{ id: "keys", label: "Providers" },
 	{ id: "agent", label: "Agent" },
+	{ id: "preferences", label: "Preferences" },
 	{ id: "appearance", label: "Appearance" },
 	{ id: "graph", label: "Graph" },
 	{ id: "keyboard", label: "Keyboard", hint: "Stored on this device" },
@@ -397,6 +399,7 @@ export function SettingsDialogBody({
 									<OutlineModelSettings settings={record} onChange={next => write("general", next)} autofocus={initialRow === "outline-model"} />
 								</SettingsSection>
 							)}
+							{active === "preferences" && <PreferenceChat />}
 							{active === "keys" && (
 								<SettingsSection title="Providers" testid="section-keys">
 									<KeysSection initialRow={initialRow ?? undefined} />
