@@ -57,3 +57,20 @@ test('interrupted archive move preserves audit bytes and never replays; conflict
   fs.writeFileSync(stateDir+'/'+id+'.json','{"status":"different"}');await assert.rejects(startBroker(opts),/Conflicting archived/);assert.deepEqual(fs.readFileSync(stateDir+'/archive/'+id+'.json'),before);
  }finally{if(broker)await broker.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('archive creation is parent-synced before link and source removal',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'archive-sync-'));const stateDir=dir+'/state';fixture(stateDir,1025);
+ const archiveDir=stateDir+'/archive';const events=[];const descriptors=new Map();let broker;
+ const original=Object.fromEntries(['mkdirSync','openSync','fsyncSync','closeSync','linkSync','unlinkSync'].map(key=>[key,fs[key]]));
+ fs.mkdirSync=(target,...args)=>{const result=original.mkdirSync(target,...args);if(target===archiveDir)events.push('mkdir');return result;};
+ fs.openSync=(target,...args)=>{const fd=original.openSync(target,...args);descriptors.set(fd,target);return fd;};
+ fs.fsyncSync=fd=>{const result=original.fsyncSync(fd);const target=descriptors.get(fd);if(target===stateDir)events.push('sync-parent');if(target===archiveDir)events.push('sync-archive');return result;};
+ fs.closeSync=fd=>{descriptors.delete(fd);return original.closeSync(fd);};
+ fs.linkSync=(source,destination)=>{const result=original.linkSync(source,destination);if(path.dirname(destination)===archiveDir)events.push('link');return result;};
+ fs.unlinkSync=target=>{const result=original.unlinkSync(target);if(path.dirname(target)===stateDir&&target.endsWith('.json'))events.push('unlink');return result;};
+ try{
+  broker=await startBroker({requestSocket:dir+'/request',controlSocket:dir+'/control',stateDir});
+  const start=events.indexOf('mkdir');assert.notEqual(start,-1);
+  assert.deepEqual(events.slice(start,start+6),['mkdir','sync-parent','link','sync-archive','unlink','sync-parent']);
+ }finally{for(const [key,value]of Object.entries(original))fs[key]=value;if(broker)await broker.close();fs.rmSync(dir,{recursive:true,force:true});}
+});

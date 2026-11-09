@@ -55,6 +55,10 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
       const source = path.join(stateDir, id + '.json');
       const archiveDir = path.join(stateDir, 'archive');
       fs.mkdirSync(archiveDir, { recursive: true, mode: 0o700 });
+      // Persist the archive directory entry before removing any source record.
+      // Syncing archiveDir alone does not make its name durable in stateDir.
+      const parentFd = fs.openSync(stateDir, 'r');
+      try { fs.fsyncSync(parentFd); } finally { fs.closeSync(parentFd); }
       const destination = path.join(archiveDir, id + '.json');
       // Exclusive link + unlink is a same-filesystem move without overwriting
       // audit data. If interrupted between them, only identical bytes may be
