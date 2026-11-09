@@ -56,6 +56,7 @@ export interface ProviderKeyInfo {
 interface KeysResponse {
 	keys: AuthKeyStatus[];
 	providers?: ProviderKeyInfo[];
+	capabilities?: { directProviderSetup: boolean; explanation: string | null; nextStep: string | null };
 }
 
 /** The custom endpoint's non-secret status (GET /api/custom-provider). */
@@ -381,6 +382,7 @@ export function KeysSection({
 	const [statuses, setStatuses] = useState<AuthKeyStatus[] | null>(null);
 	const [providers, setProviders] = useState<ProviderKeyInfo[] | undefined>(undefined);
 	const [loading, setLoading] = useState(true);
+	const [capabilities, setCapabilities] = useState<KeysResponse["capabilities"]>(undefined);
 	/** The unfolded row (its id), null = all folded. Seeded by the
 	 *  deep-link (initialRow) and re-followed when it retargets. */
 	const [openRow, setOpenRow] = useState<string | null>(initialRow ?? null);
@@ -416,6 +418,7 @@ export function KeysSection({
 		try {
 			const body = (await fetch("/api/keys").then((r) => r.json())) as KeysResponse;
 			setStatuses(body.keys ?? []);
+			setCapabilities(body.capabilities);
 			if (body.providers) setProviders(body.providers);
 		} catch {
 			setStatuses([]);
@@ -494,6 +497,13 @@ export function KeysSection({
 
 	return (
 		<>
+			{capabilities?.directProviderSetup === false && <SettingsGroup label="Model provider connection" testid="group-broker-provider">
+				<div role="status" className="space-y-2 text-xs text-muted-foreground" data-testid="broker-provider-capabilities">
+					<p>{capabilities.explanation}</p><p>{capabilities.nextStep}</p>
+					<p>Choose an available OpenAI Responses model in the model picker. This notice describes deployment support, not account sign-in or current availability.</p>
+				</div>
+			</SettingsGroup>}
+			{capabilities?.directProviderSetup !== false && <>
 			<SettingsGroup label="Model API keys" testid="group-provider-keys">
 				{providerRows.map((status) => (
 					<KeyTableRow
@@ -582,6 +592,7 @@ export function KeysSection({
 				<ClaudeCodeInstallationStatus />
 			</SettingsGroup>
 
+			</>}
 			{(["Dictation", "Search"] as const).map((label) => <SettingsGroup key={label} label={label} testid={label === "Dictation" ? "group-dictation" : "group-search"}>
 				{toolRows.filter((status) => label === "Dictation" ? status.id === "DEEPGRAM_API_KEY" : status.id !== "DEEPGRAM_API_KEY").map((status) => (
 					<KeyTableRow

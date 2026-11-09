@@ -39,6 +39,7 @@ import {
 	type Phase3,
 } from "@/src/core";
 import { CONFIDENCE_COLORS, confidenceRailStyle } from "@/components/confidence-rail";
+import { bindConfidenceWheel } from "@/components/confidence-wheel";
 
 /**
  * The question dock — a pending quiz/ask REPLACES the chat composer: the
@@ -336,6 +337,14 @@ function QuestionDockForm({
 	// deliberate (the same number, the same meaning). The dock unmounts
 	// between questions, so each question starts fresh at 50.
 	const [confIdx, setConfIdx] = useState<number>(initialDraft?.confidenceIndex ?? DEFAULT_CONFIDENCE_INDEX);
+	const confidenceRowRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const row = confidenceRowRef.current;
+		if (!row || kind !== "quiz" || sel.dontKnow) return;
+		return bindConfidenceWheel(row, (direction) => {
+			setConfIdx((index) => Math.max(0, Math.min(CONFIDENCE_STOPS.length - 1, index + direction)));
+		});
+	}, [kind, sel.dontKnow]);
 	const selectMode: SelectMode = qd.mode === "multi-select" ? "multi-select" : "single-select";
 
 	// The PRIMARY dictation input (owner, STT round 1): while a question
@@ -753,7 +762,7 @@ function QuestionDockForm({
 				GRAYS it out — the layout holds, no value is sent, the IDK
 				signal stands alone. */}
 			{kind === "quiz" && (
-				<div className="border-t border-border/60 px-4 py-2.5">
+				<div ref={confidenceRowRef} data-testid="confidence-wheel-region" className="border-t border-border/60 px-4 py-2.5">
 					<div className="flex items-center gap-3">
 						<span
 							className={cn(
@@ -792,7 +801,7 @@ function QuestionDockForm({
 								disabled={sel.dontKnow}
 								aria-label="Confidence — the probability your selected answer is correct"
 								aria-valuetext={`${CONFIDENCE_STOPS[confIdx]} percent`}
-								title="The probability your selected answer is correct — 50% is a coin flip. Adjust with ←/→."
+								title="The probability your selected answer is correct — 50% is a coin flip. Adjust with ←/→ or scroll over Confidence."
 								data-testid="confidence-slider"
 								onChange={(e) => {
 									// Snap to the nearest stop; the rendered VALUE is the stop's own

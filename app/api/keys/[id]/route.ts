@@ -17,6 +17,8 @@ import { courseRoute } from "@/src/server";
  * — unknown file vars are preserved, not editable.
  */
 import { isWritableAuthKey } from "@/src/server";
+import { providerCapabilities, providerSetupDenied } from "@/src/server";
+import { isProviderEnvVar, CUSTOM_PROVIDER } from "@/src/core";
 import { deleteKey, saveKey } from "@/src/server";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +27,7 @@ type Params = { params: Promise<{ id: string }> };
 
 async function handleCoursePUT(req: Request, { params }: Params) {
 	const { id } = await params;
+	if (!providerCapabilities().directProviderSetup && (isProviderEnvVar(id) || id === CUSTOM_PROVIDER.envVar)) return providerSetupDenied();
 	if (!isWritableAuthKey(id)) {
 		return Response.json({ error: `unknown key "${id}"` }, { status: 404 });
 	}

@@ -61,3 +61,6 @@ export { claudeCodeInstallationResponse } from "./claude-code.ts";
 // No import side effects; the boot sync lives in stores.ts.
 export * from "./custom-provider.ts";
 export { customProviderGet, customProviderMutation } from "./custom-provider-http.ts";
+
+export { providerCapabilities, providerSetupDenied } from "./provider-capabilities.ts";
+export { preferenceView, applyPreferences, undoPreferences, proposePreferences } from "./preference-editor.ts";

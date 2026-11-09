@@ -21,9 +21,16 @@ socket and receives the provider's streaming response after independent approval
   storage failure and malformed approvals fail closed. A consumed request is
   never automatically replayed. Failed provider requests consume approval too.
 - Queue: 16 pending requests, 1 MiB each. Response: 16 MiB and two-minute deadline.
-  Ledger stops admitting requests at 1,024 records; maintenance is a trusted
-  operator task while stopped. Pending payloads are private data; completed
-  records retain hashes/status only. This is not forensic secure deletion.
+  Admission counts active work, not historical requests. The most recent 1,024
+  terminal records remain in the active ledger; older terminal records move to
+  its `archive/` subdirectory without deleting audit metadata. Pending records
+  are never archived. Archives are not read to authorize or replay requests.
+  Pending payloads are private data; completed records retain hashes/status only.
+  This is not forensic secure deletion. Archive storage grows over time; storage
+  failures fail closed and require operator attention, not automatic audit deletion.
+  Interrupted archive moves reconcile only byte-identical duplicates; conflicting
+  copies fail closed. The concurrency limit remains 16. A concurrency rejection
+  reports `BROKER_ACTIVE_CAPACITY`, not an OpenAI quota or a review backlog.
 
 ## Review and operate
 
