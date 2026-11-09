@@ -24,12 +24,21 @@ function history(): Revision[] {
  catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return []; throw new Error("Preference history unavailable"); }
 }
 function saveHistory(rows: Revision[]) { const f = historyPath(); fs.mkdirSync(path.dirname(f), { recursive: true }); writeFileAtomicSync(f, JSON.stringify(rows.slice(-20)), { mode: 0o600 }); }
+function recoverableIndex(rows: Revision[], snapshot: Snapshot): number {
+ const current = revision(snapshot);
+ return rows.findLastIndex(row => {
+  // A failed settings write may leave the new addition with the previous switch.
+  // Recognize only exact known states; never roll back an intervening edit.
+  const intermediate = { text: row.after.text, enabled: row.before.enabled };
+  return current !== revision(row.before) && (current === revision(row.after) || current === revision(intermediate));
+ });
+}
 export function preferenceView() {
  const custom = readPromptCustomization(PREFERENCE_SEGMENT);
  if (custom?.mode === "replace") throw new Error("This prompt uses a replacement. Switch it to append mode in Agent settings first.");
  const snapshot = { text: custom?.text ?? "", enabled: stores.settingsStore.readSettings()?.agent?.prompts?.[PREFERENCE_SEGMENT] === true };
  const revisions = history();
- return { ...snapshot, revision: revision(snapshot), scope: globalPreferencesEnabled() ? "global" : "course", canUndo: !!revisions.length && revision(revisions.at(-1)!.after) === revision(snapshot) };
+ return { ...snapshot, revision: revision(snapshot), scope: globalPreferencesEnabled() ? "global" : "course", canUndo: recoverableIndex(revisions, snapshot) >= 0 };
 }
 function writeSnapshot(next: Snapshot) {
  promptOverrides.writeOverride(PREFERENCE_SEGMENT, next.text, "append");
@@ -47,9 +56,9 @@ export function applyPreferences(expected: string, text: string) {
  writeSnapshot(after); return preferenceView();
 }
 export function undoPreferences(expected: string) {
- const current = preferenceView(); const rows = history(); const last = rows.at(-1);
+ const current = preferenceView(); const rows = history(); const index = recoverableIndex(rows, current); const last = rows[index];
  if (current.revision !== expected || !last || !current.canUndo) throw new Error("Preferences changed. Reload before undo.");
- writeSnapshot(last.before); saveHistory(rows.slice(0, -1)); return preferenceView();
+ writeSnapshot(last.before); saveHistory(rows.slice(0, index)); return preferenceView();
 }
 
 /** Explicit user-triggered request only. No lessons, files or credentials enter its context. */

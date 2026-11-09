@@ -44,3 +44,17 @@ test("read route never writes or infers; invalid/stale requests cannot apply", a
  assert.equal((await send({action:"draft",revision:before.revision,message:"Use short examples"})).status,400,"No configured model must fail before inference");
  assert.equal(preferenceView().revision,before.revision);
 });
+
+test("a settings-write failure leaves an undoable addition without reverting external edits", async () => {
+ const { stores } = await import("../src/server/stores.ts");
+ promptOverrides.writeOverride(PREFERENCE_SEGMENT,"Before failure","append");
+ writeSettings({version:1,agent:{prompts:{[PREFERENCE_SEGMENT]:false}}});
+ const before=preferenceView(); const original=stores.settingsStore.writeSettings;
+ stores.settingsStore.writeSettings=()=>{throw new Error("Synthetic write failure");};
+ try { assert.throws(()=>applyPreferences(before.revision,"After failure")); } finally { stores.settingsStore.writeSettings=original; }
+ const partial=preferenceView(); assert.equal(partial.text,"After failure"); assert.equal(partial.enabled,false); assert.equal(partial.canUndo,true);
+ const restored=undoPreferences(partial.revision); assert.equal(restored.text,before.text); assert.equal(restored.enabled,false);
+ const applied=applyPreferences(restored.revision,"A saved revision");
+ promptOverrides.writeOverride(PREFERENCE_SEGMENT,"External edit","append");
+ assert.equal(preferenceView().canUndo,false); assert.throws(()=>undoPreferences(applied.revision)); assert.equal(preferenceView().text,"External edit");
+});
