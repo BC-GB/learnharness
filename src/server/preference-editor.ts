@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { PATHS, globalPreferencesEnabled, globalPreferencePath } from "../../config.ts";
-import { courseStatePath } from "../runtime/course-context.ts";
+import { courseStatePath, courseLocal } from "../runtime/course-context.ts";
 import { readPromptCustomization } from "../runtime/prompt-customizations.ts";
 import { promptOverrides } from "../store/prompt-overrides.ts";
 import { writeFileAtomicSync } from "../store/atomic-write.ts";
@@ -10,6 +10,9 @@ import { stores } from "./stores.ts";
 import { piEngineForSpec } from "../agent/models.ts";
 import { resolveModelSpec } from "../core/settings-resolution.ts";
 import { draftPreferences, validatePreferenceDraft } from "../agent/preference-editor.ts";
+
+const requests = () => courseLocal("preference-editor-runs", () => new Set<symbol>());
+export const preferenceEditorRunningCount = () => requests().size;
 
 export const PREFERENCE_SEGMENT = "shared/10-voice.md";
 const historyPath = () => globalPreferencesEnabled() ? globalPreferencePath("preference-history.json") : courseStatePath(path.join(PATHS.data, "preference-history.json"));
@@ -55,5 +58,8 @@ export async function proposePreferences(current: string, message: string, signa
  const settings = stores.settingsStore.readSettings();
  const spec = resolveModelSpec("teacher", undefined, settings?.models);
  if (!spec) throw new Error("Choose a teaching model in Settings first.");
- return { ...await draftPreferences(piEngineForSpec(spec, false), current, message, signal), model: spec.id };
+ const active = requests(); if (active.size >= 2) throw new Error("A preference request is already in progress.");
+ const id = Symbol(); active.add(id);
+ try { return { ...await draftPreferences(piEngineForSpec(spec, false), current, message, signal), model: spec.id }; }
+ finally { active.delete(id); }
 }
