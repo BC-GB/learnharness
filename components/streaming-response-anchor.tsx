@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useStickToBottomContext, type StickToBottomContext } from "use-stick-to-bottom";
 
 export const RESPONSE_BOTTOM_EVENT = "lh-response-bottom";
-const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 
 /** One snap per live turn, not per token or provider step. Kept independent
  * of React so synthetic geometry can exercise the actual scroll controller. */
@@ -96,7 +96,7 @@ export function StreamingResponseAnchor({ active, revision }: { active: boolean;
 	contextRef.current = context;
 	const tail = useRef<HTMLDivElement>(null);
 	const controller = useRef<ReturnType<typeof createResponseAnchor> | null>(null);
-	useIsoLayoutEffect(() => {
+	useEffect(() => {
 		if (!tail.current) return;
 		const instance = createResponseAnchor(() => contextRef.current, tail.current);
 		controller.current = instance;
@@ -125,6 +125,6 @@ export function StreamingResponseAnchor({ active, revision }: { active: boolean;
 			controller.current = null;
 		};
 	}, []);
-	useIsoLayoutEffect(() => { controller.current?.update(active); }, [active, revision]);
+	useEffect(() => { controller.current?.update(active); }, [active, revision]);
 	return <div ref={tail} aria-hidden="true" data-testid="response-anchor-spacer" className="shrink-0" />;
 }
