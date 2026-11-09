@@ -82,3 +82,20 @@ test("revision tokens bind the selected course even when global text matches", (
   assert.equal(preferenceView().text,initial.text);
  });
 });
+
+
+test("bounded wire body accepts valid Unicode and escaped preferences but rejects oversized payloads", async () => {
+ const { POST } = await import("../app/api/settings/preference-chat/route.ts");
+ const send=(body:string)=>POST(new Request("http://test/api/settings/preference-chat",{method:"POST",body}));
+ for (const text of ["\u6f22".repeat(16000), "\\".repeat(16000)]) {
+  const response=await send(JSON.stringify({action:"apply",revision:preferenceView().revision,text}));
+  assert.equal(response.status,200); assert.equal(preferenceView().text,text);
+ }
+ const current=preferenceView();
+ const escaped='{"action":"apply","revision":"'+current.revision+'","text":"'+'\\u0061'.repeat(16000)+'"}';
+ assert.equal((await send(escaped)).status,200); assert.equal(preferenceView().text,"a".repeat(16000));
+ const before=preferenceView();
+ assert.equal((await send(JSON.stringify({action:"apply",revision:before.revision,text:"x".repeat(16001)}))).status,400);
+ assert.equal((await send(JSON.stringify({action:"apply",revision:before.revision,text:"small",padding:"x".repeat(128*1024)}))).status,400);
+ assert.equal(preferenceView().revision,before.revision);
+});

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 async function boundedBody(request: Request): Promise<string> {
  const reader = request.body?.getReader(); if (!reader) return "";
  const parts: Uint8Array[] = []; let size = 0;
- try { for (;;) { const { done, value } = await reader.read(); if (done) break; size += value.length; if (size > 20000) { await reader.cancel(); throw new Error("Request too long"); } parts.push(value); } }
+ try { for (;;) { const { done, value } = await reader.read(); if (done) break; size += value.length; if (size > 128 * 1024) { await reader.cancel(); throw new Error("Request too long"); } parts.push(value); } }
  finally { reader.releaseLock(); }
  const bytes = new Uint8Array(size); let offset = 0; for (const part of parts) { bytes.set(part, offset); offset += part.length; }
  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
