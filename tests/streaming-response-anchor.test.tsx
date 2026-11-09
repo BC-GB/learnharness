@@ -91,3 +91,11 @@ test("actual scrolling while waiting or between replies suppresses the next snap
   assert.equal(f.calls(), between ? 1 : 0);
  }
 });
+
+
+test("delayed Markdown DOM text anchors without needing another stream revision", () => {
+ const f = fixture(); f.controller.update(false); f.controller.update(true);
+ const passage = f.add("delayed", ""); f.controller.update(true); assert.equal(f.calls(), 0);
+ passage.textContent = "Visible after the parent effect"; f.controller.refresh(); assert.equal(f.calls(), 1);
+ f.controller.refresh(); assert.equal(f.calls(), 1);
+});

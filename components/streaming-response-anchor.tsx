@@ -51,8 +51,26 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 		floor = 0;
 		tail.style.height = "0px";
 	};
+	const anchor = () => {
+		if (!eligible) return;
+		const target = passages().find(node => !previous.has(node.dataset.responsePartId!) && node.textContent?.trim());
+		const el = main();
+		if (!target || !el) return;
+		eligible = false;
+		const top = Math.max(0, el.scrollTop + target.getBoundingClientRect().top - el.getBoundingClientRect().top - 16);
+		// Reserve only enough room for the first line to sit at the top.
+		// Tokens consume this tail rather than moving the viewport. Retain
+		// a short response's remainder at completion to avoid a clamp jump.
+		settledAnchor = true;
+		floor = top + el.clientHeight;
+		measure();
+		context().stopScroll();
+		el.scrollTo({ top, behavior: "instant" });
+		observedTop = el.scrollTop;
+	};
 	return {
 		measure, cancelPending, onScroll, bottom,
+		refresh() { if (running) anchor(); },
 		update(active: boolean) {
 			if (!initialized) {
 				initialized = true;
@@ -77,21 +95,7 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 				previous = ids();
 				return;
 			}
-			if (!eligible) return;
-			const target = passages().find(node => !previous.has(node.dataset.responsePartId!) && node.textContent?.trim());
-			const el = main();
-			if (!target || !el) return;
-			eligible = false;
-			const top = Math.max(0, el.scrollTop + target.getBoundingClientRect().top - el.getBoundingClientRect().top - 16);
-			// Reserve only enough room for the first line to sit at the top.
-			// Tokens consume this tail rather than moving the viewport. Retain
-			// a short response's remainder at completion to avoid a clamp jump.
-			settledAnchor = true;
-			floor = top + el.clientHeight;
-			measure();
-			context().stopScroll();
-			el.scrollTo({ top, behavior: "instant" });
-			observedTop = el.scrollTop;
+			anchor();
 		},
 		dispose() { release(); },
 	};
@@ -119,11 +123,16 @@ export function StreamingResponseAnchor({ active, revision }: { active: boolean;
 		el?.addEventListener("touchmove", instance.cancelPending, { passive: true });
 		el?.addEventListener("scroll", instance.onScroll, { passive: true });
 		el?.addEventListener(RESPONSE_BOTTOM_EVENT, instance.bottom);
+		// Markdown may commit its visible text after the parent's revision
+		// effect. Observe that commit instead of waiting for another token.
+		const mutations = new MutationObserver(() => instance.refresh());
+		if (content) mutations.observe(content, { childList: true, subtree: true, characterData: true });
 		const observer = new ResizeObserver(instance.measure);
 		if (content) observer.observe(content);
 		if (el) observer.observe(el);
 		return () => {
 			observer.disconnect();
+			mutations.disconnect();
 			el?.removeEventListener("wheel", wheel);
 			el?.removeEventListener("touchmove", instance.cancelPending);
 			el?.removeEventListener("scroll", instance.onScroll);
