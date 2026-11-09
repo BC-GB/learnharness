@@ -58,3 +58,27 @@ test("a settings-write failure leaves an undoable addition without reverting ext
  promptOverrides.writeOverride(PREFERENCE_SEGMENT,"External edit","append");
  assert.equal(preferenceView().canUndo,false); assert.throws(()=>undoPreferences(applied.revision)); assert.equal(preferenceView().text,"External edit");
 });
+
+
+test("failed undo can be resumed only from its journaled partial state", async () => {
+ const { stores } = await import("../src/server/stores.ts");
+ promptOverrides.writeOverride(PREFERENCE_SEGMENT,"Undo original","append");
+ writeSettings({version:1,agent:{prompts:{[PREFERENCE_SEGMENT]:false}}});
+ const before=preferenceView(); const applied=applyPreferences(before.revision,"Undo new");
+ const original=stores.settingsStore.writeSettings;
+ stores.settingsStore.writeSettings=()=>{throw new Error("Synthetic undo failure");};
+ try { assert.throws(()=>undoPreferences(applied.revision)); } finally { stores.settingsStore.writeSettings=original; }
+ const partial=preferenceView(); assert.equal(partial.text,before.text); assert.equal(partial.enabled,true); assert.equal(partial.canUndo,true);
+ const restored=undoPreferences(partial.revision); assert.equal(restored.text,before.text); assert.equal(restored.enabled,false);
+});
+
+test("revision tokens bind the selected course even when global text matches", () => {
+ const initial=preferenceView();
+ const course={id:"revision-other",name:"Other",dataRoot:path.join(scratch,"other"),sourceRoot:undefined};fs.mkdirSync(course.dataRoot);
+ runInCourse(course,()=>{
+  const other=preferenceView(); assert.equal(other.text,initial.text); assert.notEqual(other.revision,initial.revision);
+  assert.throws(()=>applyPreferences(initial.revision,"Wrong course"));
+  assert.throws(()=>undoPreferences(initial.revision));
+  assert.equal(preferenceView().text,initial.text);
+ });
+});

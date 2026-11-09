@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { PATHS, globalPreferencesEnabled, globalPreferencePath } from "../../config.ts";
-import { courseStatePath, courseLocal } from "../runtime/course-context.ts";
+import { courseStatePath, courseLocal, currentCourseId } from "../runtime/course-context.ts";
 import { readPromptCustomization } from "../runtime/prompt-customizations.ts";
 import { promptOverrides } from "../store/prompt-overrides.ts";
 import { writeFileAtomicSync } from "../store/atomic-write.ts";
@@ -17,20 +17,22 @@ export const preferenceEditorRunningCount = () => requests().size;
 export const PREFERENCE_SEGMENT = "shared/10-voice.md";
 const historyPath = () => globalPreferencesEnabled() ? globalPreferencePath("preference-history.json") : courseStatePath(path.join(PATHS.data, "preference-history.json"));
 type Snapshot = { text: string; enabled: boolean };
-type Revision = { before: Snapshot; after: Snapshot; at: string };
-const revision = (v: Snapshot) => createHash("sha256").update(JSON.stringify({ text: v.text, enabled: v.enabled })).digest("hex");
+type Revision = { before: Snapshot; after: Snapshot; at: string; undoFrom?: Snapshot };
+const snapshotHash = (v: Snapshot) => createHash("sha256").update(JSON.stringify({ text: v.text, enabled: v.enabled })).digest("hex");
+const revision = (v: Snapshot) => createHash("sha256").update(JSON.stringify({ course: currentCourseId(), global: globalPreferencesEnabled(), snapshot: snapshotHash(v) })).digest("hex");
 function history(): Revision[] {
  try { const v = JSON.parse(fs.readFileSync(historyPath(), "utf8")); if (!Array.isArray(v)) throw Error(); return v.slice(-20); }
  catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return []; throw new Error("Preference history unavailable"); }
 }
 function saveHistory(rows: Revision[]) { const f = historyPath(); fs.mkdirSync(path.dirname(f), { recursive: true }); writeFileAtomicSync(f, JSON.stringify(rows.slice(-20)), { mode: 0o600 }); }
 function recoverableIndex(rows: Revision[], snapshot: Snapshot): number {
- const current = revision(snapshot);
+ const current = snapshotHash(snapshot);
  return rows.findLastIndex(row => {
   // A failed settings write may leave the new addition with the previous switch.
   // Recognize only exact known states; never roll back an intervening edit.
   const intermediate = { text: row.after.text, enabled: row.before.enabled };
-  return current !== revision(row.before) && (current === revision(row.after) || current === revision(intermediate));
+  const undoIntermediate = row.undoFrom && { text: row.before.text, enabled: row.undoFrom.enabled };
+  return current !== snapshotHash(row.before) && (current === snapshotHash(row.after) || current === snapshotHash(intermediate) || (undoIntermediate !== undefined && current === snapshotHash(undoIntermediate)));
  });
 }
 export function preferenceView() {
@@ -58,6 +60,8 @@ export function applyPreferences(expected: string, text: string) {
 export function undoPreferences(expected: string) {
  const current = preferenceView(); const rows = history(); const index = recoverableIndex(rows, current); const last = rows[index];
  if (current.revision !== expected || !last || !current.canUndo) throw new Error("Preferences changed. Reload before undo.");
+ rows[index] = { ...last, undoFrom: { text: current.text, enabled: current.enabled } };
+ saveHistory(rows); // Journal the exact undo source before either store changes.
  writeSnapshot(last.before); saveHistory(rows.slice(0, index)); return preferenceView();
 }
 
