@@ -20,5 +20,5 @@ export const POST = courseRoute(async (request: Request) => {
   const signal = AbortSignal.any([request.signal, AbortSignal.timeout(60000)]);
   const proposal = await proposePreferences(current.text, body.message, signal);
   return Response.json({ ...proposal, revision: current.revision });
- } catch { return Response.json({ error: "Preference request failed. Your draft has not been automatically applied; reload to check saved text." }, { status: 400 }); }
+ } catch { return Response.json({ error: "Preference request could not finish. Reload to check saved text; Undo is available for recoverable partial changes." }, { status: 400 }); }
 });
