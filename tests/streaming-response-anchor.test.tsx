@@ -17,7 +17,7 @@ function fixture(atBottom = true) {
 	content.getBoundingClientRect = () => ({ height: natural + (parseFloat(tail.style.height) || 0) } as DOMRect);
 	main.scrollTo = ((options: ScrollToOptions) => { calls++; main.scrollTop = options.top!; }) as typeof main.scrollTo;
 	const context = { scrollRef: { current: main }, contentRef: { current: content }, isAtBottom: atBottom,
-		escapedFromLock: !atBottom, targetScrollTop: null, stopScroll() {} } as unknown as StickToBottomContext;
+		escapedFromLock: !atBottom, state: { isAtBottom: atBottom }, targetScrollTop: null, stopScroll() { context.state.isAtBottom = false; context.escapedFromLock = true; } } as unknown as StickToBottomContext;
 	const controller = createResponseAnchor(() => context, tail);
 	const add = (id: string, text = "First line") => {
 		const node = document.createElement("p"); if (text.trim()) node.dataset.responsePartId = id; node.textContent = text;
@@ -76,7 +76,7 @@ test("a new empty session holds its opening response instead of following tokens
 });
 test("consecutive long replies anchor even while the previous reply is not at bottom", () => {
  const f = fixture(); f.controller.update(false); f.controller.update(true); f.add("one"); f.controller.update(true);
- f.grow(2400); f.context.isAtBottom = false; f.context.escapedFromLock = true;
+ f.grow(2400); f.context.isAtBottom = false; f.context.state.isAtBottom = false; f.context.escapedFromLock = true;
  f.controller.onScroll(); // delayed event for our own snap must not cancel the next one
  f.controller.update(false); f.controller.update(true); f.add("two"); f.controller.update(true);
  assert.equal(f.calls(), 2);
@@ -86,7 +86,7 @@ test("actual scrolling while waiting or between replies suppresses the next snap
  for (const between of [false, true]) {
   const f = fixture(); f.controller.update(false); f.controller.update(true);
   if (between) { f.add("one"); f.controller.update(true); f.controller.update(false); }
-  f.main.scrollTop = 100; f.controller.onScroll(); f.context.isAtBottom = false; f.context.escapedFromLock = true;
+  f.main.scrollTop = 100; f.controller.onScroll(); f.context.isAtBottom = false; f.context.state.isAtBottom = false; f.context.escapedFromLock = true;
   f.controller.update(true); f.add("two"); f.controller.update(true);
   assert.equal(f.calls(), between ? 1 : 0);
  }
@@ -106,4 +106,20 @@ test("single-chunk terminal reply consumes intent once, without a post-completio
  f.controller.update(false); assert.equal(f.calls(), 1);
  passage.textContent = "Deferred rendering finished"; f.controller.update(false); assert.equal(f.calls(), 1);
  assert.equal(f.context.targetScrollTop, null);
+});
+
+
+test("explicit Bottom lock remains eligible despite its stale escaped flag and queued scroll", () => {
+ const f = fixture(); f.controller.update(false);
+ f.context.escapedFromLock = true; f.context.state.isAtBottom = true;
+ f.main.scrollTop += 5; // prior Bottom spring moved before the new turn committed
+ f.controller.update(true); f.controller.onScroll(); // delayed event for that old motion
+ f.add("short", "Source ready"); f.controller.update(false);
+ assert.equal(f.calls(), 1);
+});
+
+test("mere near-bottom proximity without the follow lock never steals a reader", () => {
+ const f = fixture(); f.context.isAtBottom = true; f.context.state.isAtBottom = false;
+ f.controller.update(false); f.controller.update(true); f.add("new"); f.controller.update(true);
+ assert.equal(f.calls(), 0);
 });

@@ -81,8 +81,14 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 				if (!active || running) return;
 			}
 			if (active && !running) {
-				eligible = settledAnchor || (context().isAtBottom && !context().escapedFromLock);
+				// The actual follow lock also covers explicit Bottom navigation.
+				// Its escaped flag may remain true during a programmatic spring;
+				// the public isAtBottom also includes mere near-bottom proximity.
+				eligible = settledAnchor || context().state.isAtBottom;
 				if (eligible) {
+					// Own the current position, including any already-applied spring
+					// motion whose scroll event is still queued.
+					observedTop = main()?.scrollTop ?? 0;
 					previousTarget = context().targetScrollTop;
 					context().stopScroll();
 					context().targetScrollTop = holdTarget;
