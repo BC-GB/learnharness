@@ -15,7 +15,7 @@ function fixture(atBottom = true) {
 	Object.defineProperty(main, "clientHeight", { value: 600 });
 	main.getBoundingClientRect = () => ({ top: 50 } as DOMRect);
 	content.getBoundingClientRect = () => ({ height: natural + (parseFloat(tail.style.height) || 0) } as DOMRect);
-	main.scrollTo = (options: ScrollToOptions) => { calls++; main.scrollTop = options.top!; };
+	main.scrollTo = ((options: ScrollToOptions) => { calls++; main.scrollTop = options.top!; }) as typeof main.scrollTo;
 	const context = { scrollRef: { current: main }, contentRef: { current: content }, isAtBottom: atBottom,
 		escapedFromLock: !atBottom, targetScrollTop: null, stopScroll() {} } as unknown as StickToBottomContext;
 	const controller = createResponseAnchor(() => context, tail);
@@ -66,4 +66,11 @@ test("empty text waits, next turn can anchor inside the same assistant group", (
 	first.textContent = "Now visible"; f.controller.update(true); assert.equal(f.calls(), 1);
 	f.controller.update(false); f.controller.update(true); f.add("two"); f.controller.update(true);
 	assert.equal(f.calls(), 2);
+});
+
+test("a new empty session holds its opening response instead of following tokens", () => {
+ const f = fixture(); f.content.querySelector("p")!.remove();
+ f.controller.update(true); f.add("opening"); f.controller.update(true);
+ assert.equal(f.calls(), 1);
+ f.grow(2400); f.controller.update(true); assert.equal(f.calls(), 1);
 });
