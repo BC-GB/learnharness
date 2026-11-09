@@ -60,7 +60,7 @@ import { ArrowRightIcon, DumbbellIcon, WaypointsIcon } from "lucide-react";
 import type { PlanBlockData } from "@/src/core";
 import { QuestionDock } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
-import { StreamingResponseAnchor } from "@/components/streaming-response-anchor";
+import { RESPONSE_BOTTOM_EVENT, StreamingResponseAnchor } from "@/components/streaming-response-anchor";
 import { SessionMessageNavigation } from "@/components/session-navigation";
 import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
@@ -2222,6 +2222,7 @@ function DockOverlay({
 		});
 	};
 	const expandAndReveal = () => {
+		scrollRef.current?.dispatchEvent(new Event(RESPONSE_BOTTOM_EVENT));
 		setRevealed(true); // the teach-check invitation was accepted (W5)
 		setExpanded(true);
 		void suppressFoldDuringReveal();
