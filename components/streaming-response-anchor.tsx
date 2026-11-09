@@ -15,6 +15,7 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 	let eligible = false;
 	let holding = false;
 	let floor = 0;
+	let settledAnchor = false;
 	let previousTarget: StickToBottomContext["targetScrollTop"] = null;
 	const main = () => context().scrollRef.current;
 	const passages = () => Array.from(main()?.querySelectorAll<HTMLElement>("[data-response-part-id]") ?? []);
@@ -37,7 +38,7 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 		const natural = content.getBoundingClientRect().height - old;
 		tail.style.height = `${Math.max(0, floor - natural)}px`;
 	};
-	const cancelPending = () => { eligible = false; };
+	const cancelPending = () => { eligible = false; settledAnchor = false; };
 	const bottom = () => {
 		eligible = false;
 		release();
@@ -51,11 +52,11 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 				initialized = true;
 				previous = ids();
 				// Reattaching a saved/live session must not jump backwards.
-				running = active;
-				return;
+				running = active && previous.size > 0;
+				if (!active || running) return;
 			}
 			if (active && !running) {
-				eligible = context().isAtBottom && !context().escapedFromLock;
+				eligible = context().isAtBottom && (!context().escapedFromLock || settledAnchor);
 				if (eligible) {
 					previousTarget = context().targetScrollTop;
 					context().stopScroll();
@@ -79,6 +80,7 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 			// Reserve only enough room for the first line to sit at the top.
 			// Tokens consume this tail rather than moving the viewport. Retain
 			// a short response's remainder at completion to avoid a clamp jump.
+			settledAnchor = true;
 			floor = top + el.clientHeight;
 			measure();
 			context().stopScroll();
@@ -100,23 +102,24 @@ export function StreamingResponseAnchor({ active, revision }: { active: boolean;
 		controller.current = instance;
 		const el = contextRef.current.scrollRef.current;
 		const content = contextRef.current.contentRef.current;
+		const scope = el?.parentElement;
 		const key = (event: KeyboardEvent) => {
 			if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) instance.cancelPending();
 		};
-		el?.addEventListener("wheel", instance.cancelPending, { passive: true });
-		el?.addEventListener("touchstart", instance.cancelPending, { passive: true });
-		el?.addEventListener("pointerdown", instance.cancelPending);
-		el?.addEventListener("keydown", key);
+		scope?.addEventListener("wheel", instance.cancelPending, { passive: true });
+		scope?.addEventListener("touchstart", instance.cancelPending, { passive: true });
+		scope?.addEventListener("pointerdown", instance.cancelPending);
+		scope?.addEventListener("keydown", key);
 		el?.addEventListener(RESPONSE_BOTTOM_EVENT, instance.bottom);
 		const observer = new ResizeObserver(instance.measure);
 		if (content) observer.observe(content);
 		if (el) observer.observe(el);
 		return () => {
 			observer.disconnect();
-			el?.removeEventListener("wheel", instance.cancelPending);
-			el?.removeEventListener("touchstart", instance.cancelPending);
-			el?.removeEventListener("pointerdown", instance.cancelPending);
-			el?.removeEventListener("keydown", key);
+			scope?.removeEventListener("wheel", instance.cancelPending);
+			scope?.removeEventListener("touchstart", instance.cancelPending);
+			scope?.removeEventListener("pointerdown", instance.cancelPending);
+			scope?.removeEventListener("keydown", key);
 			el?.removeEventListener(RESPONSE_BOTTOM_EVENT, instance.bottom);
 			instance.dispose();
 			controller.current = null;
