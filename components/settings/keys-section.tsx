@@ -498,13 +498,13 @@ export function KeysSection({
 	return (
 		<>
 			{capabilities?.directProviderSetup === false && <SettingsGroup label="Model provider connection" testid="group-broker-provider">
- <div role="status" className="space-y-2 text-xs text-muted-foreground" data-testid="broker-provider-capabilities">
-  <p>{capabilities.explanation}</p><p>{capabilities.nextStep}</p>
-  <p>Choose an available OpenAI Responses model in the model picker. This notice describes deployment support, not account sign-in or current availability.</p>
- </div>
-</SettingsGroup>}
-{capabilities?.directProviderSetup !== false && <>
-<SettingsGroup label="Model API keys" testid="group-provider-keys">
+				<div role="status" className="space-y-2 text-xs text-muted-foreground" data-testid="broker-provider-capabilities">
+					<p>{capabilities.explanation}</p><p>{capabilities.nextStep}</p>
+					<p>Choose an available OpenAI Responses model in the model picker. This notice describes deployment support, not account sign-in or current availability.</p>
+				</div>
+			</SettingsGroup>}
+			{capabilities?.directProviderSetup !== false && <>
+			<SettingsGroup label="Model API keys" testid="group-provider-keys">
 				{providerRows.map((status) => (
 					<KeyTableRow
 						key={status.id}
