@@ -49,3 +49,19 @@ test("model controls use approved effort labels, right-align Save limits, and gr
 	const children = Array.from(element("custom-endpoint-editor").children); assert.ok(children.indexOf(help) > children.indexOf(element("custom-pins")));
 	assert.match(help.textContent ?? "", /do not resize backend context/); assert.match(help.textContent ?? "", /Off may not disable/);
 });
+
+test("broker deployment shows honest capabilities instead of unusable provider setup", async () => {
+ globalThis.fetch = async (input, init) => {
+  assert.equal(init?.method ?? "GET", "GET");
+  if (String(input).startsWith("/api/custom-provider")) return Response.json({ baseUrl: "", models: [], overrides: {} });
+  return Response.json({ keys: [], providers: [{ id: "anthropic", envVar: "ANTHROPIC_API_KEY", label: "Anthropic" }], capabilities: {
+   directProviderSetup: false, explanation: "Isolated OpenAI Responses broker", nextStep: "A reviewed adapter and authorization are required." } });
+ };
+ host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+ await act(async () => root!.render(<KeysSection />));
+ assert.match(element("broker-provider-capabilities").textContent!, /reviewed adapter/);
+ for (const id of ["group-provider-keys", "group-subscriptions", "group-external-cli", "custom-key-input"]) {
+  assert.equal(document.querySelector(`[data-testid="${id}"]`), null);
+ }
+ assert.ok(element("group-dictation")); assert.ok(element("group-search"));
+});

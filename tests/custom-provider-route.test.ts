@@ -128,3 +128,17 @@ describe("POST /api/custom-provider — typed ids and a failed probe", () => {
 		assert.deepEqual(cp?.manualModels, ["disc-1", "m2"]);
 	});
 });
+
+it("broker mode rejects custom setup before discovery or storage", async () => {
+ const original = process.env.LH_BROKER_MODE;
+ process.env.LH_BROKER_MODE = "1";
+ globalThis.fetch = async () => { throw Error("must not probe provider"); };
+ try {
+  const { customProviderMutation } = await import("../src/server/custom-provider-http.ts");
+  for (const method of ["POST", "PATCH"]) {
+   const response = await customProviderMutation(new Request("http://localhost/api/custom-provider", { method }));
+   assert.equal(response.status, 409);
+   assert.equal((await response.json()).code, "PROVIDER_SETUP_NOT_ENABLED");
+  }
+ } finally { if (original === undefined) delete process.env.LH_BROKER_MODE; else process.env.LH_BROKER_MODE = original; }
+});

@@ -18,12 +18,12 @@ import { courseRoute } from "@/src/server";
  * file, and `shadowedByEnv` explains why a saved key is not the live one
  * (env always wins).
  */
-import { keyStatuses, providerKeyList } from "@/src/server";
+import { keyStatuses, providerKeyList, providerCapabilities } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
 async function handleCourseGET() {
-	return Response.json({ keys: keyStatuses(), providers: providerKeyList() });
+	return Response.json({ keys: keyStatuses(), providers: providerKeyList(), capabilities: providerCapabilities() });
 }
 
 export const GET = courseRoute(handleCourseGET);

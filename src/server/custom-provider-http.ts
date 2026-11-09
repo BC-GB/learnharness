@@ -1,3 +1,4 @@
+import { providerCapabilities, providerSetupDenied } from "./provider-capabilities.ts";
 /** PR #62's connect/manual-model/offline-pin workflow, with host request,
  * credential-binding and optimistic-write boundaries. No secret reaches GET. */
 import { createHmac, randomBytes } from "node:crypto";
@@ -82,6 +83,7 @@ function commit(cp: CustomProviderSettings | undefined, binding?: CustomAuthBind
 }
 
 export async function customProviderMutation(request: Request): Promise<Response> {
+	if (request.method !== "DELETE" && !providerCapabilities().directProviderSetup) return providerSetupDenied();
 	if (!authorized(request)) return failure("Custom configuration requires a trusted same-origin request.", 403);
 	if (request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() !== "application/json") return failure("JSON content-type is required.", 415);
 	try {
