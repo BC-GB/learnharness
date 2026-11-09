@@ -18,7 +18,7 @@ export const PREFERENCE_SEGMENT = "shared/10-voice.md";
 const historyPath = () => globalPreferencesEnabled() ? globalPreferencePath("preference-history.json") : courseStatePath(path.join(PATHS.data, "preference-history.json"));
 type Snapshot = { text: string; enabled: boolean };
 type Revision = { before: Snapshot; after: Snapshot; at: string };
-const revision = (v: Snapshot) => createHash("sha256").update(JSON.stringify(v)).digest("hex");
+const revision = (v: Snapshot) => createHash("sha256").update(JSON.stringify({ text: v.text, enabled: v.enabled })).digest("hex");
 function history(): Revision[] {
  try { const v = JSON.parse(fs.readFileSync(historyPath(), "utf8")); if (!Array.isArray(v)) throw Error(); return v.slice(-20); }
  catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return []; throw new Error("Preference history unavailable"); }
