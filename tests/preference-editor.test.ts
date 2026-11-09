@@ -32,3 +32,15 @@ test("global addition edits have concurrency guards and undo, without changing o
  assert.throws(()=>globalPreferencePath("../escape.json")); assert.throws(()=>globalPreferencePath("unrelated.json"));
  promptOverrides.writeOverride(PREFERENCE_SEGMENT,"legacy replacement","replace"); assert.throws(()=>preferenceView());
 });
+
+test("read route never writes or infers; invalid/stale requests cannot apply", async () => {
+ const { GET, POST } = await import("../app/api/settings/preference-chat/route.ts");
+ promptOverrides.writeOverride(PREFERENCE_SEGMENT,"Route fixture","append");
+ const before=preferenceView(); const read=await GET(new Request("http://test/api/settings/preference-chat"));
+ assert.equal(read.status,200); assert.equal((await read.json()).revision,before.revision);
+ const send=(body:unknown)=>POST(new Request("http://test/api/settings/preference-chat",{method:"POST",body:JSON.stringify(body)}));
+ assert.equal((await send({action:"apply",revision:"stale",text:"bad"})).status,409);
+ assert.equal((await send({action:"draft",revision:before.revision,message:"x".repeat(4001)})).status,400);
+ assert.equal((await send({action:"draft",revision:before.revision,message:"Use short examples"})).status,400,"No configured model must fail before inference");
+ assert.equal(preferenceView().revision,before.revision);
+});

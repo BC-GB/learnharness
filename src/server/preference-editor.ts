@@ -7,7 +7,9 @@ import { readPromptCustomization } from "../runtime/prompt-customizations.ts";
 import { promptOverrides } from "../store/prompt-overrides.ts";
 import { writeFileAtomicSync } from "../store/atomic-write.ts";
 import { stores } from "./stores.ts";
-import { validatePreferenceDraft } from "../agent/preference-editor.ts";
+import { piEngineForSpec } from "../agent/models.ts";
+import { resolveModelSpec } from "../core/settings-resolution.ts";
+import { draftPreferences, validatePreferenceDraft } from "../agent/preference-editor.ts";
 
 export const PREFERENCE_SEGMENT = "shared/10-voice.md";
 const historyPath = () => globalPreferencesEnabled() ? globalPreferencePath("preference-history.json") : courseStatePath(path.join(PATHS.data, "preference-history.json"));
@@ -45,4 +47,12 @@ export function undoPreferences(expected: string) {
  const current = preferenceView(); const rows = history(); const last = rows.at(-1);
  if (current.revision !== expected || !last || !current.canUndo) throw new Error("Preferences changed. Reload before undo.");
  writeSnapshot(last.before); saveHistory(rows.slice(0, -1)); return preferenceView();
+}
+
+/** Explicit user-triggered request only. No lessons, files or credentials enter its context. */
+export async function proposePreferences(current: string, message: string, signal: AbortSignal) {
+ const settings = stores.settingsStore.readSettings();
+ const spec = resolveModelSpec("teacher", undefined, settings?.models);
+ if (!spec) throw new Error("Choose a teaching model in Settings first.");
+ return { ...await draftPreferences(piEngineForSpec(spec, false), current, message, signal), model: spec.id };
 }
