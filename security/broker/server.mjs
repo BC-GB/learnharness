@@ -8,6 +8,8 @@ import { createSubscription, normalizeSubscriptionRequest } from './subscription
 import { subscriptionTransport } from './subscription-transport.mjs';
 
 const MAX = 1024 * 1024;
+const MAX_ACTIVE_REQUESTS = 16;
+const MAX_TERMINAL_RECORDS = 1024;
 const hash = b => crypto.createHash('sha256').update(b).digest('hex');
 const json = (res, status, value) => {
   if (res.destroyed || res.writableEnded) return;
@@ -42,21 +44,65 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
   const key = mode === 'live' ? fs.readFileSync(keyFile, 'utf8').trim() : 'SYNTHETIC_BROKER_ONLY';
   if (!key || /[\r\n]/.test(key)) throw Error('Invalid broker credential');
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-  // Never resume or replay a request across broker restart, even if it was approved.
-  for (const name of fs.readdirSync(stateDir)) {
-    if (/^[a-f0-9-]+\.tmp$/.test(name)) fs.unlinkSync(path.join(stateDir, name));
-    if (/^[a-f0-9-]+\.json$/.test(name)) {
-      const old = JSON.parse(fs.readFileSync(path.join(stateDir, name), 'utf8'));
-      persist(stateDir, name.slice(0, -5), { id: old.id, sha256: old.sha256, status: 'closed-on-restart' });
+  // The active ledger is a bounded working set, NOT a lifetime request quota.
+  // Authorization lives only in pending; archiving terminal metadata can never
+  // make an old request approvable. Pending bodies are never archived.
+  // Archive data remains available for audit; storage failures fail closed.
+  const terminalRecords = new Map();
+  function trimTerminalHistory() {
+    while (terminalRecords.size > MAX_TERMINAL_RECORDS) {
+      const id = terminalRecords.keys().next().value;
+      const source = path.join(stateDir, id + '.json');
+      const archiveDir = path.join(stateDir, 'archive');
+      fs.mkdirSync(archiveDir, { recursive: true, mode: 0o700 });
+      const destination = path.join(archiveDir, id + '.json');
+      // Exclusive link + unlink is a same-filesystem move without overwriting
+      // audit data. If interrupted between them, only identical bytes may be
+      // reconciled on restart. A conflicting archive fails closed.
+      try { fs.linkSync(source, destination); }
+      catch (error) {
+        if (error.code !== 'EEXIST' || !fs.readFileSync(source).equals(fs.readFileSync(destination))) throw error;
+      }
+      const archiveFd = fs.openSync(archiveDir, 'r');
+      try { fs.fsyncSync(archiveFd); } finally { fs.closeSync(archiveFd); }
+      fs.unlinkSync(source);
+      const stateFd = fs.openSync(stateDir, 'r');
+      try { fs.fsyncSync(stateFd); } finally { fs.closeSync(stateFd); }
+      terminalRecords.delete(id);
     }
   }
+  // Never resume or replay a request across broker restart, even if it was approved.
+  // Capture age before rewriting: persist changes mtime. Stable tie-breaking
+  // makes retention deterministic when records have identical timestamps.
+  const existing = fs.readdirSync(stateDir).filter(name => /^[a-f0-9-]+\.json$/.test(name))
+    .map(name => ({ name, modified: fs.statSync(path.join(stateDir, name)).mtimeMs }))
+    .sort((a, b) => a.modified - b.modified || a.name.localeCompare(b.name));
+  for (const name of fs.readdirSync(stateDir)) {
+    if (/^[a-f0-9-]+\.tmp$/.test(name)) fs.unlinkSync(path.join(stateDir, name));
+  }
+  for (const { name } of existing) {
+      const source = path.join(stateDir, name), archived = path.join(stateDir, 'archive', name);
+      if (fs.existsSync(archived)) {
+        if (!fs.readFileSync(source).equals(fs.readFileSync(archived))) throw Error('Conflicting archived broker record');
+        fs.unlinkSync(source);
+        const stateFd = fs.openSync(stateDir, 'r');
+        try { fs.fsyncSync(stateFd); } finally { fs.closeSync(stateFd); }
+        continue;
+      }
+      const old = JSON.parse(fs.readFileSync(source, 'utf8'));
+      const id = name.slice(0, -5);
+      persist(stateDir, id, { id, sha256: old.sha256, status: 'closed-on-restart' });
+      terminalRecords.set(id, true);
+  }
+  trimTerminalHistory();
   const pending = new Map();
   const inflight = new Set();
   let authEpoch=0, authorizing=0;
-  let records = fs.readdirSync(stateDir).filter(n => n.endsWith('.json')).length;
   function closeRecord(job, status) {
     clearTimeout(job.timer); pending.delete(job.id);
     persist(stateDir, job.id, { id: job.id, sha256: job.sha256, status });
+    terminalRecords.set(job.id, true);
+    trimTerminalHistory();
   }
   async function dispatch(job) {
     // Persist consumption BEFORE any upstream activity. Never retry automatically.
@@ -112,7 +158,7 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
       if (req.method !== 'POST' || req.url !== '/v1/responses') return json(res, 404, { error: 'Not found' });
       const allowed = new Set(['host', 'connection', 'content-type', 'content-length']);
       if (Object.keys(req.headers).some(k => !allowed.has(k))) return json(res, 400, { error: 'Unexpected header' });
-      if (pending.size + inflight.size + authorizing >= 16 || records >= 1024) return json(res, 429, { error: 'Broker review capacity reached' });
+      if (pending.size + inflight.size + authorizing >= MAX_ACTIVE_REQUESTS) return json(res, 429, { error: 'Broker active request capacity reached', code: 'BROKER_ACTIVE_CAPACITY' });
       let bytes = await body(req);
       const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
       if (!value || typeof value.model !== 'string' || value.stream !== true || value.store !== false) return json(res, 400, { error: 'Streaming and store:false required' });
@@ -126,17 +172,17 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
         // Normalize BEFORE hashing/review: approval always covers the transmitted bytes.
         bytes=Buffer.from(JSON.stringify(normalizeSubscriptionRequest(value,{serviceTier})));
       }
-      if (pending.size + inflight.size + authorizing >= 16 || records >= 1024) return json(res, 429, { error: 'Broker review capacity reached' });
+      if (pending.size + inflight.size + authorizing >= MAX_ACTIVE_REQUESTS) return json(res, 429, { error: 'Broker active request capacity reached', code: 'BROKER_ACTIVE_CAPACITY' });
       const id = crypto.randomUUID(), sha256 = hash(bytes), expires = Date.now() + approvalMs;
       const job = { id, sha256, expires, bytes, res, accountKey, model:value.model, epoch:authEpoch };
       if(!requireReview){
         // Deployment opt-in only; never accept an HTTP flag or replay old queued requests.
-        records++;authorizing++;
+        authorizing++;
         try { await dispatch(job); } catch { json(res,423,{error:'Provider authorization failed closed'}); }
         finally { authorizing--; }
         return;
       }
-      persist(stateDir, id, { id, sha256, expires, status: 'pending', bodyBase64: bytes.toString('base64') }); records++;
+      persist(stateDir, id, { id, sha256, expires, status: 'pending', bodyBase64: bytes.toString('base64') });
       job.timer = setTimeout(() => { closeRecord(job, 'expired'); json(res, 408, { error: 'Approval expired' }); }, approvalMs);
       pending.set(id, job);
       res.on('close', () => { if (pending.has(id)) closeRecord(job, 'cancelled'); });
