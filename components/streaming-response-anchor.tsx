@@ -1,0 +1,127 @@
+"use client";
+
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { useStickToBottomContext, type StickToBottomContext } from "use-stick-to-bottom";
+
+export const RESPONSE_BOTTOM_EVENT = "lh-response-bottom";
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/** One snap per live turn, not per token or provider step. Kept independent
+ * of React so synthetic geometry can exercise the actual scroll controller. */
+export function createResponseAnchor(context: () => StickToBottomContext, tail: HTMLElement) {
+	let previous = new Set<string>();
+	let initialized = false;
+	let running = false;
+	let eligible = false;
+	let holding = false;
+	let floor = 0;
+	let previousTarget: StickToBottomContext["targetScrollTop"] = null;
+	const main = () => context().scrollRef.current;
+	const passages = () => Array.from(main()?.querySelectorAll<HTMLElement>("[data-response-part-id]") ?? []);
+	const ids = () => new Set(passages().map(node => node.dataset.responsePartId!));
+	const holdTarget: NonNullable<StickToBottomContext["targetScrollTop"]> = (_bottom, { scrollElement }) => scrollElement.scrollTop;
+	const release = () => {
+		if (holding) {
+			context().stopScroll();
+			if (context().targetScrollTop === holdTarget) context().targetScrollTop = previousTarget;
+		}
+		holding = false;
+	};
+	const measure = () => {
+		const el = main();
+		if (!el || !floor) return;
+		const old = parseFloat(tail.style.height) || 0;
+		// Total flow height, not scrollHeight (which is at least viewport height).
+		const content = context().contentRef.current;
+		if (!content) return;
+		const natural = content.getBoundingClientRect().height - old;
+		tail.style.height = `${Math.max(0, floor - natural)}px`;
+	};
+	const cancelPending = () => { eligible = false; };
+	const bottom = () => {
+		eligible = false;
+		release();
+		floor = 0;
+		tail.style.height = "0px";
+	};
+	return {
+		measure, cancelPending, bottom,
+		update(active: boolean) {
+			if (!initialized) {
+				initialized = true;
+				previous = ids();
+				// Reattaching a saved/live session must not jump backwards.
+				running = active;
+				return;
+			}
+			if (active && !running) {
+				eligible = context().isAtBottom && !context().escapedFromLock;
+				if (eligible) {
+					previousTarget = context().targetScrollTop;
+					context().stopScroll();
+					context().targetScrollTop = holdTarget;
+					holding = true;
+				}
+			}
+			running = active;
+			if (!active) {
+				eligible = false;
+				release();
+				previous = ids();
+				return;
+			}
+			if (!eligible) return;
+			const target = passages().find(node => !previous.has(node.dataset.responsePartId!) && node.textContent?.trim());
+			const el = main();
+			if (!target || !el) return;
+			eligible = false;
+			const top = Math.max(0, el.scrollTop + target.getBoundingClientRect().top - el.getBoundingClientRect().top - 16);
+			// Reserve only enough room for the first line to sit at the top.
+			// Tokens consume this tail rather than moving the viewport. Retain
+			// a short response's remainder at completion to avoid a clamp jump.
+			floor = top + el.clientHeight;
+			measure();
+			context().stopScroll();
+			el.scrollTo({ top, behavior: "instant" });
+		},
+		dispose() { release(); },
+	};
+}
+
+export function StreamingResponseAnchor({ active, revision }: { active: boolean; revision: unknown }) {
+	const context = useStickToBottomContext();
+	const contextRef = useRef(context);
+	contextRef.current = context;
+	const tail = useRef<HTMLDivElement>(null);
+	const controller = useRef<ReturnType<typeof createResponseAnchor> | null>(null);
+	useIsoLayoutEffect(() => {
+		if (!tail.current) return;
+		const instance = createResponseAnchor(() => contextRef.current, tail.current);
+		controller.current = instance;
+		const el = contextRef.current.scrollRef.current;
+		const content = contextRef.current.contentRef.current;
+		const key = (event: KeyboardEvent) => {
+			if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) instance.cancelPending();
+		};
+		el?.addEventListener("wheel", instance.cancelPending, { passive: true });
+		el?.addEventListener("touchstart", instance.cancelPending, { passive: true });
+		el?.addEventListener("pointerdown", instance.cancelPending);
+		el?.addEventListener("keydown", key);
+		el?.addEventListener(RESPONSE_BOTTOM_EVENT, instance.bottom);
+		const observer = new ResizeObserver(instance.measure);
+		if (content) observer.observe(content);
+		if (el) observer.observe(el);
+		return () => {
+			observer.disconnect();
+			el?.removeEventListener("wheel", instance.cancelPending);
+			el?.removeEventListener("touchstart", instance.cancelPending);
+			el?.removeEventListener("pointerdown", instance.cancelPending);
+			el?.removeEventListener("keydown", key);
+			el?.removeEventListener(RESPONSE_BOTTOM_EVENT, instance.bottom);
+			instance.dispose();
+			controller.current = null;
+		};
+	}, []);
+	useIsoLayoutEffect(() => { controller.current?.update(active); }, [active, revision]);
+	return <div ref={tail} aria-hidden="true" data-testid="response-anchor-spacer" className="shrink-0" />;
+}

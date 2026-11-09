@@ -1,5 +1,6 @@
 "use client";
 
+import { RESPONSE_BOTTOM_EVENT } from "@/components/streaming-response-anchor";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LhViewMessage, LhViewPart } from "@/src/core";
@@ -75,11 +76,12 @@ export const ConversationScrollButton = ({
   className,
   ...props
 }: ConversationScrollButtonProps) => {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+  const { isAtBottom, scrollToBottom, scrollRef } = useStickToBottomContext();
 
   const handleScrollToBottom = useCallback(() => {
+    scrollRef.current?.dispatchEvent(new Event(RESPONSE_BOTTOM_EVENT));
     scrollToBottom();
-  }, [scrollToBottom]);
+  }, [scrollToBottom, scrollRef]);
 
   return (
     !isAtBottom && (
