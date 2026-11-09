@@ -74,3 +74,20 @@ test("a new empty session holds its opening response instead of following tokens
  assert.equal(f.calls(), 1);
  f.grow(2400); f.controller.update(true); assert.equal(f.calls(), 1);
 });
+test("consecutive long replies anchor even while the previous reply is not at bottom", () => {
+ const f = fixture(); f.controller.update(false); f.controller.update(true); f.add("one"); f.controller.update(true);
+ f.grow(2400); f.context.isAtBottom = false; f.context.escapedFromLock = true;
+ f.controller.onScroll(); // delayed event for our own snap must not cancel the next one
+ f.controller.update(false); f.controller.update(true); f.add("two"); f.controller.update(true);
+ assert.equal(f.calls(), 2);
+});
+
+test("actual scrolling while waiting or between replies suppresses the next snap", () => {
+ for (const between of [false, true]) {
+  const f = fixture(); f.controller.update(false); f.controller.update(true);
+  if (between) { f.add("one"); f.controller.update(true); f.controller.update(false); }
+  f.main.scrollTop = 100; f.controller.onScroll(); f.context.isAtBottom = false; f.context.escapedFromLock = true;
+  f.controller.update(true); f.add("two"); f.controller.update(true);
+  assert.equal(f.calls(), between ? 1 : 0);
+ }
+});

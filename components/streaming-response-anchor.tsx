@@ -16,6 +16,7 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 	let holding = false;
 	let floor = 0;
 	let settledAnchor = false;
+	let observedTop = context().scrollRef.current?.scrollTop ?? 0;
 	let previousTarget: StickToBottomContext["targetScrollTop"] = null;
 	const main = () => context().scrollRef.current;
 	const passages = () => Array.from(main()?.querySelectorAll<HTMLElement>("[data-response-part-id]") ?? []);
@@ -39,6 +40,11 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 		tail.style.height = `${Math.max(0, floor - natural)}px`;
 	};
 	const cancelPending = () => { eligible = false; settledAnchor = false; };
+	const onScroll = () => {
+		const top = main()?.scrollTop ?? 0;
+		if (Math.abs(top - observedTop) > 2) cancelPending();
+		observedTop = top;
+	};
 	const bottom = () => {
 		eligible = false;
 		release();
@@ -46,7 +52,7 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 		tail.style.height = "0px";
 	};
 	return {
-		measure, cancelPending, bottom,
+		measure, cancelPending, onScroll, bottom,
 		update(active: boolean) {
 			if (!initialized) {
 				initialized = true;
@@ -56,7 +62,7 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 				if (!active || running) return;
 			}
 			if (active && !running) {
-				eligible = context().isAtBottom && (!context().escapedFromLock || settledAnchor);
+				eligible = settledAnchor || (context().isAtBottom && !context().escapedFromLock);
 				if (eligible) {
 					previousTarget = context().targetScrollTop;
 					context().stopScroll();
@@ -85,6 +91,7 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 			measure();
 			context().stopScroll();
 			el.scrollTo({ top, behavior: "instant" });
+			observedTop = el.scrollTop;
 		},
 		dispose() { release(); },
 	};
@@ -102,24 +109,24 @@ export function StreamingResponseAnchor({ active, revision }: { active: boolean;
 		controller.current = instance;
 		const el = contextRef.current.scrollRef.current;
 		const content = contextRef.current.contentRef.current;
-		const scope = el?.parentElement;
-		const key = (event: KeyboardEvent) => {
-			if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) instance.cancelPending();
+		// Dock controls (including confidence) do not express scroll intent.
+		// Actual scroll events also cover keyboard/scrollbar and forwarded dock
+		// scrolling; wheel/touch cancel early only inside the transcript.
+		const wheel = (event: WheelEvent) => {
+			if (event.deltaY && !event.ctrlKey && !event.metaKey) instance.cancelPending();
 		};
-		scope?.addEventListener("wheel", instance.cancelPending, { passive: true });
-		scope?.addEventListener("touchstart", instance.cancelPending, { passive: true });
-		scope?.addEventListener("pointerdown", instance.cancelPending);
-		scope?.addEventListener("keydown", key);
+		el?.addEventListener("wheel", wheel, { passive: true });
+		el?.addEventListener("touchmove", instance.cancelPending, { passive: true });
+		el?.addEventListener("scroll", instance.onScroll, { passive: true });
 		el?.addEventListener(RESPONSE_BOTTOM_EVENT, instance.bottom);
 		const observer = new ResizeObserver(instance.measure);
 		if (content) observer.observe(content);
 		if (el) observer.observe(el);
 		return () => {
 			observer.disconnect();
-			scope?.removeEventListener("wheel", instance.cancelPending);
-			scope?.removeEventListener("touchstart", instance.cancelPending);
-			scope?.removeEventListener("pointerdown", instance.cancelPending);
-			scope?.removeEventListener("keydown", key);
+			el?.removeEventListener("wheel", wheel);
+			el?.removeEventListener("touchmove", instance.cancelPending);
+			el?.removeEventListener("scroll", instance.onScroll);
 			el?.removeEventListener(RESPONSE_BOTTOM_EVENT, instance.bottom);
 			instance.dispose();
 			controller.current = null;
