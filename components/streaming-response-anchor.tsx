@@ -53,7 +53,9 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 	};
 	const anchor = () => {
 		if (!eligible) return;
-		const target = passages().find(node => !previous.has(node.dataset.responsePartId!) && node.textContent?.trim());
+		// The marker is emitted only for nonempty source text. Markdown may
+		// render later, so readiness must not depend on its DOM textContent.
+		const target = passages().find(node => !previous.has(node.dataset.responsePartId!));
 		const el = main();
 		if (!target || !el) return;
 		eligible = false;
@@ -70,7 +72,6 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 	};
 	return {
 		measure, cancelPending, onScroll, bottom,
-		refresh() { if (running) anchor(); },
 		update(active: boolean) {
 			if (!initialized) {
 				initialized = true;
@@ -90,6 +91,9 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 			}
 			running = active;
 			if (!active) {
+				// A complete single-chunk reply can arrive with ready status.
+				// Consume its existing one-shot intent in this commit, not later.
+				anchor();
 				eligible = false;
 				release();
 				previous = ids();
@@ -123,16 +127,11 @@ export function StreamingResponseAnchor({ active, revision }: { active: boolean;
 		el?.addEventListener("touchmove", instance.cancelPending, { passive: true });
 		el?.addEventListener("scroll", instance.onScroll, { passive: true });
 		el?.addEventListener(RESPONSE_BOTTOM_EVENT, instance.bottom);
-		// Markdown may commit its visible text after the parent's revision
-		// effect. Observe that commit instead of waiting for another token.
-		const mutations = new MutationObserver(() => instance.refresh());
-		if (content) mutations.observe(content, { childList: true, subtree: true, characterData: true });
 		const observer = new ResizeObserver(instance.measure);
 		if (content) observer.observe(content);
 		if (el) observer.observe(el);
 		return () => {
 			observer.disconnect();
-			mutations.disconnect();
 			el?.removeEventListener("wheel", wheel);
 			el?.removeEventListener("touchmove", instance.cancelPending);
 			el?.removeEventListener("scroll", instance.onScroll);

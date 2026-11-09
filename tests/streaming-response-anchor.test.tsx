@@ -20,7 +20,7 @@ function fixture(atBottom = true) {
 		escapedFromLock: !atBottom, targetScrollTop: null, stopScroll() {} } as unknown as StickToBottomContext;
 	const controller = createResponseAnchor(() => context, tail);
 	const add = (id: string, text = "First line") => {
-		const node = document.createElement("p"); node.dataset.responsePartId = id; node.textContent = text;
+		const node = document.createElement("p"); if (text.trim()) node.dataset.responsePartId = id; node.textContent = text;
 		node.getBoundingClientRect = () => ({ top: 650 - main.scrollTop + 50 } as DOMRect);
 		content.insertBefore(node, tail); return node;
 	};
@@ -63,7 +63,7 @@ test("reading history, pre-token navigation, and live reattachment are never sto
 test("empty text waits, next turn can anchor inside the same assistant group", () => {
 	const f = fixture(); f.controller.update(false); f.controller.update(true);
 	const first = f.add("one", ""); f.controller.update(true); assert.equal(f.calls(), 0);
-	first.textContent = "Now visible"; f.controller.update(true); assert.equal(f.calls(), 1);
+	first.textContent = "Now visible"; first.dataset.responsePartId = "one"; f.controller.update(true); assert.equal(f.calls(), 1);
 	f.controller.update(false); f.controller.update(true); f.add("two"); f.controller.update(true);
 	assert.equal(f.calls(), 2);
 });
@@ -93,9 +93,17 @@ test("actual scrolling while waiting or between replies suppresses the next snap
 });
 
 
-test("delayed Markdown DOM text anchors without needing another stream revision", () => {
+test("source-ready passage anchors before deferred Markdown DOM text appears", () => {
  const f = fixture(); f.controller.update(false); f.controller.update(true);
- const passage = f.add("delayed", ""); f.controller.update(true); assert.equal(f.calls(), 0);
- passage.textContent = "Visible after the parent effect"; f.controller.refresh(); assert.equal(f.calls(), 1);
- f.controller.refresh(); assert.equal(f.calls(), 1);
+ const passage = f.add("delayed", "Source text ready"); passage.textContent = "";
+ f.controller.update(true); assert.equal(f.calls(), 1);
+ passage.textContent = "Visible after the parent effect"; f.controller.update(true); assert.equal(f.calls(), 1);
+});
+
+test("single-chunk terminal reply consumes intent once, without a post-completion jump", () => {
+ const f = fixture(); f.controller.update(false); f.controller.update(true);
+ const passage = f.add("terminal", "Source ready"); passage.textContent = "";
+ f.controller.update(false); assert.equal(f.calls(), 1);
+ passage.textContent = "Deferred rendering finished"; f.controller.update(false); assert.equal(f.calls(), 1);
+ assert.equal(f.context.targetScrollTop, null);
 });
