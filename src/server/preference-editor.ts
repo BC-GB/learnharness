@@ -51,6 +51,7 @@ export function undoPreferences(expected: string) {
 
 /** Explicit user-triggered request only. No lessons, files or credentials enter its context. */
 export async function proposePreferences(current: string, message: string, signal: AbortSignal) {
+ if (current.length > 16000) throw new Error("Existing preferences exceed the editor limit.");
  const settings = stores.settingsStore.readSettings();
  const spec = resolveModelSpec("teacher", undefined, settings?.models);
  if (!spec) throw new Error("Choose a teaching model in Settings first.");

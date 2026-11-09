@@ -36,7 +36,7 @@ test("global addition edits have concurrency guards and undo, without changing o
 test("read route never writes or infers; invalid/stale requests cannot apply", async () => {
  const { GET, POST } = await import("../app/api/settings/preference-chat/route.ts");
  promptOverrides.writeOverride(PREFERENCE_SEGMENT,"Route fixture","append");
- const before=preferenceView(); const read=await GET(new Request("http://test/api/settings/preference-chat"));
+ const before=preferenceView(); const read=await GET();
  assert.equal(read.status,200); assert.equal((await read.json()).revision,before.revision);
  const send=(body:unknown)=>POST(new Request("http://test/api/settings/preference-chat",{method:"POST",body:JSON.stringify(body)}));
  assert.equal((await send({action:"apply",revision:"stale",text:"bad"})).status,409);
