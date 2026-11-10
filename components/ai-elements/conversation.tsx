@@ -1,11 +1,12 @@
 "use client";
 
+import { RESPONSE_BOTTOM_EVENT } from "@/components/streaming-response-anchor";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LhViewMessage, LhViewPart } from "@/src/core";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
 import type { ComponentProps } from "react";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
@@ -75,11 +76,27 @@ export const ConversationScrollButton = ({
   className,
   ...props
 }: ConversationScrollButtonProps) => {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+  const { scrollToBottom, scrollRef, contentRef } = useStickToBottomContext();
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    const content = contentRef.current;
+    if (!scroll) return;
+    // A custom streaming target can be "at bottom" of its hold while far
+    // from the transcript end. This control must use the real scroll range.
+    const measure = () => setIsAtBottom(scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop <= 70);
+    measure();
+    scroll.addEventListener("scroll", measure, { passive: true });
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroll);
+    if (content) observer.observe(content);
+    return () => { scroll.removeEventListener("scroll", measure); observer.disconnect(); };
+  }, [scrollRef, contentRef]);
 
   const handleScrollToBottom = useCallback(() => {
+    scrollRef.current?.dispatchEvent(new Event(RESPONSE_BOTTOM_EVENT));
     scrollToBottom();
-  }, [scrollToBottom]);
+  }, [scrollToBottom, scrollRef]);
 
   return (
     !isAtBottom && (

@@ -60,6 +60,7 @@ import { ArrowRightIcon, DumbbellIcon, WaypointsIcon } from "lucide-react";
 import type { PlanBlockData } from "@/src/core";
 import { QuestionDock } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
+import { RESPONSE_START_EVENT, RESPONSE_CANCEL_EVENT, RESPONSE_BOTTOM_EVENT, StreamingResponseAnchor } from "@/components/streaming-response-anchor";
 import { SessionMessageNavigation } from "@/components/session-navigation";
 import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
@@ -259,12 +260,32 @@ export function Chat({
 	// (core/view.ts projectView); sends are ONE explicit input event each
 	// ({chatId, input} — the stash indirection died with the SDK), and the
 	// turn stream is the VERBATIM AgentEvent passthrough the server emits.
-	const { messages, nativeMessages, hasConfirmedConversation, contextTokens, send, continueIfOwed, steer, steerQueue, submitAnswer, dismissQuestion, dismissProblem, questionDraft, saveQuestionDraft, setMessages, adoptRecord, status, error, stop, clearError, resumeStream, setReattachSettled } =
+	const { messages, nativeMessages, hasConfirmedConversation, contextTokens, send: sendMessage, continueIfOwed, steer, steerQueue, submitAnswer: answerQuestion, dismissQuestion, dismissProblem, questionDraft, saveQuestionDraft, setMessages, adoptRecord, status, error, stop, clearError, resumeStream, setReattachSettled } =
 		useChatSession({ chatId, initialMessages, initialError, initiallyInFlight });
 
 	const sessionFindScopeRef = useRef<HTMLDivElement | null>(null);
 	const scrollContextRef = useRef<StickToBottomContext | null>(null);
 	const sourceTextParts = useMemo(() => firstSourceTextParts(messages), [messages]);
+	// Explicit learner actions acquire a single response-start intent. The
+	// passive continue/reattach paths retain their original scroll behavior.
+	const responseIntent = useCallback((event: string) => {
+		scrollContextRef.current?.scrollRef.current?.dispatchEvent(new Event(event));
+	}, []);
+	const send = useCallback((...args: Parameters<typeof sendMessage>) => {
+		responseIntent(RESPONSE_START_EVENT);
+		return sendMessage(...args).then(accepted => {
+			if (!accepted) responseIntent(RESPONSE_CANCEL_EVENT);
+			return accepted;
+		}, error => {
+			responseIntent(RESPONSE_CANCEL_EVENT);
+			throw error; // Preserve the original rejection for the caller.
+		});
+	}, [sendMessage, responseIntent]);
+	const submitAnswer = useCallback((...args: Parameters<typeof answerQuestion>) => {
+		responseIntent(RESPONSE_START_EVENT);
+		return answerQuestion(...args);
+	}, [answerQuestion, responseIntent]);
+
 
 	// The reattach settled terminal → the sync-and-continue seam (below).
 	setReattachSettled(() => reattachSettledRef.current());
@@ -1560,7 +1581,7 @@ export function Chat({
 														const sourceId = textPartMessageId(part.id);
 														const anchor = sourceId && sourceTextParts.get(sourceId) === part.id ? messageAnchorId(sourceId) : undefined;
 														return (
-															<div key={part.id || pi} id={anchor} data-source-message-id={sourceId ?? undefined} className="lh-source-passage">
+															<div key={part.id || pi} id={anchor} data-source-message-id={sourceId ?? undefined} data-response-part-id={part.text?.trim() ? part.id || `${m.id}:${pi}` : undefined} className="lh-source-passage">
 																<MessageResponse>{part.text}</MessageResponse>
 															</div>
 														);
@@ -1686,6 +1707,7 @@ export function Chat({
 						    sticky dock. Zero only pre-measurement (the first layout
 						    effect reports before paint). */}
 						<div aria-hidden data-testid="dock-spacer" style={{ height: dockReserve }} />
+                        <StreamingResponseAnchor active={localStream || turnInFlight} revision={messages} />
 				</ConversationContent>
 				{/* The dock: an overlay sibling of the scroller (the
 				    use-stick-to-bottom pattern). The scroll-down button lives
@@ -2220,6 +2242,7 @@ function DockOverlay({
 		});
 	};
 	const expandAndReveal = () => {
+		scrollRef.current?.dispatchEvent(new Event(RESPONSE_BOTTOM_EVENT));
 		setRevealed(true); // the teach-check invitation was accepted (W5)
 		setExpanded(true);
 		void suppressFoldDuringReveal();
