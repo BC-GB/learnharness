@@ -6,6 +6,8 @@ import { test } from "node:test";
 import { createSmokeServerRequest } from "../scripts/smoke-server-request.mjs";
 import { verifyPluginServer } from "../scripts/smoke-plugin-runtime.mjs";
 import { verifyCorePlugins } from "../scripts/smoke-core-plugins.mjs";
+import { createPluginHost, type PluginHostDependencies } from "../src/server/plugin-host.ts";
+import { createPluginTransport } from "../src/server/plugin-transport.ts";
 
 const origin = "http://127.0.0.1:32123";
 const headers = { "x-learnharness-desktop": "synthetic-test-capability" };
@@ -81,4 +83,54 @@ test("core smoke authenticates list, toggles, refresh and asset requests while p
 		await verifyCorePlugins({ root, standalone: root, dataDirectory, url: origin, headers });
 		assert.deepEqual([...methods].sort(), ["GET", "POST", "PUT"]);
 	} finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("core smoke verifies actual Coding Questions denial and preserves the other three cores", async (t) => {
+	for (const defect of ["none", "enable", "call", "asset", "mutation", "wrong-reason", "other-core-blocked"]) {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "lh-core-policy-smoke-"));
+		const dataDirectory = path.join(root, "data");
+		const ids = ["flashcards", "coding-questions", "drawing-pad", "rich-code-blocks"];
+		const unavailable = "Native code execution is unavailable in this hardened deployment. An isolated execution service is required.";
+		fs.mkdirSync(dataDirectory);
+		fs.writeFileSync(path.join(root, "core-plugins.json"), JSON.stringify(ids));
+		for (const id of ids) {
+			const directory = path.join(root, "core-plugins", id); fs.mkdirSync(directory, { recursive: true });
+			fs.writeFileSync(path.join(directory, "manifest.json"), JSON.stringify({ apiVersion: 1, id, name: id, version: "1.0.0", minAppVersion: "0.4.1", main: "main.js", backend: "backend.cjs" }));
+			fs.writeFileSync(path.join(directory, "main.js"), "export function activate() {}");
+			fs.writeFileSync(path.join(directory, "backend.cjs"), id === "coding-questions" ? "throw Error('BLOCKED CORE EXECUTED');" : "exports.activate = () => {};");
+		}
+		const host = createPluginHost({
+			directory: path.join(dataDirectory, "plugins"), appVersion: "0.4.1",
+			core: { directory: path.join(root, "core-plugins"), dataDirectory: path.join(dataDirectory, "core-plugin-data"), ids },
+			installationErrors: { "coding-questions": defect === "wrong-reason" ? "unrelated failure" : unavailable, ...(defect === "other-core-blocked" ? { flashcards: unavailable } : {}) },
+			createServices() { return { agents: { dispose() {} }, workers: { dispose() {} } } as unknown as ReturnType<PluginHostDependencies["createServices"]>; },
+		});
+		const transport = createPluginTransport({ getHost: async () => { await host.initialize(); return host; }, directory: path.join(dataDirectory, "plugins") });
+		const mock = t.mock.method(globalThis, "fetch", async (url: URL, options: RequestInit) => {
+			assert.equal(url.origin, origin);
+			assert.equal(new Headers(options.headers).get("x-learnharness-desktop"), headers["x-learnharness-desktop"]);
+			assert.equal(options.redirect, "error");
+			const request = new Request(url, options);
+			const segments = url.pathname.split("/"); const id = segments[3]!;
+			if (id === "coding-questions") {
+				if (options.method === "PUT") {
+					if (defect === "enable") return json({});
+					if (defect === "mutation") fs.writeFileSync(path.join(dataDirectory, "unexpected.json"), "changed");
+				}
+				if (segments[4] === "call" && defect === "call") return json({ result: "unexpected" });
+				if (segments[4] === "assets" && defect === "asset") return new Response("unexpected code");
+			}
+			if (url.pathname === "/api/plugins") return options.method === "POST" ? transport.refresh(request) : transport.list();
+			if (segments[4] === "assets") return transport.asset(id, segments.slice(5));
+			if (segments[4] === "call") return transport.call(id, request);
+			return transport.setEnabled(id, request);
+		});
+		try {
+			if (defect === "none") {
+				await verifyCorePlugins({ root, standalone: root, dataDirectory, url: origin, headers });
+				for (const id of ids.filter(id => id !== "coding-questions")) assert.ok(fs.statSync(path.join(dataDirectory, "core-plugin-data", id)).isDirectory());
+				assert.equal(fs.existsSync(path.join(dataDirectory, "core-plugin-data", "coding-questions")), false);
+			} else await assert.rejects(verifyCorePlugins({ root, standalone: root, dataDirectory, url: origin, headers }));
+		} finally { mock.mock.restore(); await host.dispose(); fs.rmSync(root, { recursive: true, force: true }); }
+	}
 });

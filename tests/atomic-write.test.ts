@@ -169,23 +169,29 @@ describe("writeFileAtomicSync", () => {
 		assert.equal(fs.readFileSync(path.join(path.dirname(file), kept[0]!), "utf-8"), "new");
 	});
 
-	it("Windows: read-only files fail at once, like in-place writes", onWindows, () => {
+	it("Windows: read-only files fail at once, like in-place writes", onWindows, (t) => {
 		const file = target("record.json", "old");
 		fs.chmodSync(file, 0o444);
-		const started = Date.now();
+		// Call through to the real filesystem and sleep primitive; observe retries, not elapsed I/O time.
+		const rename = t.mock.method(fs, "renameSync");
+		const wait = t.mock.method(Atomics, "wait");
 		assert.throws(() => writeFileAtomicSync(file, "new"), { code: "EPERM" });
-		assert.ok(Date.now() - started < 50, "no waiting on read-only files");
+		assert.equal(rename.mock.callCount(), 1, "no retry on read-only files");
+		assert.equal(wait.mock.callCount(), 0, "no waiting on read-only files");
 		fs.chmodSync(file, 0o666);
 		assert.equal(fs.readFileSync(file, "utf-8"), "old");
 		assert.deepEqual(temps(file), []);
 	});
 
-	it("folders in the way fail at once", () => {
+	it("folders in the way fail at once", (t) => {
 		const file = target("record.json");
 		fs.mkdirSync(file);
-		const started = Date.now();
+		// Call through to the real filesystem and sleep primitive; observe retries, not elapsed I/O time.
+		const rename = t.mock.method(fs, "renameSync");
+		const wait = t.mock.method(Atomics, "wait");
 		assert.throws(() => writeFileAtomicSync(file, "new"));
-		assert.ok(Date.now() - started < 50, "no waiting on folders");
+		assert.equal(rename.mock.callCount(), 1, "no retry on folders");
+		assert.equal(wait.mock.callCount(), 0, "no waiting on folders");
 		assert.deepEqual(temps(file), []);
 	});
 
