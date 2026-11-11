@@ -205,8 +205,9 @@ registerHooks({resolve(specifier,context,next){ const result=next(specifier,cont
 			if (status !== 200) throw new Error(`GET ${route} → ${status} (expected 200)`);
 			console.log(`[smoke-server] GET ${route} → 200`);
 		}
-		await verifyCorePlugins({ root: ROOT, standalone, dataDirectory: dataDir, url });
-		await verifyPluginServer(url, home);
+		const headers = { "x-learnharness-desktop": capability };
+		await verifyCorePlugins({ root: ROOT, standalone, dataDirectory: dataDir, url, headers });
+		await verifyPluginServer(url, home, headers);
 		if (BROWSER_MODE) {
 			const { verifyPluginBrowser } = await import("./smoke-plugin-browser.mjs");
 			const evidenceDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "lh-plugin-browser-evidence-"));

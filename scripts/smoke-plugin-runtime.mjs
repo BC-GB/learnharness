@@ -1,6 +1,9 @@
 /** Off-network external-plugin proof for the packaged server smoke. The package
  * is created AFTER the build, outside the source/standalone trees. No provider
  * credentials, real learning data, or source-tree imports are involved. */
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { createSmokeServerRequest } from "./smoke-server-request.mjs";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -635,50 +638,48 @@ export function activate(ctx) {
 
 export async function verifyPluginServer(url, home, headers = {}) {
 	const directory = path.join(home, "data", "plugins", "native-smoke");
-	const activated = path.join(directory, "data", "activated.txt");
-	const disabled = path.join(directory, "data", "disabled.txt");
-	const jsonRequest = async (route, method, body, expected = 200) => {
-		const response = await fetch(url + route, { method, headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body) });
+	// Snapshot all synthetic profile data, including plugin preferences and
+	// pre-existing private files. Denied enable must not execute or write.
+	const snapshot = () => {
+		const files = {};
+		const walk = (root) => {
+			for (const entry of fs.readdirSync(root).sort()) {
+				const file = path.join(root, entry), stat = fs.lstatSync(file);
+				assert.equal(stat.isSymbolicLink(), false, "Unexpected fixture symlink");
+				if (stat.isDirectory()) walk(file);
+				else files[path.relative(path.join(home, "data"), file)] = createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+			}
+		};
+		walk(path.join(home, "data")); return files;
+	};
+	const before = snapshot();
+	const serverRequest = createSmokeServerRequest(url, headers);
+	const jsonRequest = async (route, method = "GET", body, expected = 200) => {
+		const response = await serverRequest(route, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 		const payload = await response.json();
-		if (response.status !== expected) throw new Error(`${method} ${route}: ${response.status}: ${JSON.stringify(payload)}`);
+		assert.equal(response.status, expected, `${method} ${route}: unexpected response status`);
 		return payload;
 	};
-	const listing = await (await fetch(url + "/api/plugins", { headers })).json();
-	const plugin = listing.plugins?.find((item) => item.id === "native-smoke");
-	if (!plugin || plugin.enabled || plugin.status !== "disabled") throw new Error("External plugins must be discovered disabled without executing code");
-	if (fs.existsSync(activated)) throw new Error("Disabled plugin backend was evaluated");
-	await jsonRequest("/api/plugins/native-smoke", "PUT", { enabled: true });
-	const proof = await jsonRequest("/api/plugins/native-smoke/call", "POST", { operation: "proof", input: "packaged-runtime" });
-	if (proof.result?.answer !== "packaged-runtime" || !proof.result.node || proof.result.data !== path.join(directory, "data") || proof.result.learning !== path.join(home, "data")) throw new Error("Native backend/context/bridge proof failed");
-	if (!fs.existsSync(activated)) throw new Error("Native backend did not activate");
-	const admission = await jsonRequest("/api/plugins/native-smoke/call", "POST", { operation: "admission-status" });
-	if (admission.result?.tasks?.length !== 0 || admission.result?.counts?.requests !== 0 || admission.result?.counts?.active !== 0) throw new Error("Plugin activation must not automatically start worker/model requests");
-	const questions = await jsonRequest("/api/plugins/native-smoke/call", "POST", { operation: "question-status" });
-	if (questions.result?.counts?.requests !== 0 || questions.result?.requests?.length !== 0) throw new Error("Question registration must not start a native turn");
-	const mock = new URL(admission.result.mockBase);
-	if (mock.protocol !== "http:" || mock.hostname !== "127.0.0.1" || mock.pathname !== "/v1" || !mock.port) throw new Error("Fixture mock must bind an ephemeral loopback endpoint");
-	for (const asset of ["main.js", "assets/helper.js", "assets/markdown-proof.js", "assets/question-proof.js", "assets/session-proof.js"]) {
-		const response = await fetch(`${url}/api/plugins/native-smoke/assets/${asset}`, { headers });
-		if (response.status !== 200 || !response.headers.get("content-type")?.includes("javascript")) throw new Error(`Frontend module unavailable: ${asset}`);
-	}
-	const image = await fetch(`${url}/api/plugins/native-smoke/assets/assets/markdown-proof.svg`, { headers });
-	if (image.status !== 200 || !image.headers.get("content-type")?.includes("image/svg+xml") || !(await image.text()).includes('width="48" height="24"')) throw new Error("Local static Markdown image fixture unavailable");
-	for (const asset of ["backend.cjs", "manifest.json", "data/private.json"]) {
-		const response = await fetch(`${url}/api/plugins/native-smoke/assets/${asset}`, { headers });
-		if (response.ok) throw new Error(`Private package file exposed as asset: ${asset}`);
-	}
-	await jsonRequest("/api/plugins/native-smoke", "PUT", { enabled: false });
-	if (!fs.existsSync(disabled) || !fs.existsSync(path.join(directory, "data", "private.json"))) throw new Error("Disable failed cleanup or deleted plugin data");
-	// Do not configure this activation's URL: browser enable creates a fresh
-	// ephemeral listener. Disable must await closure of the retained handle.
-	let mockStillListening = false;
-	try {
-		const response = await fetch(mock + "/models", { signal: AbortSignal.timeout(2_000) });
+	const assertBlocked = (listing) => {
+		const plugin = listing.plugins?.find((item) => item.id === "native-smoke");
+		assert.ok(plugin, "Community fixture must be discovered");
+		assert.equal(plugin.origin, "community");
+		assert.equal(plugin.enabled, false);
+		assert.equal(plugin.status, "error");
+		assert.match(plugin.error, /Community executable plugins are unsupported/);
+	};
+	assertBlocked(await jsonRequest("/api/plugins"));
+	for (const marker of ["activated.txt", "disabled.txt"]) assert.equal(fs.existsSync(path.join(directory, "data", marker)), false, "Community backend must never execute");
+	const denied = await jsonRequest("/api/plugins/native-smoke", "PUT", { enabled: true }, 409);
+	assert.match(denied.error, /Community executable plugins require source review/);
+	const stopped = await jsonRequest("/api/plugins/native-smoke/call", "POST", { operation: "proof", input: "packaged-runtime" }, 409);
+	assert.match(stopped.error, /disabled or unavailable/);
+	for (const asset of ["main.js", "assets/helper.js", "assets/markdown-proof.js", "assets/question-proof.js", "assets/session-proof.js", "assets/markdown-proof.svg", "backend.cjs", "manifest.json", "data/private.json"]) {
+		const response = await serverRequest(`/api/plugins/native-smoke/assets/${asset}`);
 		await response.text();
-		mockStillListening = true;
-	} catch { /* Connection refusal/abort is expected after cooperative cleanup. */ }
-	if (mockStillListening) throw new Error("Disabled plugin leaked its loopback mock listener");
-	const stopped = await fetch(url + "/api/plugins/native-smoke/call", { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ operation: "proof" }) });
-	if (stopped.ok) throw new Error("Disabled plugin accepted operations");
-	console.log("[smoke-server] external plugin: disabled discovery → native backend/bridge/assets + idle loopback fixture → cooperative disable closes mock; data preserved");
+		assert.equal(response.status, 409, `Community asset must remain unavailable: ${asset}`);
+	}
+	assertBlocked(await jsonRequest("/api/plugins"));
+	assert.deepEqual(snapshot(), before, "Denied community activation must preserve fixture code and data");
+	console.log("[smoke-server] community plugin: discovery, enable/operation/asset denial; no execution or data mutation");
 }
