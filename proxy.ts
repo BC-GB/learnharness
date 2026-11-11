@@ -24,4 +24,7 @@ export function proxy(request: NextRequest) {
 	return NextResponse.next({ request: { headers } });
 }
 
-export const config = { matcher: "/:path*" };
+// Next clones Proxy request bodies with a truncating ceiling. Only this exact
+// streaming endpoint bypasses that clone; its handler checks the same capability
+// on every method before params, course lookup or body reads. Pages remain gated.
+export const config = { matcher: "/((?!api/plugins/[^/]+/documents/markdown/?$).*)" };

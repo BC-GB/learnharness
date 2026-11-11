@@ -9,8 +9,10 @@ import { createPluginHost } from "../src/server/plugin-host.ts";
 import { createPluginDocumentRoute, createPluginTransport } from "../src/server/plugin-transport.ts";
 import { createPluginDocumentConverter } from "../src/server/plugin-documents.ts";
 import { convertPdf } from "../src/agent/subagents/pdf-ops.ts";
+import { isolatedRenderFixture, tick as ipcTick } from "./helpers/isolated-render-fixture.ts";
 import { tinyPdf } from "./helpers/tiny-pdf.ts";
 
+process.env.LH_DESKTOP_API_SECRET = "d".repeat(64);
 const tick = async () => { for (let i = 0; i < 16; i++) await Promise.resolve(); };
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -39,7 +41,7 @@ async function fixture(t: TestContext, pdfConverter = convertPdf) {
 		fetch: async (url, init) => {
 			const match = /^\/api\/plugins\/([^/]+)\/documents\/markdown$/.exec(String(url));
 			assert.ok(match, "only the document endpoint is called, never graph/import or generation");
-			const response = await route.POST(new Request(`http://localhost${url}`, init), { params: Promise.resolve({ id: decodeURIComponent(match[1]!) }) });
+			const response = await route.POST(new Request(`http://localhost${url}`, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), "x-learnharness-desktop": "d".repeat(64) } }), { params: Promise.resolve({ id: decodeURIComponent(match[1]!) }) });
 			statuses.push(response.status); return response;
 		},
 		importModule: async () => ({ activate(context) { contexts.set(context.manifest.id, context); } }),
@@ -60,7 +62,7 @@ function files(directory: string): Record<string, string> {
 	return result;
 }
 
-it("multipart frontend-to-host flow converts a real renamed PDF and arbitrary-suffix UTF-8 without storage/model effects", async t => {
+it("multipart frontend-to-host flow sends real renamed PDF bytes only to isolated parser and converts UTF-8 without storage/model effects", async t => {
 	const f = await fixture(t), context = f.contexts.get("document-one")!;
 	const before = files(f.root);
 	const source = "ν = 3\nA local physics fact.\n";
@@ -68,7 +70,15 @@ it("multipart frontend-to-host flow converts a real renamed PDF and arbitrary-su
 		name: "lesson.custom", markdown: source, notices: [],
 	});
 	const pdf = new Uint8Array(tinyPdf([{ runs: [{ text: "Force equals mass times acceleration.", x: 72, y: 700 }] }]));
-	const converted = await context.documents.toMarkdown(new File([pdf], "renamed.txt", { type: "text/plain" }));
+	const calls = isolatedRenderFixture(t);
+ const pending = context.documents.toMarkdown(new File([pdf], "renamed.txt", { type: "text/plain" }));
+ for (let i=0; i<100 && !calls.length; i++) await ipcTick();
+ assert.equal(calls.length, 1);
+ assert.equal(calls[0]!.payload.op, "convert");
+ assert.equal(calls[0]!.payload.maxPages, 200);
+ assert.deepEqual(Buffer.from(calls[0]!.payload.pdf as string, "base64"), Buffer.from(pdf));
+ calls[0]!.complete({ kind: "converted", pages: [{ kind: "text", number: 1, markdown: "Force equals mass times acceleration." }] });
+ const converted = await pending;
 	assert.equal(converted.name, "renamed.txt");
 	assert.match(converted.markdown, /^--- Page 1 ---/);
 	assert.match(converted.markdown, /Force equals mass times acceleration\./);

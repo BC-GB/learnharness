@@ -40,7 +40,7 @@ interface CaptureRecord {
 /** Test seam; production always follows the configured app data root. */
 let backgroundCaptureDirOverride: string | undefined;
 export const backgroundCaptureDir = {
-	get current(): string { return backgroundCaptureDirOverride ?? path.join(PATHS.debug, "background-captures"); },
+	get current(): string { return backgroundCaptureDirOverride ?? path.join(/* turbopackIgnore: true */ PATHS.debug, "background-captures"); },
 	set current(value: string) { backgroundCaptureDirOverride = value; },
 };
 

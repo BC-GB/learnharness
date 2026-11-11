@@ -74,6 +74,10 @@ conversion retains the 20 MiB/200-page ceilings and fixed isolated renderer
 transport; no in-app Chromium, native PDF fallback, caller-supplied download URL
 or unrestricted subprocess path is restored. New inference uses the existing
 host model transport and credential broker, without API-key fallback.
+The exact document conversion endpoint bypasses Next Proxy's truncating request
+clone so its own streaming byte limit can reject oversized bodies. Its handler
+checks the same gateway capability on every HTTP method before reading route
+parameters or body bytes. All other pages and endpoints remain Proxy-gated.
 
 Upstream Rich Code's TeX engine requires a browser Worker and WebAssembly. The
 hardened gateway forbids browser Workers, so the host explicitly reports this
@@ -87,6 +91,9 @@ not a hard CPU or memory isolation guarantee.
 Side-conversation newline-delimited JSON uses plain-text streaming through the
 existing gateway content-type policy; no new gateway MIME or network allowance
 is introduced.
+Drawing-pad capture forwards cancellation into the pinned raster/SVG library's
+resource fetches, not just the outer promise. The reviewed capture path supplies
+font CSS directly and does not enable the library's remote stylesheet fallback.
 
 Plugin dependency setup uses locked npm installs with lifecycle scripts disabled.
 Only separately reviewed, explicit SDK/build commands run during packaging.

@@ -346,6 +346,13 @@ export function SettingsDialogBody({
 					return false;
 				}
 				if (ticket >= writeOrder.current.acknowledged) {
+					// Notify before installing the canonical record. Reopened dialogs
+					// and the appearance provider may start a signal-triggered GET;
+					// the ACK/revision advances below fence those stale reads out.
+					// An older out-of-order ACK must not invalidate newer live state.
+					notifyingOwnSave.current = true;
+					try { notifySettingsSaved(section); }
+					finally { notifyingOwnSave.current = false; }
 					writeOrder.current.acknowledged = ticket;
 					writeOrder.current.record = stored;
 					writeOrder.current.fileAccessError = reply?.fileAccessError ?? null;
@@ -354,9 +361,6 @@ export function SettingsDialogBody({
 					// appearance saved by an earlier, still-pending section request.
 					onAppearanceChange(stored.appearance);
 				}
-				notifyingOwnSave.current = true;
-				try { notifySettingsSaved(section); }
-				finally { notifyingOwnSave.current = false; }
 				return true;
 			} catch (error) {
 				if (ticket === writeOrder.current.issued) setError(`${section}: ${error instanceof Error ? error.message : String(error)}`);

@@ -253,6 +253,12 @@ export interface PluginBackendContext {
     readonly manifest: PluginManifest;
     readonly directory: string;
     readonly dataDirectory: string;
+    readonly browserWorkersAvailable?: boolean;
+    preferences?: {
+        read(): unknown | undefined;
+        write(value: unknown): void;
+        subscribe(listener: () => void): () => void;
+    };
     readonly signal: AbortSignal;
     cleanup(dispose: PluginCleanup): void;
     learning: PluginLearningData;
@@ -279,6 +285,11 @@ export interface PluginBackendContext {
 - [manifest](#pluginbackendcontext-manifest)
 - [directory](#pluginbackendcontext-directory)
 - [dataDirectory](#pluginbackendcontext-datadirectory)
+- [browserWorkersAvailable](#pluginbackendcontext-browserworkersavailable)
+- [preferences](#pluginbackendcontext-preferences)
+- [preferences.read](#pluginbackendcontext-preferencesread)
+- [preferences.write](#pluginbackendcontext-preferenceswrite)
+- [preferences.subscribe](#pluginbackendcontext-preferencessubscribe)
 - [signal](#pluginbackendcontext-signal)
 - [cleanup](#pluginbackendcontext-cleanup)
 - [learning](#pluginbackendcontext-learning)
@@ -316,6 +327,58 @@ Writable records: core-plugin-data/<id> or community plugins/<id>/data.
 ```ts
 readonly dataDirectory: string;
 ```
+
+### PluginBackendContext browserWorkersAvailable
+
+Host deployment policy, not a permission request or browser setting.
+
+```ts
+readonly browserWorkersAvailable?: boolean;
+```
+
+### PluginBackendContext preferences
+
+Optional app-owned global preferences; never store learning content here.
+
+```ts
+preferences?: {
+    read(): unknown | undefined;
+    write(value: unknown): void;
+    subscribe(listener: () => void): () => void;
+};
+```
+
+### PluginBackendContext preferences.read
+
+```ts
+read(): unknown | undefined;
+```
+
+**Returns:** `unknown \| undefined`.
+
+### PluginBackendContext preferences.write
+
+```ts
+write(value: unknown): void;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `value` | `unknown` |
+
+**Returns:** `void`.
+
+### PluginBackendContext preferences.subscribe
+
+```ts
+subscribe(listener: () => void): () => void;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `listener` | `() => void` |
+
+**Returns:** `() => void`.
 
 ### PluginBackendContext signal
 

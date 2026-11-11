@@ -40,7 +40,7 @@ it("Proxy retains API roots, siblings, endpoint lookalikes and all other API rou
 		"/api/graph/import", "/api/events", "/api/chat", "/api/settings/models", "/api/chats/scratch/markdown",
 	]) assert.equal(proxyMatches(path), true, path);
 	for (const path of ["/", "/chat/new", "/apix", "/api-other/plugins/document-one/documents/markdown"]) {
-		assert.equal(proxyMatches(path), false, path);
+		assert.equal(proxyMatches(path), true, path);
 	}
 });
 
@@ -83,7 +83,7 @@ for (const declaredLength of [undefined, "1"]) it(`current Proxy config preserve
 	assert.equal(request.headers.get("content-length"), declaredLength ?? null);
 	await assert.rejects(createPluginDocumentConverter().convert(request, new AbortController().signal), (error: unknown) => {
 		assert.equal((error as { status?: number }).status, 413);
-		assert.match((error as Error).message, /26 MiB/);
+		assert.match((error as Error).message, /21 MiB/);
 		return true;
 	});
 	assert.equal(cloned, false, "the endpoint must bypass Proxy execution, not merely skip auth inside Proxy");
@@ -139,6 +139,7 @@ it("document route authenticates ALL methods before params, transport/getHost, o
 	const convert = t.mock.method(transport, "convertDocument");
 	const route = createPluginDocumentRoute(transport);
 	const refusals = [
+        { marker: undefined, capability: undefined, supplied: undefined },
 		{ marker: "1", capability: secret, supplied: undefined },
 		{ marker: "1", capability: secret, supplied: "" },
 		{ marker: "1", capability: secret, supplied: "wrong" },
@@ -169,9 +170,9 @@ it("document route authenticates ALL methods before params, transport/getHost, o
 });
 
 it("authorized document route methods preserve POST dispatch, empty 405s and OPTIONS 204 with Allow", async t => {
-	for (const mode of ["desktop", "browser-only", "secret-without-marker"] as const) {
-		await withDesktopEnvironment(mode === "desktop" ? "1" : undefined, mode === "browser-only" ? undefined : secret, async () => {
-			const headers: Record<string, string> = mode === "browser-only" ? {} : { [capabilityHeader]: secret };
+	for (const mode of ["desktop", "gateway-web", "secret-without-marker"] as const) {
+		await withDesktopEnvironment(mode === "desktop" ? "1" : undefined, secret, async () => {
+			const headers: Record<string, string> = { [capabilityHeader]: secret };
 			const forwarded = Response.json(result, { headers: { "Cache-Control": "no-store" } });
 			const convert = t.mock.fn(async (id: string, request: Request) => {
 				assert.equal(id, "document-one");

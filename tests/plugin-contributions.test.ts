@@ -412,15 +412,19 @@ test("native Pi Agent executes contributed tools with schemas, preparation, upda
 	assert.throws(() => captured.prepareArguments!({ value: "2" }), /disabled or unavailable/);
 });
 
-test("server contribution accessor uses the initialized process-global host", async t => {
-	const f = fixture(t); f.plugin(); const ctx = await f.context();
-	ctx.registerInstructions({ agents: ["teacher"], text: "Accessor contribution" });
-	const global = globalThis as typeof globalThis & { __lhPlugins?: unknown };
-	const previous = global.__lhPlugins;
-	global.__lhPlugins = { host: f.host, ready: Promise.resolve() };
-	try {
-		const { getPluginAgentContributions } = await import("../src/server/plugins.ts");
-		const contributions = await getPluginAgentContributions();
-		assert.deepEqual(contributions(turn(), []).instructions, ["Accessor contribution"]);
-	} finally { if (previous === undefined) delete global.__lhPlugins; else global.__lhPlugins = previous; }
+test("server contribution accessor uses the initialized course-local host", async t => {
+ const { courseLocal, runInCourse } = await import("../src/runtime/course-context.ts");
+ const { getPluginAgentContributions } = await import("../src/server/plugins.ts");
+ const a = fixture(t), b = fixture(t); a.plugin(); b.plugin();
+ (await a.context()).registerInstructions({ agents: ["teacher"], text: "Course A contribution" });
+ (await b.context()).registerInstructions({ agents: ["teacher"], text: "Course B contribution" });
+ const root = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-accessor-"));
+ t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+ for (const [id, host, text] of [["accessor-a", a.host, "Course A contribution"], ["accessor-b", b.host, "Course B contribution"]] as const) {
+  await runInCourse({ id, name: id, dataRoot: root, sourceRoot: undefined }, async () => {
+   courseLocal("plugin-runtime", () => ({ host, ready: Promise.resolve() }));
+   const contributions = await getPluginAgentContributions();
+   assert.deepEqual(contributions(turn(), []).instructions, [text]);
+  });
+ }
 });

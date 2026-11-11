@@ -1,3 +1,4 @@
+import { replacePluginRuntimeForTest } from "./helpers/generic-plugin-runtime.ts";
 /** Actual route + production compaction gate, using only registered offline
  * Pi providers. Plugin processing must never run to estimate its own result. */
 import assert from "node:assert/strict";
@@ -34,8 +35,6 @@ const { sideConversationEntries } = await import("../src/core/side-chat.ts");
 for (const practice of [false, true]) test(`${practice ? "plugin practice submission" : "plugin question answer"}: raw side cargo triggers preflight compaction before once-only processing`, { timeout: 15000 }, async () => {
 	const environmentVariables = process.env as Record<string, string | undefined>;
 	const environment = environmentVariables.NODE_ENV;
-	const global = globalThis as typeof globalThis & { __lhPlugins?: unknown };
-	const previousHost = global.__lhPlugins;
 	let processed = 0;
 	const chat = chatStore.createChat("Offline plugin side compaction", practice ? "practice" : undefined);
 	const processOnce = async () => {
@@ -51,9 +50,9 @@ for (const practice of [false, true]) test(`${practice ? "plugin practice submis
 		problemSchema: Type.Object({}), submissionSchema: Type.String(), tool: { toolName: "plugin_preflight_problem", description: "Pose an offline problem" }, processSubmission: processOnce });
 	const activation = new AbortController();
 	const available = { status: "available" as const, signal: activation.signal, requireActive() {} };
-	global.__lhPlugins = { host: {
+	const restoreRuntime = await replacePluginRuntimeForTest({
 		resolveQuestionType: () => ({ ...available, definition }), resolveProblemType: () => ({ ...available, definition: problemDefinition }),
-	}, ready: Promise.resolve() };
+	});
 	try {
 		const prefix: LhMessage[] = [newUserMessage("SAVED_HISTORY_PUBLIC ".repeat(6000)), { ...fauxAssistantMessage("Saved earlier lesson."), id: "earlier_lesson" }, newUserMessage("CURRENT_RETAINED ".repeat(5000))];
 		chatStore.saveMessages(chat.id, prefix);
@@ -129,6 +128,6 @@ for (const practice of [false, true]) test(`${practice ? "plugin practice submis
 	} finally {
 		await compactionInFlight(chat.id);
 		if (environment === undefined) delete environmentVariables.NODE_ENV; else environmentVariables.NODE_ENV = environment;
-		global.__lhPlugins = previousHost;
+		restoreRuntime();
 	}
 });

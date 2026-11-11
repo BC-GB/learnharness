@@ -59,7 +59,7 @@ test("broker deployment shows honest capabilities instead of unusable provider s
    directProviderSetup: false, explanation: "Isolated OpenAI Responses broker", nextStep: "A reviewed adapter and authorization are required." } });
  };
  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
- await act(async () => root!.render(<KeysSection />));
+ await act(async () => root!.render(<InteractionLayersProvider><KeysSection /></InteractionLayersProvider>));
  assert.match(element("broker-provider-capabilities").textContent!, /reviewed adapter/);
  for (const id of ["group-provider-keys", "group-subscriptions", "group-external-cli", "custom-key-input"]) {
   assert.equal(document.querySelector(`[data-testid="${id}"]`), null);

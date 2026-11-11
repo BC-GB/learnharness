@@ -9,6 +9,7 @@ import { Type } from "typebox";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall, normalizeContext, type FauxResponseStep } from "@earendil-works/pi-ai";
 import type { PiEngine } from "../src/agent/models.ts";
 import type { GraphStore } from "../src/core/ports.ts";
+import { isolatedRenderFixture } from "./helpers/isolated-render-fixture.ts";
 import type { HeadlessApi } from "../src/agent/subagents/headless.ts";
 
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "lh-worker-admission-integration-"));
@@ -172,7 +173,11 @@ test("shared injected engine: each request releases before tools, and continuati
 	assert.equal(usage, 3, "money channel still sees one admitted step per request");
 });
 
-test("raw PDF + visual loops share request admission with the native worker runner", { timeout: 8_000 }, async () => {
+test("raw PDF + visual loops share request admission with the native worker runner", { timeout: 8_000 }, async (t) => {
+ const ipc = isolatedRenderFixture(t);
+ const previousSourceRoot = process.env.LH_SOURCE_ROOT;
+ process.env.LH_SOURCE_ROOT = path.join(import.meta.dirname, "fixtures");
+ t.after(() => { if (previousSourceRoot === undefined) delete process.env.LH_SOURCE_ROOT; else process.env.LH_SOURCE_ROOT = previousSourceRoot; });
 	configureWorkerRequestAdmission(() => 1);
 	const gate = deferred(), entered = deferred();
 	let active = 0, peak = 0, visualCalls = 0, nativeCalls = 0, pdfUsage = 0, visualUsage = 0;
@@ -185,7 +190,13 @@ test("raw PDF + visual loops share request admission with the native worker runn
 	});
 	const work: Promise<unknown>[] = [pdf];
 	try {
-		await entered.promise;
+  // The hardened reader probes and reads metadata through isolated IPC only.
+  for (let index = 0; index < 2; index++) {
+   await Promise.race([until(() => ipc.length > index), pdf.then(result => assert.fail(`PDF stopped before IPC: ${result.brief}`))]);
+   assert.equal(ipc[index]!.payload.op, "info");
+   ipc[index]!.complete({ page_count: 3, mean_text_length: 20, pages: [] });
+  }
+		await Promise.race([entered.promise, pdf.then(result => assert.fail(`PDF stopped before model admission: ${result.brief}`))]);
 		work.push(runVisualMaker({ brief: "Synthetic" }, { engine: observed(() => { visualCalls++; }), headless, maxIterations: 1, onUsage: () => { visualUsage++; } }));
 		work.push(run(observed(() => { nativeCalls++; })));
 		await flush();

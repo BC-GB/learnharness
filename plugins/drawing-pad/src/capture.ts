@@ -69,7 +69,7 @@ export async function captureBackground(root: HTMLElement | undefined, slots: re
         await waitForReference(root, slots, signal);
         const fontEmbedCSS = await referenceFontCSS(root, signal);
         const width = frozenSize?.width ?? root.clientWidth, height = frozenSize?.height ?? root.scrollHeight;
-        svg = await abortable(toSvg(root, { fontEmbedCSS, width, height,
+        svg = await abortable(toSvg(root, { fontEmbedCSS, width, height, fetchRequestInit: { signal },
           style: { position: "static", left: "0", top: "0", width: `${width}px`, height: `${height}px`, maxHeight: "none", overflow: "visible" } }), signal);
       } while (changed);
     } finally { observer.disconnect(); }

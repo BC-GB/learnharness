@@ -1,3 +1,4 @@
+import { replacePluginRuntimeForTest } from "./helpers/generic-plugin-runtime.ts";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import * as fs from "node:fs";
@@ -213,10 +214,8 @@ test("chat-handler saves the genuine native answer before teacher construction, 
 	const dismiss = await import("../app/api/chats/[id]/dismiss/route.ts");
 	const recordRoute = await import("../app/api/chats/[id]/route.ts");
 	process.env.OPENROUTER_API_KEY = "isolated-test-fixture-only";
-	const global = globalThis as typeof globalThis & { __lhPlugins?: unknown };
-	const previous = global.__lhPlugins;
 	let resolutionStatus: "available" | "unavailable" | "incompatible" = "available";
-	global.__lhPlugins = { host: { resolveQuestionType: () => resolutionStatus === "available" ? { status: "available", definition, signal: contribution.signal, requireActive() {} } : { status: resolutionStatus } }, ready: Promise.resolve() };
+	const restoreRuntime = await replacePluginRuntimeForTest({ resolveQuestionType: () => resolutionStatus === "available" ? { status: "available", definition, signal: contribution.signal, requireActive() {} } : { status: resolutionStatus } });
 	try {
 		const chat = stores.chatStore.createChat("Isolated native question lifecycle");
 		stores.chatStore.saveSettings(chat.id, { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" } });
@@ -264,5 +263,5 @@ test("chat-handler saves the genuine native answer before teacher construction, 
 		assert.equal(pendingPluginQuestionOf(stores.chatStore.getChat(compatChat.id)!.messages), undefined);
 		assert.equal((stores.chatStore.getChat(compatChat.id)!.messages.at(-1) as any).details.reason, "incompatible");
 		assert.equal(isTurnRunning(compatChat.id), false, "compatibility cancellation never runs the teacher");
-	} finally { global.__lhPlugins = previous; }
+	} finally { restoreRuntime(); }
 });

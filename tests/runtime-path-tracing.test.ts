@@ -35,17 +35,20 @@ test("config opts out each mutable path producer, retaining the shipped prompt a
 	for (const call of mutable) assert.ok(ignored(call), `Runtime path must not ship: ${call.getText(file)}`);
 });
 
-test("selected/imported custom theme filenames never become deployment assets", () => {
-	const { file, calls, ignored } = paths("src/store/themes.ts");
-	assert.equal(calls.length, 1);
-	assert.ok(ignored(calls[0]!), `Runtime theme path must not ship: ${calls[0]!.getText(file)}`);
+test("selected/imported custom themes delegate only to guarded global preference paths", () => {
+ const theme = fs.readFileSync(new URL("../src/store/themes.ts", import.meta.url), "utf8");
+ assert.match(theme, /return globalPreferencePath\(`themes\/\$\{id\}\.json`\)/);
+ assert.equal(paths("src/store/themes.ts").calls.length, 0, "no later join may reintroduce theme tracing");
+ const { file, calls, ignored } = paths("src/runtime/global-preferences-path.ts");
+ assert.ok(calls.length > 0);
+ for (const call of calls) assert.ok(ignored(call), `Shared preference path must not ship: ${call.getText(file)}`);
 });
 
 test("plugin runtime and background capture paths never become deployment assets", () => {
 	for (const relative of ["src/server/plugins.ts", "src/agent/background-capture.ts"]) {
 		const { file, calls, ignored } = paths(relative);
 		const runtime = calls;
-		assert.equal(runtime.length, relative === "src/server/plugins.ts" ? 5 : 2);
+		assert.equal(runtime.length, relative === "src/server/plugins.ts" ? 7 : 2);
 		for (const call of runtime) assert.ok(ignored(call), `Runtime path must not ship: ${call.getText(file)}`);
 	}
 });

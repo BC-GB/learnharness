@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 import { proxy } from "../proxy.ts";
 import { createPluginDocumentRoute } from "../src/server/plugin-transport.ts";
 
-it("streamed document route shares browser policy before params, plugin work or multipart body access", async t => {
+it("streamed document route requires gateway capability in browser launch modes before params, plugin work or multipart body access", async t => {
 	const keys = ["LH_DESKTOP_SERVER", "LH_DESKTOP_API_SECRET", "LH_ALLOWED_HOSTS"] as const;
 	const saved = keys.map(key => process.env[key]);
 	for (const key of keys) delete process.env[key];
@@ -38,9 +38,10 @@ it("streamed document route shares browser policy before params, plugin work or 
 			}
 		}
 		assert.equal(convert.mock.callCount(), 0);
+		process.env.LH_DESKTOP_API_SECRET = "d".repeat(64);
 		const form = new FormData(); form.append("file", new File(["owned fixture"], "small.txt"));
 		const post = new Request("http://localhost/api/plugins/document-one/documents/markdown", {
-			method: "POST", headers: { origin: "http://localhost", "sec-fetch-site": "same-origin" }, body: form,
+			method: "POST", headers: { "x-learnharness-desktop": "d".repeat(64), origin: "http://localhost", "sec-fetch-site": "same-origin" }, body: form,
 		});
 		assert.equal((await route.POST(post, { params: Promise.resolve({ id: "document-one" }) })).status, 200);
 		assert.equal(convert.mock.callCount(), 1);

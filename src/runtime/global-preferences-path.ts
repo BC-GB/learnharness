@@ -15,7 +15,7 @@ function canonical(file: string): string {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 		const parent = path.dirname(file);
 		if (parent === file) throw error;
-		return path.join(canonical(parent), path.basename(file));
+		return path.join(/* turbopackIgnore: true */ canonical(parent), path.basename(file));
 	}
 }
 
@@ -26,13 +26,13 @@ export function sharedPreferencePath(root: string, relative: string): string {
 	const promptKey = promptParts.join("/");
 	const directory = promptKey === "" || ["teacher", "prober", "practice", "shared"].includes(promptKey);
 	if (!themePreference(relative, true) && !/^global-plugin-(drawing-pad|rich-code-blocks|flashcards)\.json$/.test(relative) && relative !== "global-plugins.json" && relative !== "global-settings.json" && relative !== "preference-history.json" && !(parts[0] === "global-prompts" && (directory || isValidSegmentPath(promptKey)))) throw new Error("Invalid global preference path.");
-	const target = path.join(root, ...parts);
-	if (canonical(target) !== path.join(canonical(root), ...parts)) throw new Error("Global preferences cannot use aliased paths.");
+	const target = path.join(/* turbopackIgnore: true */ root, ...parts);
+	if (canonical(target) !== path.join(/* turbopackIgnore: true */ canonical(root), ...parts)) throw new Error("Global preferences cannot use aliased paths.");
 	return target;
 }
 
 export function sharedPreferencesExist(root: string): boolean {
-	try { fs.lstatSync(path.join(root, "global-settings.json")); return true; }
+	try { fs.lstatSync(path.join(/* turbopackIgnore: true */ root, "global-settings.json")); return true; }
 	catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
 }
 

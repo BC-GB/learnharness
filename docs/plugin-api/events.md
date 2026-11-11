@@ -45,6 +45,10 @@ export interface ServerEvents {
     "turn-settled": {
         chatId: string;
     };
+    "response-ready": {
+        chatId: string;
+        messageId: string;
+    };
     "jobs-changed": {
         chatId?: string;
     };
@@ -77,6 +81,9 @@ export interface ServerEvents {
 - ["turn-started".chatId](#serverevents-turn-startedchatid)
 - ["turn-settled"](#serverevents-turn-settled)
 - ["turn-settled".chatId](#serverevents-turn-settledchatid)
+- ["response-ready"](#serverevents-response-ready)
+- ["response-ready".chatId](#serverevents-response-readychatid)
+- ["response-ready".messageId](#serverevents-response-readymessageid)
 - ["jobs-changed"](#serverevents-jobs-changed)
 - ["jobs-changed".chatId](#serverevents-jobs-changedchatid)
 - ["activity-changed"](#serverevents-activity-changed)
@@ -128,6 +135,30 @@ does not mean asynchronous extraction or background work has completed.
 
 ```ts
 chatId: string;
+```
+
+### ServerEvents "response-ready"
+
+New persisted learner-facing response. Identity only: no lesson text,
+titles, course names or provider/account data reach desktop alerts.
+
+```ts
+"response-ready": {
+    chatId: string;
+    messageId: string;
+};
+```
+
+### ServerEvents "response-ready".chatId
+
+```ts
+chatId: string;
+```
+
+### ServerEvents "response-ready".messageId
+
+```ts
+messageId: string;
 ```
 
 ### ServerEvents "jobs-changed"

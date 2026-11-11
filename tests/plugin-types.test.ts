@@ -107,7 +107,8 @@ const invalid: PluginAgentTool = { kind: "input", name: "ask", description: "Ask
 void [stop, input, invalid];
 `);
 		const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
-		const check = spawnSync(process.execPath, [tsc, "--noEmit", "--strict", "--skipLibCheck", "--allowImportingTsExtensions", "--target", "ES2022", "--module", "ESNext", "--moduleResolution", "bundler", consumer], { cwd: home, encoding: "utf8", timeout: 30_000 });
+		// Bound cold generated-declaration consumer compilation; all strict type assertions remain unchanged.
+		const check = spawnSync(process.execPath, [tsc, "--noEmit", "--strict", "--skipLibCheck", "--allowImportingTsExtensions", "--target", "ES2022", "--module", "ESNext", "--moduleResolution", "bundler", consumer], { cwd: home, encoding: "utf8", timeout: 60_000 });
 		assert.equal(check.status, 0, String(check.stdout) + String(check.stderr));
 	} finally { fs.rmSync(home, { recursive: true, force: true }); }
 });

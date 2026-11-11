@@ -19,6 +19,9 @@ const location = path.join(root, "data", "plugins", "grading-fixture", "dist");
 fs.mkdirSync(location, { recursive: true });
 fs.writeFileSync(path.join(location, "manifest.json"), JSON.stringify({ apiVersion: 1, id: "grading-fixture", name: "Grading fixture", version: "1.0.0", minAppVersion: "0.4.1", backend: "backend.cjs" }));
 fs.writeFileSync(path.join(location, "backend.cjs"), "exports.activate = ctx => ctx.handle('context', () => ctx);");
+// Exercise generic protocol semantics through an explicitly injected test host.
+const { installGenericPluginRuntime } = await import("./helpers/generic-plugin-runtime.ts");
+await installGenericPluginRuntime(path.join(root, "data", "plugins"));
 const { getPluginHost } = await import("../src/server/plugins.ts");
 const { handleChatRequest } = await import("../src/server/chat-handler.ts");
 const { createTeacherAgent } = await import("../src/agent/teacher-agent.ts");

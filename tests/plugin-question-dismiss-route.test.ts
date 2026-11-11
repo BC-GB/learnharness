@@ -1,3 +1,4 @@
+import { replacePluginRuntimeForTest } from "./helpers/generic-plugin-runtime.ts";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -17,12 +18,10 @@ process.env.LH_AUTH_FILE = path.join(root, "auth.json");
 process.env.OPENROUTER_API_KEY = "isolated-key-presence-only";
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async () => { throw new Error("Unexpected network in dismissal route tests"); };
-const globals = globalThis as typeof globalThis & { __lhPlugins?: unknown };
-const previousRuntime = globals.__lhPlugins;
 let resolveQuestion: QuestionTypeResolver = () => ({ status: "unavailable" });
-globals.__lhPlugins = { host: { resolveQuestionType: (...args: Parameters<QuestionTypeResolver>) => resolveQuestion(...args) }, ready: Promise.resolve() };
+const restoreRuntime = await replacePluginRuntimeForTest({ resolveQuestionType: (...args: Parameters<QuestionTypeResolver>) => resolveQuestion(...args) });
 after(() => {
-	globals.__lhPlugins = previousRuntime;
+	restoreRuntime();
 	globalThis.fetch = originalFetch;
 	fs.rmSync(root, { recursive: true, force: true });
 });

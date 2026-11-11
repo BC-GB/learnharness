@@ -216,8 +216,8 @@ export function AppearanceProvider({
 		}
 	}, [key, vars]);
 
-	// One fetch per app load: the record (sanitized server-side) carries the
-	// delta; resolution happens here against the compiled factory.
+	// The layout seeds first paint. Re-read only after another settings
+	// writer signals a change; a startup GET could rewind a canonical save.
 	const refreshAppearance = useCallback(() => {
 		const revision = ++request.current;
 		return fetch("/api/settings")
@@ -253,9 +253,8 @@ export function AppearanceProvider({
 	}, []);
 	useEffect(() => {
 		mounted.current = true;
-		void refreshAppearance();
 		return () => { mounted.current = false; };
-	}, [refreshAppearance]);
+	}, []);
 	useSettingsSaved(section => { if (section === "appearance") void refreshAppearance(); });
 
 	// One catalog read per app load (the imported customs).

@@ -57,6 +57,7 @@ describe("SettingsDialog (the designed surface, SSR)", () => {
 		const expected = [
 			["keys", "Providers", "key"],
 			["agent", "Agent", "bot"],
+			["preferences", "Preferences", "settings"],
 			["appearance", "Appearance", "palette"],
 			["graph", "Graph", "waypoints"],
 			["keyboard", "Keyboard", "keyboard"],
@@ -85,12 +86,12 @@ describe("SettingsDialog (the designed surface, SSR)", () => {
 		}
 	});
 
-	it("the dialog frame: role=dialog + the ✕ + the six-section nav, Providers first and General last", () => {
+	it("the dialog frame: role=dialog + the ✕ + the native and plugin nav, Providers first", () => {
 		const html = renderToStaticMarkup(<SettingsDialogBody onClose={() => {}} />);
 		assert.ok(html.includes('role="dialog"'));
 		assert.ok(html.includes('aria-modal="true"'));
 		assert.ok(html.includes('aria-label="Close settings"'));
-		for (const id of ["general", "keys", "agent", "appearance", "graph", "keyboard"]) {
+		for (const id of ["general", "keys", "agent", "preferences", "appearance", "graph", "keyboard", "core-plugins", "plugins"]) {
 			assert.ok(html.includes(`data-testid="settings-nav-${id}"`), id);
 		}
 		// Providers is the first landing section; internal keys deep links survive.

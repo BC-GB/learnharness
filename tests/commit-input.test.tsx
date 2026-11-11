@@ -486,3 +486,37 @@ it("server appearance refresh cannot undo a newer canonical live save", async ()
 	await f.render(<AppearanceProvider initialAppearance={{ proseFontSize: 12 }} initialTheme={DEFAULT_THEME}><SettingsDialogProvider><Probe /></SettingsDialogProvider></AppearanceProvider>);
 	assert.equal(input.value, "20"); assert.equal(liveSize, 20);
 }));
+
+
+it("cross-tab appearance refresh survives ACK fencing, while older pending reads cannot rewind the save", async () => fixture(async f => {
+	const { SettingsDialogProvider, useSettingsDialog } = await import("../components/settings/settings-dialog.tsx");
+	const { AppearanceProvider, useAppearance } = await import("../components/settings/appearance.tsx");
+	const save = deferred<Response>(), staleRead = deferred<Response>();
+	let settings!: ReturnType<typeof useSettingsDialog>, liveSize = 0;
+	let phase: "initial" | "stale" | "fresh" = "initial";
+	f.setFetch(async (url, init) => {
+		if (init?.method === "PUT") return save.promise;
+		assert.equal(String(url), "/api/settings");
+		if (phase === "stale") return (await staleRead.promise).clone();
+		return Response.json({ settings: { version: 1, appearance: { proseFontSize: phase === "fresh" ? 24 : 12 } }, scope: "global" });
+	});
+	function Probe() { settings = useSettingsDialog(); liveSize = useAppearance().appearance.proseFontSize; return null; }
+	const externalSave = () => {
+		const event = new window.Event("storage");
+		Object.assign(event, { key: "lh:global-settings-saved:v1", newValue: JSON.stringify({ section: "appearance", nonce: phase }) });
+		window.dispatchEvent(event);
+	};
+	await f.render(<AppearanceProvider initialAppearance={{ proseFontSize: 12 }} initialTheme={DEFAULT_THEME}><SettingsDialogProvider><Probe /></SettingsDialogProvider></AppearanceProvider>);
+	await act(async () => settings.open("appearance"));
+	const input = f.input('[data-testid="input-prose-size"]');
+	await f.type(input, "20"); await f.key(input, "Escape");
+	phase = "stale";
+	await act(async () => externalSave());
+	await act(async () => save.resolve(Response.json({ settings: { version: 1, appearance: { proseFontSize: 20 } } })));
+	await act(async () => staleRead.resolve(Response.json({ settings: { version: 1, appearance: { proseFontSize: 12 } }, scope: "global" })));
+	assert.equal(input.value, "20"); assert.equal(liveSize, 20);
+	phase = "fresh";
+	await act(async () => externalSave());
+	assert.equal(input.value, "24"); assert.equal(liveSize, 24);
+	assert.ok(document.querySelector('[data-testid="global-settings-label"]'));
+}));

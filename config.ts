@@ -147,18 +147,18 @@ export const THEMES_DIR = path.join(/* turbopackIgnore: true */ DATA_ROOT, "them
 
 /** Legacy constant exports remain compatible with fixtures and recovery
  * tooling. Runtime stores MUST call these scope-aware functions instead. */
-export const courseSettingsFile = () => courseStatePath(path.join(PATHS.data, "settings.json"));
-export const coursePromptsDir = () => courseStatePath(path.join(PATHS.data, "prompts"));
+export const courseSettingsFile = () => courseStatePath(path.join(/* turbopackIgnore: true */ PATHS.data, "settings.json"));
+export const coursePromptsDir = () => courseStatePath(path.join(/* turbopackIgnore: true */ PATHS.data, "prompts"));
 export const globalPreferencesEnabled = () => sharedPreferencesExist(DATA_ROOT);
 export const globalPreferencePath = (relative: string) => sharedPreferencePath(DATA_ROOT, relative);
 export const globalWritablePreference = (file: string) => globalPreferencesEnabled() ? sharedPreferenceFile(DATA_ROOT, file) : undefined;
 export const settingsFile = () => globalPreferencesEnabled() ? globalPreferencePath("global-settings.json") : courseSettingsFile();
 export const promptsOverrideDir = () => globalPreferencesEnabled() ? globalPreferencePath("global-prompts") : coursePromptsDir();
-export const sourcesFile = () => courseStatePath(path.join(PATHS.graph, "sources.json"));
-export const sourceOrganizationFile = () => courseStatePath(path.join(PATHS.graph, "source-organization.json"));
-export const positionsFile = () => courseStatePath(path.join(PATHS.graph, "positions.json"));
-export const renderSettingsFile = () => courseStatePath(path.join(PATHS.graph, "render-settings.json"));
-export const graphFormatFile = () => courseStatePath(path.join(PATHS.graph, "format.json"));
+export const sourcesFile = () => courseStatePath(path.join(/* turbopackIgnore: true */ PATHS.graph, "sources.json"));
+export const sourceOrganizationFile = () => courseStatePath(path.join(/* turbopackIgnore: true */ PATHS.graph, "source-organization.json"));
+export const positionsFile = () => courseStatePath(path.join(/* turbopackIgnore: true */ PATHS.graph, "positions.json"));
+export const renderSettingsFile = () => courseStatePath(path.join(/* turbopackIgnore: true */ PATHS.graph, "render-settings.json"));
+export const graphFormatFile = () => courseStatePath(path.join(/* turbopackIgnore: true */ PATHS.graph, "format.json"));
 
 /**
  * THE AUTH/KEY STORE (auth-keys wave, 2026-09-19): BYOK provider keys in a

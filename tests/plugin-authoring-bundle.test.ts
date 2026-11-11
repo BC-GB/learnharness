@@ -6,6 +6,19 @@ import { it } from "node:test";
 import { execFileSync } from "node:child_process";
 import { AUTHORING_DOCS, AUTHORING_EXAMPLES, AUTHORING_PROJECTS, buildPluginAuthoring, createAuthoringZip } from "../scripts/build-plugin-authoring.mjs";
 import { markdownAnchors, markdownProse, seedAuthoringReferenceFixture } from "./helpers/plugin-authoring-fixture.ts";
+import { verifiedArchivedSourceFiles } from "./helpers/archived-source-fixture.ts";
+
+/** Source-only validation images intentionally contain neither Git nor .git.
+ * Their harness may supply the exact git-archive inventory, never a guessed list.
+ * Verify bytes before using that inventory; ordinary checkout tests still use Git.
+ */
+function trackedProjectFiles(id: string): string[] {
+	const root = path.resolve(import.meta.dirname, "..");
+	const files = verifiedArchivedSourceFiles(root, filename => filename.startsWith(`plugins/${id}/`));
+	if (!files) return execFileSync("git", ["ls-files", `plugins/${id}`], { cwd: root, encoding: "utf8" }).trim().split("\n").filter(Boolean);
+	assert.ok(files.length > 0, `Missing archived project: ${id}`);
+	return files;
+}
 
 /** Independent bitwise CRC and ZIP reader, not the production encoder. */
 function checksum(bytes: Buffer) {
@@ -86,7 +99,7 @@ it("produces the complete rooted skill, matching versions, current example layou
 	for (const id of AUTHORING_PROJECTS) {
 		const prefix = `learnharness-plugins/plugins/${id}/`;
 		const names = [...entries.keys()].filter(name => name.startsWith(prefix));
-		const tracked = execFileSync("git", ["ls-files", `plugins/${id}`], { cwd: path.resolve(import.meta.dirname, ".."), encoding: "utf8" }).trim().split("\n").filter(Boolean);
+		const tracked = trackedProjectFiles(id);
 		assert.deepEqual(names.map(name => name.slice("learnharness-plugins/".length)).sort(), tracked.sort(), `Complete canonical project: ${id}`);
 		assert.ok(names.some(name => name.startsWith(prefix + "src/")), id);
 		for (const name of names) {
