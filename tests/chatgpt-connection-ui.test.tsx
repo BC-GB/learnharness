@@ -83,17 +83,20 @@ test("Providers is the first/default page; General closes the native group befor
 
 });
 
-test("Preferences selection loads the scoped editor without inference", async () => {
- const calls: string[] = [];
+test("Preferences selection opens the floating chat without inference", async () => {
+ const calls: string[] = []; let opened = 0; let closed = 0;
+ const onOpen = () => { opened++; }; window.addEventListener("lh:open-preference-chat", onOpen);
  globalThis.fetch = async (url, init) => {
   assert.equal(init?.method ?? "GET", "GET"); calls.push(String(url));
-  if (url === "/api/settings") return Response.json({settings:{version:1}});
-  assert.equal(url,"/api/settings/preference-chat");
-  return Response.json({text:"Use examples",revision:"fixture",scope:"global",enabled:true,canUndo:false});
+  assert.equal(url, "/api/settings"); return Response.json({ settings: { version: 1 } });
  };
- await mount(<SettingsDialogBody onClose={() => {}} initialSection="preferences" />);
- assert(byTest("preference-chat")); assert.equal(byTest("settings-nav-preferences").getAttribute("aria-current"),"true");
- assert(calls.includes("/api/settings/preference-chat"));
+ try {
+  await mount(<SettingsDialogBody onClose={() => { closed++; }} initialSection="preferences" />);
+  assert(byTest("preference-chat-shortcut"));
+  await click(button("Open preferences chat"));
+  assert.equal(opened, 1); assert.equal(closed, 1);
+  assert(!calls.includes("/api/settings/preference-chat"));
+ } finally { window.removeEventListener("lh:open-preference-chat", onOpen); }
 });
 
 test("Providers has five ordered sections including External CLI; unknown variables stay masked/read-only at the end of Model API keys", async () => {

@@ -52,7 +52,7 @@ import { SettingsSection, SettingsRow, Toggle } from "./controls.tsx";
 import { UpdateSettings } from "./update-settings.tsx";
 import { NotificationSettings } from "./notification-settings.tsx";
 import { OutlineModelSettings } from "./outline-model-settings.tsx";
-import { PreferenceChat } from "./preference-chat.tsx";
+import { PreferenceChatShortcut } from "./preference-chat.tsx";
 import { AgentSection } from "./agent-section.tsx";
 import type { ModelsSettings } from "@/src/core";
 import { MENU_CLOSE_EVENT, MENU_OPEN_EVENT } from "@/components/menu-shell";
@@ -491,7 +491,7 @@ export function SettingsDialogBody({
 									<OutlineModelSettings settings={record} onChange={async next => { await write("general", next); }} autofocus={initialRow === "outline-model"} />
 								</SettingsSection>
 							)}
-							{active === "preferences" && <PreferenceChat />}
+							{active === "preferences" && <PreferenceChatShortcut onOpen={onClose} />}
 							{active === "keys" && (
 								<SettingsSection title="Providers" testid="section-keys">
 									<KeysSection initialRow={initialRow ?? undefined} />

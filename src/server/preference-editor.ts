@@ -1,3 +1,4 @@
+import type { PreferenceChatContext } from "../core/preference-chat.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -66,13 +67,13 @@ export function undoPreferences(expected: string) {
 }
 
 /** Explicit user-triggered request only. No lessons, files or credentials enter its context. */
-export async function proposePreferences(current: string, message: string, signal: AbortSignal) {
+export async function proposePreferences(current: string, message: string, signal: AbortSignal, conversation?: PreferenceChatContext) {
  if (current.length > 16000) throw new Error("Existing preferences exceed the editor limit.");
  const settings = stores.settingsStore.readSettings();
  const spec = resolveModelSpec("teacher", undefined, settings?.models);
  if (!spec) throw new Error("Choose a teaching model in Settings first.");
  const active = requests(); if (active.size >= 2) throw new Error("A preference request is already in progress.");
  const id = Symbol(); active.add(id);
- try { return { ...await draftPreferences(piEngineForSpec(spec, false), current, message, signal), model: spec.id }; }
+ try { return { ...await draftPreferences(piEngineForSpec(spec, false), current, message, signal, conversation), model: spec.id }; }
  finally { active.delete(id); }
 }
