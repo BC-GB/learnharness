@@ -1,3 +1,7 @@
+import { pluginDocumentRunningCount } from "./plugin-documents.ts";
+import { sideChats } from "./side-chat.ts";
+import { pluginWorkerActivities } from "./plugin-worker-activity.ts";
+import { pluginInferenceRunningCount } from "./plugin-inference.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { PATHS } from "../../config.ts";
@@ -28,7 +32,7 @@ export function courseMaintenanceStatus(): CourseMaintenanceStatus {
 			if (!job || !["running", "done", "error"].includes(job.status)) throw new Error("Background activity could not be verified.");
 			if (job.status === "running") backgroundJobs++;
 		}
-		return { activeTurns: runningTurnCount(), compactions: runningCompactionCount(), extractions: extractionStatuses().length, backgroundJobs: Math.max(backgroundJobs, liveJobCount()) + outlineRunningCount() + preferenceEditorRunningCount() };
+		return { activeTurns: runningTurnCount() + sideChats.runningCount(), compactions: runningCompactionCount(), extractions: extractionStatuses().length, backgroundJobs: Math.max(backgroundJobs, liveJobCount()) + outlineRunningCount() + preferenceEditorRunningCount() + pluginWorkerActivities().length + pluginInferenceRunningCount() + pluginDocumentRunningCount() };
 	});
 	return courses.reduce<CourseMaintenanceStatus>((total, course) => ({ courseCount: total.courseCount + 1, activeTurns: total.activeTurns + course.activeTurns, compactions: total.compactions + course.compactions, extractions: total.extractions + course.extractions, backgroundJobs: total.backgroundJobs + course.backgroundJobs }), { courseCount: 0, activeTurns: 0, compactions: 0, extractions: 0, backgroundJobs: 0 });
 }

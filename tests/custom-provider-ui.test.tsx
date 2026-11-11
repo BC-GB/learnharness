@@ -5,6 +5,7 @@ import { afterEach, test } from "node:test";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { KeysSection, CustomEndpointSetup } from "../components/settings/keys-section.tsx";
+import { InteractionLayersProvider } from "../components/interaction-layers.tsx";
 
 const dom = parseHTML("<html><body></body></html>");
 Object.assign(globalThis, { window: dom.window, document: dom.document, Element: dom.window.Element, HTMLElement: dom.window.HTMLElement, HTMLInputElement: dom.window.HTMLInputElement, CustomEvent: dom.window.CustomEvent, IS_REACT_ACT_ENVIRONMENT: true });
@@ -18,7 +19,7 @@ async function mount(setup = false) {
 		return Response.json({ keys: [], providers: [] });
 	};
 	host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
-	await act(async () => root!.render(setup ? <CustomEndpointSetup onSaved={() => assert.fail("unexpected save")} /> : <KeysSection />));
+	await act(async () => root!.render(<InteractionLayersProvider>{setup ? <CustomEndpointSetup onSaved={() => assert.fail("unexpected save")} /> : <KeysSection />}</InteractionLayersProvider>));
 	if (!setup) await click("custom-endpoint-row-btn");
 }
 function element(id: string) { const node = document.querySelector<HTMLElement>(`[data-testid="${id}"]`); assert.ok(node, id); return node; }
@@ -58,7 +59,7 @@ test("broker deployment shows honest capabilities instead of unusable provider s
    directProviderSetup: false, explanation: "Isolated OpenAI Responses broker", nextStep: "A reviewed adapter and authorization are required." } });
  };
  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
- await act(async () => root!.render(<KeysSection />));
+ await act(async () => root!.render(<InteractionLayersProvider><KeysSection /></InteractionLayersProvider>));
  assert.match(element("broker-provider-capabilities").textContent!, /reviewed adapter/);
  for (const id of ["group-provider-keys", "group-subscriptions", "group-external-cli", "custom-key-input"]) {
   assert.equal(document.querySelector(`[data-testid="${id}"]`), null);

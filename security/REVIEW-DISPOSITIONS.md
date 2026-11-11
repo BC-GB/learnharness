@@ -50,3 +50,54 @@ messages. This is defence in depth, not a prompt-injection proof. The loop expos
 only fixed reading operations, pins the selected file outside model arguments and
 uses the isolated parser for actual document processing. The source notice cannot
 grant additional file/network/credential permissions.
+
+## Upstream v0.6 plugin and side-conversation integration
+
+Plugin backends are native trusted Node code, not a sandbox. The hardened
+composition admits reviewed bundled core packages only; community code cannot
+activate or serve executable assets. Coding Questions remains unavailable
+because its current runner executes model-selected commands with the app's
+filesystem authority. A timeout and process cleanup do not make that runner an
+acceptable isolation boundary. Enabling it requires an independently isolated
+execution service and validation, not a change to this refusal.
+
+Each plugin host, side conversation, worker history, and notification stream
+retains its selected course. Delayed work preserves the originating asynchronous
+context, including the unbound legacy startup context. Only explicit plugin
+enable/settings records and data-only themes are global. Shared preference
+paths reject aliases; course history and learning material never move to shared
+storage. Pending side preparation, plugin inference, document conversion and
+workers are included in the maintenance activity check.
+
+All HTTP launch modes retain the gateway capability requirement. New document
+conversion retains the 20 MiB/200-page ceilings and fixed isolated renderer
+transport; no in-app Chromium, native PDF fallback, caller-supplied download URL
+or unrestricted subprocess path is restored. New inference uses the existing
+host model transport and credential broker, without API-key fallback.
+The exact document conversion endpoint bypasses Next Proxy's truncating request
+clone so its own streaming byte limit can reject oversized bodies. Its handler
+checks the same gateway capability on every HTTP method before reading route
+parameters or body bytes. All other pages and endpoints remain Proxy-gated.
+
+Upstream Rich Code's TeX engine requires a browser Worker and WebAssembly. The
+hardened gateway forbids browser Workers, so the host explicitly reports this
+capability unavailable, suppresses TeX instructions and rejects attempts to
+enable it. Existing saved preferences are not rewritten. The gateway CSP is not
+relaxed to make a plugin run. Chemical structures are also unavailable in the
+hardened composition: adversarial SMILES inputs can monopolize the main thread
+even with a small source limit. ABC notation is limited to 1 KiB and tested with
+malformed, nested and expanded-count inputs. Those input limits and probes are
+not a hard CPU or memory isolation guarantee.
+Side-conversation newline-delimited JSON uses plain-text streaming through the
+existing gateway content-type policy; no new gateway MIME or network allowance
+is introduced.
+Drawing-pad capture forwards cancellation into the pinned raster/SVG library's
+resource fetches, not just the outer promise. The reviewed capture path supplies
+font CSS directly and does not enable the library's remote stylesheet fallback.
+
+Plugin dependency setup uses locked npm installs with lifecycle scripts disabled.
+Only separately reviewed, explicit SDK/build commands run during packaging.
+UI Showcase's authoring-only Puppeteer closure is aligned with the current root
+toolchain to remove the vulnerable Zod 3 dependency. Existing build-only
+minimatch 9/10 advisories need reachability review; a major override is not a
+substitute for compatibility testing or a compatible patched release.

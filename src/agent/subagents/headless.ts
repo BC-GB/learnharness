@@ -1,3 +1,4 @@
+import { svgImageSource } from "../../../lib/svg-image-source.ts";
 import { validatedNativeSvg } from "./native-svg-resources.ts";
 import { isolatedRender, isolatedRendererEnabled } from "./render-client.ts";
 import { approvedPdfBytes } from "./pdf-ops.ts";
@@ -25,7 +26,7 @@ export interface RunDemoOptions {
 }
 
 export interface RenderSvgOptions {
-	/** Annotation images use only the static native rasterizer, never executable browser markup. */
+	/** Annotation images keep strict native input: skip ordinary figure display repairs. */
 	nativeOnly?: boolean;
 	/** Viewport size — defaults to the SVG's width/height attrs, else 900×700. */
 	width?: number;
@@ -231,7 +232,12 @@ async function renderPdfPages(file: string, pages: number[], opts: RenderPdfOpti
  const result=await isolatedRender<{page:number;png:string}[]>({op:"render",pdf:await approvedPdfBytes(file),pages,...opts});return result.map(x=>({page:x.page,png:providerSafePng(Buffer.from(x.png,"base64"))}));
 }
 async function renderSvg(svg: string, opts: RenderSvgOptions = {}): Promise<Buffer> {
- svg = validatedNativeSvg(svg);
+ const renderSource = opts.nativeOnly ? svg : svgImageSource(svg);
+ // The resource validator canonicalizes XML; do not let its forgiving parser
+ // silently repair missing roots or annotation-only namespace/entity errors.
+ if (!/<svg\b[^>]*(?:\/\s*>|>[\s\S]*<\/svg\s*>)/i.test(renderSource)) throw new Error("Incomplete SVG document.");
+ if (opts.nativeOnly && (!/<svg\b[^>]*\sxmlns\s*=\s*["']http:\/\/www\.w3\.org\/2000\/svg["']/i.test(svg) || /&nbsp;/.test(svg))) throw new Error("Annotation SVG requires strict namespace and XML entities.");
+ svg = validatedNativeSvg(renderSource);
  const { width, height } = svgViewport(svg, opts);
  if (![width,height].every(n => Number.isFinite(n) && n > 0 && n <= 4096) || width * height > 16000000) throw new Error("SVG dimensions exceed limits.");
  try {

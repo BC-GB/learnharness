@@ -28,6 +28,7 @@ jobs:
           node-version: "26"
           cache: npm
       - run: npm ci
+      - run: npm run plugins:setup
       - run: npm run typecheck
       - run: npm test
       - name: Approval broker and restricted-view tests (synthetic providers only)
@@ -65,6 +66,11 @@ jobs:
           node-version: "26"
           cache: npm
       - run: npm ci
+      - run: npm run plugins:setup
+      - name: Native filesystem and credential-path guards on this OS
+        run: node --import tsx --test tests/atomic-write.test.ts tests/source-access.test.ts
+        env:
+          NODE_ENV: test
       - name: Native renderer tests on this OS
         run: npx electron --import tsx --test tests/pdf-native-render.test.ts tests/pdf-ops.test.ts tests/svg-native-render.test.ts tests/browser-service.test.ts
         env:

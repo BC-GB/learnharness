@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { sanitizeUserSettings } from "../src/core/settings.ts";
 import { resolveSettings } from "../src/core/settings-resolution.ts";
 import { parseAppearanceSettingsBody } from "../src/server/settings-body.ts";
+import { DEFAULT_THEME } from "../src/core/themes.ts";
 import { appearanceVars, resolveAppearance } from "../components/settings/appearance.tsx";
 
 describe("saved reading layout", () => {
@@ -18,7 +19,7 @@ describe("saved reading layout", () => {
 		const client = resolveAppearance(stored.appearance);
 		assert.equal(client.readingWidth, effective.readingWidth);
 		assert.equal(client.readingCentered, effective.readingCentered);
-		const vars = appearanceVars(client);
+		const vars = appearanceVars(client, DEFAULT_THEME);
 		assert.equal(vars["--lh-reading-width"], "960px");
 		assert.equal(vars["--lh-reading-margin"], "0px");
 	});
@@ -41,7 +42,7 @@ describe("saved reading layout", () => {
 			const client = resolveAppearance(appearance);
 			assert.equal(client.readingWidth, 864);
 			assert.equal(client.readingCentered, true);
-			assert.equal(appearanceVars(client)["--lh-reading-margin"], "auto");
+			assert.equal(appearanceVars(client, DEFAULT_THEME)["--lh-reading-margin"], "auto");
 		}
 		const parsed = parseAppearanceSettingsBody({});
 		assert.ok(parsed.ok);

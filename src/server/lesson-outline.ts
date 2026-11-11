@@ -8,7 +8,7 @@ import { courseLocal } from "../runtime/course-context.ts";
 import { observeLessonOutline } from "../agent/lesson-outline.ts";
 import { piEngineForSpec, type PiEngine } from "../agent/models.ts";
 import { connectionBackgroundAllowed } from "../agent/subscription-connections.ts";
-import { withBgLlmSlot } from "../agent/subagents/bg-llm-semaphore.ts";
+import { withWorkerRequestSlot } from "../agent/worker-request-admission.ts";
 import { resolveOutlineModelSpec } from "../core/settings-resolution.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
@@ -118,7 +118,7 @@ export async function refreshLessonOutline(id: string, options: { force?: boolea
 		state.lastAttempt = attempt; state.updatedAt = new Date().toISOString(); state.error = undefined; state.pending = true;
 		writeLessonOutline(state);
 		try {
-			await withBgLlmSlot(controller.signal, async () => {
+			await withWorkerRequestSlot(controller.signal, async () => {
 				if (controller.signal.aborted || !enabled() || isTurnRunning(id) || compactionInFlight(id)) return;
 				const fresh = stores.chatStore.getChat(id);
 				if (!fresh || hash(fresh.messages) !== hash(record.messages) || planKey(fresh) !== state.planKey) return;

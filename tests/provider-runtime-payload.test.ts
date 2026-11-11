@@ -14,7 +14,10 @@ const run = (payload: string) => spawnSync(process.execPath, [script, "--standal
 describe("offline native Pi Google initialization gate", () => {
 	it("reaches the sentinel for Google, Google-backed OpenCode and Bedrock adapters using the real SDKs", () => {
 		// This is an unbundled positive control, NOT proof of standalone completeness.
-		const result = run(checkout);
+		// A disposable source snapshot can link to a pinned dependency image.
+		// Probe the actual installed payload root, not the snapshot link owner.
+		const installedRoot = path.dirname(fs.realpathSync(path.join(checkout, "node_modules")));
+		const result = run(installedRoot);
 		assert.equal(result.status, 0, String(result.stderr));
 		for (const provider of ["google", "opencode", "opencode-go"]) assert.ok(String(result.stdout).includes(`${provider}: native lazy Google adapter reached onPayload`));
 		assert.ok(String(result.stdout).includes("amazon-bedrock: native lazy Bedrock adapter reached onPayload"));

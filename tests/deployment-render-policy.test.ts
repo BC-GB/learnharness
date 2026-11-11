@@ -4,9 +4,9 @@ import { registerHooks, syncBuiltinESMExports } from "node:module";
 import test from "node:test";
 
 test("disabled browser/PDF policies stop execution before native imports and preserve static SVG",async()=>{
- const names=["LH_BROWSER_ENGINE","LH_DISABLE_PDF_RENDERING","LH_DISABLE_PDF_PROCESSING"] as const;
+ const names=["LH_BROWSER_ENGINE","LH_DISABLE_PDF_RENDERING","LH_DISABLE_PDF_PROCESSING","LH_ISOLATED_RENDERER"] as const;
  const previous=Object.fromEntries(names.map(name=>[name,process.env[name]]));
- delete process.env.LH_BROWSER_ENGINE;delete process.env.LH_DISABLE_PDF_RENDERING;delete process.env.LH_DISABLE_PDF_PROCESSING;
+ delete process.env.LH_BROWSER_ENGINE;delete process.env.LH_DISABLE_PDF_RENDERING;delete process.env.LH_DISABLE_PDF_PROCESSING;delete process.env.LH_ISOLATED_RENDERER;
  let launches=0,pdfImports=0;const original=childProcess.spawn;
  childProcess.spawn=((..._args: unknown[])=>{launches++;throw new Error("unexpected browser launch");}) as typeof childProcess.spawn;
  syncBuiltinESMExports();
@@ -16,7 +16,7 @@ test("disabled browser/PDF policies stop execution before native imports and pre
   const pdf=await import("../src/agent/subagents/pdf-ops.ts");
   assert.equal(realHeadless.available(),false);assert.equal(browserServiceBinary(),null);
   await assert.rejects(realHeadless.runDemo("<script>alert(1)</script>"),/disabled by deployment policy/);
-  await assert.rejects(realHeadless.renderSvg("<svg><unclosed>"),/disabled by deployment policy/);
+  await assert.rejects(realHeadless.renderSvg("<svg><unclosed>"),/Incomplete SVG document/);
   await assert.rejects(realHeadless.renderPdfPages("does-not-exist.pdf",[1]),/rasterization is disabled/);
   for(const run of [()=>pdf.pdfProbe("does-not-exist.pdf"),()=>pdf.pdfInfo("does-not-exist.pdf"),()=>pdf.pdfExtract("does-not-exist.pdf","all"),()=>pdf.pdfSearch("does-not-exist.pdf","example")])await assert.rejects(run(),/PDF processing is disabled/);
   const png=await realHeadless.renderSvg('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="blue"/></svg>');

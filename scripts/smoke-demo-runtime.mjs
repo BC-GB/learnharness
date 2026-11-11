@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import http from "node:http";
 import { createRequire, registerHooks } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
