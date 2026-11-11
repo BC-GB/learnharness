@@ -139,6 +139,8 @@ export interface PluginBackendContext {
 	readonly directory: string;
 	/** Writable records: core-plugin-data/<id> or community plugins/<id>/data. */
 	readonly dataDirectory: string;
+    /** Host deployment policy, not a permission request or browser setting. */
+    readonly browserWorkersAvailable?: boolean;
     /** Optional app-owned global preferences; never store learning content here. */
     preferences?: {
         read(): unknown | undefined;

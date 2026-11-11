@@ -95,7 +95,7 @@ it("plugin HTTP adapter uses typed host errors and keeps code assets uncached", 
 
 it("document authentication runs before course lookup, params and conversion", async () => {
  let called = false;
- const route = createPluginDocumentRoute({ convertDocument: async () => { called = true; return { name: "x", markdown: "x", notices: [] }; } });
+ const route = createPluginDocumentRoute({ convertDocument: async () => { called = true; return Response.json({ name: "x", markdown: "x", notices: [] }); } });
  const request = new Request("http://rebind.invalid/api/plugins/fixture/documents/markdown?course=invalid/selection", { method: "POST", headers: { host: "rebind.invalid", origin: "http://rebind.invalid" } });
  const context = { get params(): Promise<{ id: string }> { throw new Error("params accessed before authentication"); } };
  assert.equal((await route.POST(request, context)).status, 403);

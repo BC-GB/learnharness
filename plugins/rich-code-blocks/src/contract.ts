@@ -7,6 +7,8 @@ export interface Settings {
   chemicalStructures: boolean;
   musicalNotation: boolean;
   technicalDiagrams: boolean;
+  /** Runtime availability only; never enables browser permissions. */
+  technicalDiagramsUnavailable?: boolean;
 }
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   version: 1, revision: 0, chemicalStructures: false, musicalNotation: false, technicalDiagrams: false,
@@ -40,14 +42,15 @@ export function parseSettings(value: unknown): Settings {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid Rich code blocks settings.");
   const record = value as Record<string, unknown>;
   if (record.version !== 1) throw new Error("Unsupported Rich code blocks settings version; the saved file has not been changed.");
-  if (Object.keys(record).some(key => !["version", "revision", "inkColor", ...FAMILIES].includes(key))) throw new Error("Unknown Rich code blocks settings fields.");
+  if (Object.keys(record).some(key => !["version", "revision", "inkColor", "technicalDiagramsUnavailable", ...FAMILIES].includes(key))) throw new Error("Unknown Rich code blocks settings fields.");
+  if (record.technicalDiagramsUnavailable !== undefined && typeof record.technicalDiagramsUnavailable !== "boolean") throw new Error("Invalid technical diagram availability.");
   if (!Number.isSafeInteger(record.revision) || (record.revision as number) < 0 || FAMILIES.some(key => typeof record[key] !== "boolean")) {
     throw new Error("Invalid Rich code blocks settings.");
   }
   // Legacy v1 inkColor is accepted above but deliberately omitted: theme Text
   // now owns neutral ink. Reads never rewrite disk; normal saves drop the key.
   return { version: 1, revision: record.revision as number, chemicalStructures: record.chemicalStructures as boolean,
-    musicalNotation: record.musicalNotation as boolean, technicalDiagrams: record.technicalDiagrams as boolean };
+    musicalNotation: record.musicalNotation as boolean, technicalDiagrams: record.technicalDiagramsUnavailable === true ? false : record.technicalDiagrams as boolean, ...(record.technicalDiagramsUnavailable === true ? { technicalDiagramsUnavailable: true } : {}) };
 }
 
 export function parseChange(value: unknown): { family: Family; enabled: boolean } {

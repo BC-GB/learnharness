@@ -7,13 +7,13 @@ import type { PluginBackendContext } from "learnharness-plugin-api";
 import { activate } from "../src/backend.ts";
 import { DEFAULT_SETTINGS, FAMILIES, INSTRUCTIONS, parseSettings } from "../src/contract.ts";
 
-function fixture(directory: string, preferences?: PluginBackendContext["preferences"]) {
+function fixture(directory: string, preferences?: PluginBackendContext["preferences"], browserWorkersAvailable?: boolean) {
   const controller = new AbortController();
   const handlers = new Map<string, (input: unknown) => unknown>();
   const instructions = new Set<{ agents: string[]; text: string }>();
   const events: { topic: string; data: unknown }[] = [];
   const ctx = {
-    dataDirectory: directory, preferences, signal: controller.signal,
+    dataDirectory: directory, preferences, browserWorkersAvailable, signal: controller.signal,
     handle(name: string, handler: (input: unknown) => unknown) { handlers.set(name, handler); return () => { handlers.delete(name); }; },
     registerInstructions(value: { agents: string[]; text: string }) { instructions.add(value); return () => { instructions.delete(value); }; },
     events: { emit(topic: string, data: unknown) { events.push({ topic, data }); } },
@@ -123,4 +123,23 @@ test("global preferences update separate activations without creating course set
   assert.deepEqual(fs.readdirSync(root), []);
  } finally { offA(); offB(); fs.rmSync(root, { recursive: true, force: true }); }
  assert.equal(listeners.size, 0);
+});
+
+
+test("deployment forbids TeX without rewriting saved preference or contributing instructions", () => {
+ const root = fs.mkdtempSync(path.join(os.tmpdir(), "rich-policy-"));
+ const saved = { ...DEFAULT_SETTINGS, technicalDiagrams: true };
+ const original = JSON.stringify(saved);
+ fs.writeFileSync(path.join(root, "settings.json"), original);
+ const host = fixture(root, undefined, false); const off = host.activate();
+ try {
+  assert.deepEqual(host.call("get-settings"), { ...saved, technicalDiagrams: false, technicalDiagramsUnavailable: true });
+  assert.equal(host.instructions.size, 0);
+  assert.throws(() => host.call("set-family", { family: "technicalDiagrams", enabled: true }), /unavailable/);
+  assert.equal(fs.readFileSync(path.join(root, "settings.json"), "utf8"), original);
+  host.call("set-family", { family: "chemicalStructures", enabled: true });
+  assert.equal(host.instructions.size, 1);
+  assert.ok([...host.instructions].every(i => i.text !== INSTRUCTIONS.technicalDiagrams));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "settings.json"), "utf8")).technicalDiagrams, true);
+ } finally { off(); fs.rmSync(root, { recursive: true, force: true }); }
 });

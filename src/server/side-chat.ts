@@ -110,7 +110,7 @@ export function createSideChatService(deps: SideChatDeps): SideChatService {
 			},
 			cancel() { detach(); }, // closing/reloading a view does not kill the call
 		});
-		return new Response(body, { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-cache, no-transform" } });
+		return new Response(body, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-cache, no-transform" } });
 	}
 
 	function watch(chatId: string, threadId: string): Response {

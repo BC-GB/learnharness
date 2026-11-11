@@ -55,7 +55,7 @@ function runtime(): Runtime {
         "coding-questions": "Native code execution is unavailable in this hardened deployment. An isolated execution service is required.",
     });
 	const host = createPluginHost({
-		directory, core, allowCommunity: false, preferencesFor: createCorePluginPreferences,
+		directory, core, allowCommunity: false, browserWorkersAvailable: false, preferencesFor: createCorePluginPreferences,
         stateFile: () => sharedPreferencePath(BASE_DATA_ROOT, "global-plugins.json"), appVersion: packageJson.version, installationErrors,
 		// The process-global runtime owns one admission slot across all plugins
 		// and every separately compiled Next route module.

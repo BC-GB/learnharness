@@ -75,11 +75,15 @@ transport; no in-app Chromium, native PDF fallback, caller-supplied download URL
 or unrestricted subprocess path is restored. New inference uses the existing
 host model transport and credential broker, without API-key fallback.
 
-Rich Code's TeX engine executes in a browser Worker with bounded inputs, output,
-queue, cache and termination deadline. Its static SVG allowlist and same-origin
-resources are defense in depth, not an OS-level memory limit. SMILES and ABC
-rendering still run on the browser main thread. Browser responsiveness and
-resource probes remain required before deploying the integration.
+Upstream Rich Code's TeX engine requires a browser Worker and WebAssembly. The
+hardened gateway forbids browser Workers, so the host explicitly reports this
+capability unavailable, suppresses TeX instructions and rejects attempts to
+enable it. Existing saved preferences are not rewritten. The gateway CSP is not
+relaxed to make a plugin run. SMILES and ABC rendering still run on the browser
+main thread and require responsiveness and resource probes before deployment.
+Side-conversation newline-delimited JSON uses plain-text streaming through the
+existing gateway content-type policy; no new gateway MIME or network allowance
+is introduced.
 
 Plugin dependency setup uses locked npm installs with lifecycle scripts disabled.
 Only separately reviewed, explicit SDK/build commands run during packaging.

@@ -38,6 +38,7 @@ export interface PluginHostDependencies {
 	directory: string;
     /** Production refuses unreviewed native community code, including frontend assets. */
     allowCommunity?: boolean;
+    browserWorkersAvailable?: boolean;
     /** Shared preference only; never a learning-data location. */
     stateFile?: () => string;
     preferencesFor?: (id: string) => PluginBackendContext["preferences"];
@@ -251,7 +252,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 				cleanup(() => services.agents.dispose());
 				cleanup(() => services.workers.dispose());
 				const ctx: PluginBackendContext = {
-					manifest, directory: pkg.directory, dataDirectory, preferences: pkg.info.origin === "core" ? deps.preferencesFor?.(manifest.id) : undefined, signal: activation.controller.signal, cleanup, ...services,
+					manifest, directory: pkg.directory, dataDirectory, preferences: pkg.info.origin === "core" ? deps.preferencesFor?.(manifest.id) : undefined, browserWorkersAvailable: deps.browserWorkersAvailable, signal: activation.controller.signal, cleanup, ...services,
 					createBackgroundTool(context, definition) { requireLive(); return services.createBackgroundTool(context, definition); },
 					registerInstructions(contribution: PluginInstructions) {
 						requireLive();

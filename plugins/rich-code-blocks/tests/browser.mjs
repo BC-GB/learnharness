@@ -9,6 +9,7 @@ import { build } from "esbuild";
 import puppeteer from "puppeteer-core";
 import katex from "katex";
 
+const deployedPolicy = process.env.LH_DEPLOYED_CSP === "1";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const built = path.join(root, "dist");
 // Test-only reference: the same pinned KaTeX version used by the app. None of
@@ -32,7 +33,7 @@ import {activate} from '/main.js';
 import {sanitizeSvg,RenderCache} from '/test-utils.js';
 window.sanitizeSvg=sanitizeSvg;window.RenderCache=RenderCache;
 const renders=new Map(), mounts=new Map(), notifications=new Set(), reconnects=new Set();
-let settings={version:1,revision:0,chemicalStructures:false,musicalNotation:false,technicalDiagrams:false,inkColor:'black'};let registration, ownedCleanup;
+let settings={version:1,revision:0,chemicalStructures:false,musicalNotation:false,technicalDiagrams:false,technicalDiagramsUnavailable:${deployedPolicy},inkColor:'black'};let registration, ownedCleanup;
 window.host={settings, schema:null, renders, mounts, calls:[],
 async enable(family,enabled=true){const row=this.schema.rows.find(row=>row.key===family);await row.onChange(enabled)},
 setTextColor(color){document.documentElement.style.setProperty('--foreground',color)},
@@ -55,6 +56,7 @@ window.ready=true;
 </script></body></html>`;
 const requests = [];
 const server = http.createServer((req, res) => {
+  if (deployedPolicy) res.setHeader("Content-Security-Policy", "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
   const pathname = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
   requests.push(pathname);
   if (pathname === "/") { res.setHeader("content-type", "text/html"); res.end(html); return; }
@@ -109,6 +111,22 @@ try {
   assert.ok(!requests.some(url => /tex-worker|core.dump|tex.wasm|smiles-drawer|abc_tunebook/.test(url)), "All-off activation must not load render engines.");
   const render = (id, language, source, incomplete = false) => page.evaluate((...args) => host.render(...args), id, language, source, incomplete);
   assert.equal((await render("disabled", "smiles", "CCO")).raw, true);
+  if (deployedPolicy) {
+    assert.equal(await page.evaluate(() => host.schema.rows.find(row => row.key === 'technicalDiagrams').disabled), true);
+    for (const family of ['chemicalStructures','musicalNotation']) await page.evaluate(f => host.enable(f), family);
+    assert.deepEqual(await page.evaluate(() => [...host.renders.keys()]), ['smiles','abc']);
+    const cases = [['smiles','CCO'], ['smiles','C'.repeat(2048)], ['abc','X:1\nM:4/4\nL:1/4\nK:C\nC D E F |]'], ['abc','X:1\nM:4/4\nL:1/8\nK:C\n'+'C '.repeat(7900)]];
+    const results = [];
+    for (let i=0;i<cases.length;i++) { const result = await bounded(render('policy-'+i,...cases[i]),15000); results.push(result); assert.ok(result.ms < 2500, JSON.stringify(result)); if(i===0||i===2) assert.ok(result.svg,JSON.stringify(result)); }
+    for (const [lang,n] of [['smiles',2049],['abc',16385]]) assert.match((await render('cap-'+lang,lang,'C'.repeat(n))).error,/limit/);
+    assert.equal((await render('disabled-tex','tikz','\\def\\x{\\x}\\x')).raw,true);
+    assert.ok(!requests.some(url => /tex-worker|core.dump|tex.wasm/.test(url)));
+    assert.equal(await page.evaluate(() => window.texPosts),0);
+    assert.deepEqual(errors,[]); assert.deepEqual(consoleErrors,[]);
+    assert.ok(network.every(url => url.startsWith(base+'/') || url.startsWith('data:')));
+    fs.writeFileSync(path.join(evidence,'report.json'),JSON.stringify({deployedPolicy,buildHashes,results,requests,network,errors,consoleErrors},null,2));
+    console.log(JSON.stringify({deployedPolicy,results}));
+  } else {
   for (const family of ["chemicalStructures", "musicalNotation", "technicalDiagrams"]) await page.evaluate(family => host.enable(family), family);
   assert.deepEqual(await page.evaluate(() => [...host.renders.keys()]), ["smiles", "abc", "tikz"]);
   const incomplete = await render("incomplete", "tikz", "\\begin{", true);
@@ -432,4 +450,5 @@ C \arrow[r,"k"'] & D
   const report = { buildHashes, responsiveness, boundsProof, cacheProof, queueOverflow: overflow, queueRecovered, workerNetwork, timings, authoringProof, chemicalLabels, sizingProof, wideProof, inkProof, switchedInk, overrideInk, paletteProof, initialColors, textColors, referenceProof, cachedMs: cached.ms, timeout, heartbeatTicks: ticks, recoveredMs: recovered.ms, fontProof, requests, network, errors, consoleErrors };
   fs.writeFileSync(path.join(evidence, "report.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify({ evidence, timings: Object.fromEntries(Object.entries(timings).map(([name,result])=>[name,Math.round(result.ms)])), cachedMs: Math.round(cached.ms), timeoutMs: Math.round(timeout.ms), heartbeatTicks: ticks, recoveredMs: Math.round(recovered.ms), bundledFontRequests: fontProof.requests.length, requests: requests.length, pageErrors: errors.length }, null, 2));
+  }
 } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); }
