@@ -37,6 +37,8 @@ export function PreferenceChat({ courseName = "this course" }: { courseName?: st
  const trigger = useRef<HTMLButtonElement>(null);
  const input = useRef<HTMLTextAreaElement>(null);
  const log = useRef<HTMLDivElement>(null);
+ // Record scroll intent before a response grows the log, not after its height changes.
+ const followLog = useRef(true);
  const close = useCallback(() => { setOpen(false); trigger.current?.focus({ preventScroll: true }); }, []);
  const layer = usePopoverDismiss(root, open, close, { layerRootRef: panel });
  useEffect(() => { mounted.current = true; return () => { mounted.current = false; generation.current++; }; }, []);
@@ -58,10 +60,11 @@ export function PreferenceChat({ courseName = "this course" }: { courseName?: st
  useEffect(() => { if (open) { void reload(); input.current?.focus({ preventScroll: true }); } }, [open, reload]);
  useEffect(() => {
   const element = log.current;
-  if (element && element.scrollHeight - element.scrollTop - element.clientHeight < 180) element.scrollTop = element.scrollHeight;
- }, [view?.conversation.messages.length, busy]);
+  if (open && element && followLog.current) element.scrollTop = element.scrollHeight;
+ }, [view?.conversation.messages.length, busy, open]);
  async function send(action: "chat" | "apply" | "undo") {
   if (!view || busyRef.current || (action === "chat" && !message.trim())) return;
+  if (action === "chat") followLog.current = true;
   busyRef.current = true; setBusy(true); setError(""); generation.current++;
   try {
    const response = await fetch("/api/settings/preference-chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, revision: view.revision, conversationRevision: view.conversation.revision, message, text: draftText }) });
@@ -82,7 +85,7 @@ export function PreferenceChat({ courseName = "this course" }: { courseName?: st
     {view?.scope === "global" ? "Applied preferences affect all courses. " : "Applied preferences affect this course. "}
     Chat history stays in this course. Only this conversation and preference text go to your teaching model when you send. Original prompts stay unchanged.
    </div>
-   <div ref={log} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4" role="log" aria-label="Preference conversation" aria-live="polite">
+   <div ref={log} onScroll={e => { const el = e.currentTarget; followLog.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4" role="log" aria-label="Preference conversation" aria-live="polite">
     {!view?.conversation.messages.length && <p className="text-sm text-muted-foreground">How would you like to learn? Tell me what to change, then keep refining it here. Nothing is applied until you review it.</p>}
     {view?.conversation.messages.map(m => <div key={m.id} className={m.role === "user" ? "ml-6 rounded-lg bg-accent p-3" : m.role === "notice" ? "text-xs text-muted-foreground" : "mr-4 rounded-lg border border-border p-3"}>
      {m.role !== "notice" && <p className="mb-1 text-[10px] uppercase text-muted-foreground">{m.role === "user" ? "You" : "Preferences agent"}</p>}

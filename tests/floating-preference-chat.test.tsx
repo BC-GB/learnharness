@@ -64,6 +64,8 @@ test("failed apply retains the review and provides explicit reload recovery", as
 
 test("typing a follow-up sends once and keeps the evolving proposal unapplied", async () => {
  const f = await fixture(); await click(byTest("preference-chat-toggle"));
+ const log = document.querySelector<HTMLElement>('[role="log"]')!;
+ Object.defineProperties(log, { scrollHeight: { configurable: true, value: 1500 }, clientHeight: { configurable: true, value: 200 } }); log.scrollTop = 1300;
  const input = document.querySelector<HTMLTextAreaElement>('[aria-label="Learning preference request"]')!;
  const draft = document.querySelector<HTMLTextAreaElement>('[aria-label="Proposed preference addition"]')!;
  await act(async () => { draft.value = "Use short, concrete examples."; draft.dispatchEvent(new window.Event("input", { bubbles: true })); });
@@ -73,6 +75,7 @@ test("typing a follow-up sends once and keeps the evolving proposal unapplied", 
  await act(async () => { input.closest("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })); });
  assert.deepEqual(f.calls.map(c => c.action), ["chat"]); assert.equal(f.calls[0]?.message, "Also explain why"); assert.equal(f.calls[0]?.text, "Use short, concrete examples.");
  assert.match(document.body.textContent!, /I added reasoning/);
+ assert.equal(log.scrollTop, 1500, "follow-up stays at newest messages even when the reply grows the log");
  assert.equal((document.querySelector('[aria-label="Proposed preference addition"]') as HTMLTextAreaElement).defaultValue, "Use short examples and reasoning.");
  assert(!button("Undo last change"), "no change was applied");
 });
