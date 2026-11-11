@@ -49,7 +49,7 @@ export function activate(ctx: PluginBackendContext): () => void {
   const unregisterSave = ctx.handle("set-family", input => {
     assertActive();
     const { family, enabled } = parseChange(input);
-    if ((family === "technicalDiagrams" || family === "chemicalStructures") && enabled && ctx.browserWorkersAvailable === false) throw new Error("This renderer is unavailable under this deployment’s browser security policy. No browser permission has been changed.");
+    if ((family === "technicalDiagrams" || family === "chemicalStructures") && enabled && ctx.browserWorkersAvailable === false) throw new Error("This renderer is unavailable under this deployment's browser security policy. No browser permission has been changed.");
     if (settings[family] === enabled) return projectedSettings();
     return commit({ ...settings, revision: nextRevision(), [family]: enabled }, true);
   });
