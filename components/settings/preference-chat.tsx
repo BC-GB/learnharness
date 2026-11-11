@@ -17,7 +17,7 @@ export function PreferenceChat() {
  return <div className="space-y-3 p-5" data-testid="preference-chat">
   <h3 className="text-sm font-medium">Learning preferences</h3>
   <p className="text-xs text-muted-foreground">Tell the agent how you want to learn. It uses your teaching model to draft changes to appended guidance only. Review before applying. {view?.scope === "global" ? "Applies across courses." : "Applies to this course."} Original prompts stay unchanged.</p>
-  {error && <p role="alert" className="text-xs text-red-500">{error} Reload Settings if preferences changed elsewhere.</p>}
+  {error && <p role="alert" className="text-xs text-error">{error} Reload Settings if preferences changed elsewhere.</p>}
   <details><summary className="text-xs">Current appended text{view && !view.enabled ? " (disabled)" : ""}</summary><pre className="whitespace-pre-wrap text-xs">{view?.text || "No appended text yet."}</pre></details>
   <label className="block text-xs">Your request<textarea aria-label="Learning preference request" className="mt-1 w-full rounded border border-border bg-background p-2" value={message} maxLength={4000} disabled={busy} onChange={e => setMessage(e.target.value)} /></label>
   <button type="button" disabled={busy || !view || !message.trim()} onClick={() => void send("draft")} className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40">{busy ? "Working…" : "Send to preference agent"}</button>

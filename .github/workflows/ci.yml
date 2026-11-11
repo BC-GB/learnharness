@@ -67,6 +67,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run plugins:setup
+      - name: Native filesystem and credential-path guards on this OS
+        run: node --import tsx --test tests/atomic-write.test.ts tests/source-access.test.ts
+        env:
+          NODE_ENV: test
       - name: Native renderer tests on this OS
         run: npx electron --import tsx --test tests/pdf-native-render.test.ts tests/pdf-ops.test.ts tests/svg-native-render.test.ts tests/browser-service.test.ts
         env:
