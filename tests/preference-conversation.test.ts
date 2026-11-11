@@ -27,10 +27,10 @@ test("persistent follow-ups use only preference context and preserve explicit ap
  assert.equal(first.conversation.messages.length, 2);
  assert.deepEqual(readPreferenceConversation(), first.conversation, "history and proposal survive reload");
  const second = await sendPreferenceMessage(first.revision, first.conversation.revision, "Also explain why", signal(), async (current, request, _signal, context) => {
-  assert.equal(context?.pendingAddition, "Use short examples."); assert.equal(context?.messages.length, 2);
+  assert.equal(context?.pendingAddition, "Use short, concrete examples."); assert.equal(context?.messages.length, 2);
   assert.equal(current, initial.text); assert.equal(request, "Also explain why");
   return { text: "Use short examples and explain why.", summary: "I added the reasoning.", model: "fake" };
- });
+ }, "Use short, concrete examples.");
  const applied = applyPreferenceConversation(second.revision, second.conversation.revision, second.conversation.proposal!.text);
  assert.equal(applied.text, "Use short examples and explain why."); assert.equal(applied.canUndo, true); assert.equal(applied.conversation.proposal, null);
  const undone = undoPreferenceConversation(applied.revision, applied.conversation.revision);

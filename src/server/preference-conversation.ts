@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { preferenceChatContext, type PreferenceChatView, type PreferenceChatMessage } from "../core/preference-chat.ts";
 import { readPreferenceConversation, writePreferenceConversation, PreferenceConversationConflict } from "../store/preference-conversation.ts";
+import { validatePreferenceDraft } from "../agent/preference-editor.ts";
 import { preferenceView, proposePreferences, applyPreferences, undoPreferences } from "./preference-editor.ts";
 
 export { PreferenceConversationConflict };
@@ -11,11 +12,17 @@ function checked(expected: string, conversationRevision: string) {
  return view;
 }
 const message = (role: PreferenceChatMessage["role"], text: string): PreferenceChatMessage => ({ id: randomUUID(), role, text, at: new Date().toISOString() });
-export async function sendPreferenceMessage(expected: string, conversationRevision: string, request: string, signal: AbortSignal, propose = proposePreferences) {
+export async function sendPreferenceMessage(expected: string, conversationRevision: string, request: string, signal: AbortSignal, propose = proposePreferences, workingDraft?: string) {
  if (typeof request !== "string" || !request.trim() || request.length > 4000) throw new Error("Use a message of 1 to 4,000 characters.");
  const before = checked(expected, conversationRevision);
  if (before.conversation.messages.length > 998) throw new Error("This preference conversation has reached its storage limit. Your saved conversation and preferences are unchanged.");
- const proposal = await propose(before.text, request, signal, preferenceChatContext(before.conversation, before.revision));
+ const context = preferenceChatContext(before.conversation, before.revision);
+ if (workingDraft !== undefined) {
+  validatePreferenceDraft({ text: workingDraft, summary: "" });
+  // Manual review edits are the current working copy, but never revive a draft against changed guidance.
+  if (before.conversation.proposal?.baseRevision === before.revision) context.pendingAddition = workingDraft;
+ }
+ const proposal = await propose(before.text, request, signal, context);
  signal.throwIfAborted();
  // Both namespaces are checked after inference. A late answer cannot replace a newer proposal or apply against changed global guidance.
  checked(expected, conversationRevision);

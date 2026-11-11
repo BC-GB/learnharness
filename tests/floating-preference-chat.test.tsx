@@ -65,11 +65,13 @@ test("failed apply retains the review and provides explicit reload recovery", as
 test("typing a follow-up sends once and keeps the evolving proposal unapplied", async () => {
  const f = await fixture(); await click(byTest("preference-chat-toggle"));
  const input = document.querySelector<HTMLTextAreaElement>('[aria-label="Learning preference request"]')!;
+ const draft = document.querySelector<HTMLTextAreaElement>('[aria-label="Proposed preference addition"]')!;
+ await act(async () => { draft.value = "Use short, concrete examples."; draft.dispatchEvent(new window.Event("input", { bubbles: true })); });
  await act(async () => { input.value = "Also explain why"; input.dispatchEvent(new window.Event("input", { bubbles: true })); });
  assert.equal(button("Send").disabled, false);
  // Linkedom does not implement a button's native form-submit default. Exercise the form event itself.
  await act(async () => { input.closest("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })); });
- assert.deepEqual(f.calls.map(c => c.action), ["chat"]); assert.equal(f.calls[0]?.message, "Also explain why");
+ assert.deepEqual(f.calls.map(c => c.action), ["chat"]); assert.equal(f.calls[0]?.message, "Also explain why"); assert.equal(f.calls[0]?.text, "Use short, concrete examples.");
  assert.match(document.body.textContent!, /I added reasoning/);
  assert.equal((document.querySelector('[aria-label="Proposed preference addition"]') as HTMLTextAreaElement).defaultValue, "Use short examples and reasoning.");
  assert(!button("Undo last change"), "no change was applied");

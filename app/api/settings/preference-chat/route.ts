@@ -19,7 +19,7 @@ export const POST = courseRoute(async (request: Request) => {
    if (body.action === "undo") return Response.json(undoPreferenceConversation(body.revision, body.conversationRevision));
    if (body.action === "chat" && typeof body.message === "string") {
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(60000)]);
-    return Response.json(await sendPreferenceMessage(body.revision, body.conversationRevision, body.message, signal));
+    return Response.json(await sendPreferenceMessage(body.revision, body.conversationRevision, body.message, signal, undefined, body.text));
    }
    return Response.json({ error: "Invalid request" }, { status: 400 });
   }
