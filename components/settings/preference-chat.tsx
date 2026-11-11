@@ -9,6 +9,18 @@ import { usePopoverDismiss } from "@/components/popover-dismiss";
 import { INTERACTION_LAYER_Z_BASE } from "@/components/host-dialog";
 
 const OPEN_EVENT = "lh:open-preference-chat";
+type LocalDraft = { message: string; text: string; proposalRevision: string | null };
+const emptyDraft = (): LocalDraft => ({ message: "", text: "", proposalRevision: null });
+const draftKey = (courseId: string) => `lh:preference-draft:v1:${encodeURIComponent(courseId)}`;
+function readLocalDraft(courseId: string): LocalDraft {
+ try {
+  const raw = window.sessionStorage.getItem(draftKey(courseId));
+  if (!raw || raw.length > 128 * 1024) return emptyDraft();
+  const value = JSON.parse(raw) as LocalDraft;
+  if (typeof value.message !== "string" || value.message.length > 4000 || typeof value.text !== "string" || value.text.length > 16000 || (value.proposalRevision !== null && (typeof value.proposalRevision !== "string" || value.proposalRevision.length > 100))) return emptyDraft();
+  return { message: value.message, text: value.text, proposalRevision: value.proposalRevision };
+ } catch { return emptyDraft(); }
+}
 export function openPreferenceChat() { window.dispatchEvent(new window.Event(OPEN_EVENT)); }
 export function PreferenceChatShortcut({ onOpen }: { onOpen: () => void }) {
  return <div className="space-y-3 p-5" data-testid="preference-chat-shortcut">
@@ -19,12 +31,18 @@ export function PreferenceChatShortcut({ onOpen }: { onOpen: () => void }) {
 }
 export function FloatingPreferenceChat() {
  const course = useCourse();
- return <PreferenceChat key={course.id} courseName={course.name} />;
+ return <PreferenceChat key={course.id} courseId={course.id} courseName={course.name} />;
 }
-export function PreferenceChat({ courseName = "this course" }: { courseName?: string }) {
+export function PreferenceChat({ courseName = "this course", courseId = "legacy" }: { courseName?: string; courseId?: string }) {
  const [open, setOpen] = useState(false);
  const [view, setView] = useState<PreferenceChatView | null>(null);
  const viewRef = useRef<PreferenceChatView | null>(null);
+ const localDraft = useRef<LocalDraft>(emptyDraft());
+ const saveLocalDraft = useCallback((patch: Partial<LocalDraft>) => {
+  localDraft.current = { ...localDraft.current, ...patch };
+  // Per-tab and course, never a global conversation cache or a server-side preference write.
+  try { window.sessionStorage.setItem(draftKey(courseId), JSON.stringify(localDraft.current)); } catch { /* Storage may be unavailable; in-memory drafts still survive closing. */ }
+ }, [courseId]);
  const [message, setMessage] = useState("");
  const [draftText, setDraftText] = useState("");
  const [error, setError] = useState("");
@@ -41,11 +59,20 @@ export function PreferenceChat({ courseName = "this course" }: { courseName?: st
  const followLog = useRef(true);
  const close = useCallback(() => { setOpen(false); trigger.current?.focus({ preventScroll: true }); }, []);
  const layer = usePopoverDismiss(root, open, close, { layerRootRef: panel });
- useEffect(() => { mounted.current = true; return () => { mounted.current = false; generation.current++; }; }, []);
+ useEffect(() => {
+  mounted.current = true;
+  localDraft.current = readLocalDraft(courseId); setMessage(localDraft.current.message);
+  return () => { mounted.current = false; generation.current++; };
+ }, [courseId]);
  const accept = useCallback((next: PreferenceChatView) => {
-  if (viewRef.current?.conversation.revision !== next.conversation.revision) setDraftText(next.conversation.proposal?.text ?? "");
+  if (viewRef.current?.conversation.revision !== next.conversation.revision) {
+   // Never restore manual edits over a newer server proposal from another window.
+   const text = next.conversation.proposal && localDraft.current.proposalRevision === next.conversation.revision
+    ? localDraft.current.text : next.conversation.proposal?.text ?? "";
+   setDraftText(text); saveLocalDraft({ text, proposalRevision: next.conversation.revision });
+  }
   viewRef.current = next; setView(next);
- }, []);
+ }, [saveLocalDraft]);
  const reload = useCallback(async () => {
   if (busyRef.current) return;
   const current = ++generation.current;
@@ -70,7 +97,7 @@ export function PreferenceChat({ courseName = "this course" }: { courseName?: st
    const response = await fetch("/api/settings/preference-chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, revision: view.revision, conversationRevision: view.conversation.revision, message, text: draftText }) });
    const next = await response.json();
    if (!response.ok) throw new Error(next.error || "The preference request did not finish.");
-   if (mounted.current) { accept(next); if (action === "chat") setMessage(""); if (action !== "chat") notifySettingsSaved("agent"); }
+   if (mounted.current) { accept(next); if (action === "chat") { setMessage(""); saveLocalDraft({ message: "" }); } if (action !== "chat") notifySettingsSaved("agent"); }
   } catch (e) { if (mounted.current) setError((e as Error).message); }
   finally { busyRef.current = false; if (mounted.current) setBusy(false); }
  }
@@ -98,14 +125,14 @@ export function PreferenceChat({ courseName = "this course" }: { courseName?: st
     {view?.conversation.proposal && <details data-testid="preference-review"><summary className="cursor-pointer text-xs font-medium">Review proposed preferences</summary>
      {stale && <p className="py-2 text-xs text-error">Preferences changed elsewhere. Send a follow-up to refresh this proposal before applying.</p>}
      <details className="py-2 text-xs"><summary>Before</summary><pre className="whitespace-pre-wrap break-words">{view.text || "(empty)"}</pre></details>
-     <label className="block text-xs">Proposed complete addition<textarea aria-label="Proposed preference addition" value={draftText} maxLength={16000} disabled={busy || stale} onInput={e => setDraftText(e.currentTarget.value)} className="mt-1 min-h-32 w-full rounded border border-border bg-background p-2" /></label>
+     <label className="block text-xs">Proposed complete addition<textarea aria-label="Proposed preference addition" value={draftText} maxLength={16000} disabled={busy || stale} onInput={e => { setDraftText(e.currentTarget.value); saveLocalDraft({ text: e.currentTarget.value, proposalRevision: view.conversation.revision }); }} className="mt-1 min-h-32 w-full rounded border border-border bg-background p-2" /></label>
      <button type="button" disabled={busy || stale} onClick={() => void send("apply")} className="my-2 rounded border border-border px-3 py-1 text-xs disabled:opacity-40">Apply and enable</button>
     </details>}
     <details className="text-xs"><summary className="cursor-pointer">Current preferences{view && !view.enabled ? " (disabled)" : ""}</summary><pre className="whitespace-pre-wrap break-words py-2">{view?.text || "No appended text yet."}</pre></details>
     {view?.canUndo && <button type="button" disabled={busy} onClick={() => void send("undo")} className="text-xs underline disabled:opacity-40">Undo last change</button>}
    </div>
    <form className="shrink-0 space-y-2 border-t border-border p-3" onSubmit={e => { e.preventDefault(); void send("chat"); }}>
-    <textarea ref={input} aria-label="Learning preference request" placeholder="Tell me how you want to learn..." rows={2} className="w-full resize-none rounded border border-border bg-background p-2 text-sm" value={message} maxLength={4000} disabled={busy} onInput={e => setMessage(e.currentTarget.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send("chat"); } }} />
+    <textarea ref={input} aria-label="Learning preference request" placeholder="Tell me how you want to learn..." rows={2} className="w-full resize-none rounded border border-border bg-background p-2 text-sm" value={message} maxLength={4000} disabled={busy} onInput={e => { setMessage(e.currentTarget.value); saveLocalDraft({ message: e.currentTarget.value }); }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send("chat"); } }} />
     <div className="flex items-center justify-between"><span className="text-[10px] text-muted-foreground">Enter to send · Shift+Enter for a new line</span><button type="submit" disabled={busy || !view || !message.trim()} className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40">Send</button></div>
    </form>
   </section>

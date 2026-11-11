@@ -10,6 +10,8 @@ async function fixture() {
  Object.defineProperty(dom.document, "oninput", { configurable: true, value: null });
  const previous = new Map<string, PropertyDescriptor | undefined>();
  const originalFetch = globalThis.fetch;
+ const localDrafts = new Map<string, string>();
+ Object.defineProperty(dom.window, "sessionStorage", { configurable: true, value: { getItem: (key: string) => localDrafts.get(key) ?? null, setItem: (key: string, value: string) => { localDrafts.set(key, value); } } });
  for (const [key, value] of Object.entries({ React, window: dom.window, document: dom.document, Element: dom.window.Element, HTMLElement: dom.window.HTMLElement, Event: dom.window.Event, CustomEvent: dom.window.CustomEvent, navigator: { userAgent: "", platform: "" }, IS_REACT_ACT_ENVIRONMENT: true })) {
   previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
  }
@@ -29,10 +31,10 @@ async function fixture() {
   if (body.action === "undo") saved = { ...saved, text: "Use examples.", revision: "prefs3", canUndo: false, conversation: { ...saved.conversation, revision: "chat3", proposal: null } };
   return Response.json(saved);
  };
- const render = async (key: string) => { await act(async () => root.render(<InteractionLayersProvider><PreferenceChat key={key} courseName="Test course" /></InteractionLayersProvider>)); };
+ const render = async (key: string, courseId = "a") => { await act(async () => root.render(<InteractionLayersProvider><PreferenceChat key={key} courseId={courseId} courseName="Test course" /></InteractionLayersProvider>)); };
  cleanup = async () => { await act(async () => root.unmount()); globalThis.fetch = originalFetch; for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); } };
  await render("a");
- return { calls, render, fail: () => { fail = true; } };
+ return { calls, render, fail: () => { fail = true; }, replaceProposal: () => { saved = { ...saved, conversation: { ...saved.conversation, revision: "other-window", proposal: { text: "Newer proposal.", summary: "Newer", baseRevision: saved.revision } } }; } };
 }
 const byTest = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
 const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find(el => el.textContent === text)!;
@@ -78,4 +80,24 @@ test("typing a follow-up sends once and keeps the evolving proposal unapplied", 
  assert.equal(log.scrollTop, 1500, "follow-up stays at newest messages even when the reply grows the log");
  assert.equal((document.querySelector('[aria-label="Proposed preference addition"]') as HTMLTextAreaElement).defaultValue, "Use short examples and reasoning.");
  assert(!button("Undo last change"), "no change was applied");
+});
+
+test("reload restores bounded local drafts only in their course and manual edits only for the same server proposal", async () => {
+ const f = await fixture(); await click(byTest("preference-chat-toggle"));
+ const input = document.querySelector<HTMLTextAreaElement>('[aria-label="Learning preference request"]')!;
+ const draft = document.querySelector<HTMLTextAreaElement>('[aria-label="Proposed preference addition"]')!;
+ await act(async () => {
+  input.value = "Unsent refinement"; input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  draft.value = "My manual preference edit."; draft.dispatchEvent(new window.Event("input", { bubbles: true }));
+ });
+ await f.render("reload-a"); await click(byTest("preference-chat-toggle"));
+ assert.equal(document.querySelector<HTMLTextAreaElement>('[aria-label="Learning preference request"]')!.defaultValue, "Unsent refinement");
+ assert.equal(document.querySelector<HTMLTextAreaElement>('[aria-label="Proposed preference addition"]')!.defaultValue, "My manual preference edit.");
+ await f.render("course-b", "b"); await click(byTest("preference-chat-toggle"));
+ assert.equal(document.querySelector<HTMLTextAreaElement>('[aria-label="Learning preference request"]')!.defaultValue, "");
+ assert.equal(document.querySelector<HTMLTextAreaElement>('[aria-label="Proposed preference addition"]')!.defaultValue, "Use short examples.");
+ f.replaceProposal(); await f.render("newer-a", "a"); await click(byTest("preference-chat-toggle"));
+ assert.equal(document.querySelector<HTMLTextAreaElement>('[aria-label="Learning preference request"]')!.defaultValue, "Unsent refinement");
+ assert.equal(document.querySelector<HTMLTextAreaElement>('[aria-label="Proposed preference addition"]')!.defaultValue, "Newer proposal.");
+ assert.equal(f.calls.length, 0, "local draft persistence never applies preferences or calls a model");
 });
