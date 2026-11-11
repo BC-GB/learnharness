@@ -66,7 +66,9 @@ test("typing a follow-up sends once and keeps the evolving proposal unapplied", 
  const f = await fixture(); await click(byTest("preference-chat-toggle"));
  const input = document.querySelector<HTMLTextAreaElement>('[aria-label="Learning preference request"]')!;
  await act(async () => { input.value = "Also explain why"; input.dispatchEvent(new window.Event("input", { bubbles: true })); });
- await click(button("Send"));
+ assert.equal(button("Send").disabled, false);
+ // Linkedom does not implement a button's native form-submit default. Exercise the form event itself.
+ await act(async () => { input.closest("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })); });
  assert.deepEqual(f.calls.map(c => c.action), ["chat"]); assert.equal(f.calls[0]?.message, "Also explain why");
  assert.match(document.body.textContent!, /I added reasoning/);
  assert.equal((document.querySelector('[aria-label="Proposed preference addition"]') as HTMLTextAreaElement).defaultValue, "Use short examples and reasoning.");
