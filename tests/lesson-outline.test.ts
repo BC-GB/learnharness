@@ -21,7 +21,8 @@ const { toLlmMessages } = await import("../src/core/native-messages.ts");
 const { GET, POST } = await import("../app/api/chats/[id]/outline/route.ts");
 const { parseGeneralSettingsBody } = await import("../src/server/settings-body.ts");
 const { createTeacherAgent } = await import("../src/agent/teacher-agent.ts");
-const { withBgLlmSlot } = await import("../src/agent/subagents/bg-llm-semaphore.ts");
+const { withWorkerRequestSlot } = await import("../src/agent/worker-request-admission.ts");
+const { effectiveSettings } = await import("../src/server/stores.ts");
 
 const tree = { nodes: [{ id: "a", title: "Panel observations" }, { id: "b", title: "Within-unit changes" }], edges: [{ from: "a", to: "b" }], version: 1 };
 const sources: OutlineSource[] = [{ id: "s1", path: "lecture.md", text: "Panel data observes the same units over time. Within-unit changes compare a unit to itself.", sha256: "fixture" }];
@@ -128,7 +129,7 @@ test("bad responses stay isolated and do not cause a retry storm", async () => {
 test("queued disabling prevents dispatch and interrupted work resumes without changing the teacher", async () => {
 	writeSettings({ version: 1, general: { lessonOutline: true } }); const record = fixture();
 	const raw = engine(); let calls = 0; let release!: () => void; const blocked = new Promise<void>(done => { release = done; });
-	const holders = Array.from({ length: 3 }, () => withBgLlmSlot(undefined, () => blocked));
+	const holders = Array.from({ length: effectiveSettings().agent.workerRequestConcurrency }, () => withWorkerRequestSlot(undefined, () => blocked));
 	const slow = { ...raw, streamFn: ((m, c, o) => { calls++; return raw.streamFn(m, c, o); }) as typeof raw.streamFn };
 	const work = refreshLessonOutline(record.id, { engine: slow, materials: () => sources });
 	const duplicate = refreshLessonOutline(record.id, { engine: slow, materials: () => sources });

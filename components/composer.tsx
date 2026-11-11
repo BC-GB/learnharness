@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import { PathInput } from "@/components/path-input";
 import { AttachFilesButton } from "@/components/attach-files-button";
 import { usePastedImages } from "@/components/use-pasted-images";
+import { useOptionalInteractionLayers } from "./interaction-layers";
+import { isInteractionScopeEligible } from "./plugin-input-focus";
 
 /**
  * The chat composer — content row ONLY (the persistent rounded shell lives in
@@ -59,6 +61,7 @@ export function ChatSessionComposer({
 	placeholder,
 	nextProblem,
 	onNext,
+	pendingInput = false,
 }: {
 	busy: boolean;
 	value: string;
@@ -74,10 +77,11 @@ export function ChatSessionComposer({
 	placeholder?: string;
 	nextProblem?: boolean;
 	onNext?: () => void;
+	pendingInput?: boolean;
 }) {
 	const [draft, setDraft] = useState(value);
 	useLayoutEffect(() => { setDraft(value); }, [revision, value]);
-	const canSend = sendAllowed && (draft.trim().length > 0 || dictationActive);
+	const canSend = sendAllowed && (draft.trim().length > 0 || dictationActive || pendingInput);
 	const applyDraft = useCallback((next: string) => {
 		setDraft(next);
 		onChange(next);
@@ -114,6 +118,8 @@ export function Composer({
 	placeholder = "Ask, answer, or steer the lesson…",
 	nextProblem = false,
 	onNext,
+	defaultDropTarget = true,
+	fileInsertion = true,
 }: {
 	busy: boolean;
 	value: string;
@@ -139,7 +145,11 @@ export function Composer({
 	/** The signal's dispatcher (send({type:"next"})) — the chip and the
 	 *  empty-Enter share it. */
 	onNext?: () => void;
+	/** Neutral plugin composers opt out without changing core defaults. */
+	defaultDropTarget?: boolean;
+	fileInsertion?: boolean;
 }) {
+	const controller = useOptionalInteractionLayers();
 	const act = () => {
 		if (attachments.uploading && !busy) return;
 		const action = enterAction({ busy, canSend: readyToSend, nextProblem });
@@ -173,14 +183,17 @@ export function Composer({
 				ref={editorRef}
 				value={value}
 				onValueChange={onChange}
-				onPasteImages={files => { void attachments.paste(files); }}
-				defaultDropTarget
+				onPasteImages={fileInsertion ? files => { void attachments.paste(files); } : undefined}
+				defaultDropTarget={defaultDropTarget}
+				fileInsertion={fileInsertion}
 				onKeyDown={(e) => {
+					if (!isInteractionScopeEligible(e.currentTarget, controller)) return;
 					// Esc ends dictation before anything else Esc might someday mean
 					// here (the dictate decisions: click-again or Esc to stop).
 					// stopPropagation claims the Esc (keyboard wave A): the
 					// window-level chain must not also abort a turn under us.
 					if (e.key === "Escape" && onEscape) {
+						controller?.claimEscape(e);
 						e.preventDefault();
 						e.stopPropagation();
 						onEscape();
@@ -198,7 +211,7 @@ export function Composer({
 				autoFocus={autoFocus}
 				className="field-sizing-content lh-input max-h-48 min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground"
 			/>
-			<AttachFilesButton editorRef={editorRef} onImagesSelected={files => { void attachments.paste(files); }} />
+			{fileInsertion && <AttachFilesButton editorRef={editorRef} onImagesSelected={files => { void attachments.paste(files); }} />}
 			{/* The button follows the text (owner report 2026-10-03): while
 				 a turn runs WITH text typed it stays the SEND affordance
 				 (click = steer — steering must be clickable, not Enter-only);
@@ -212,13 +225,13 @@ export function Composer({
 				 a wide green NEXT PROBLEM — the affordance IS the button
 				 (click and Enter share one lane), and typing anything
 				 returns the regular send. The green is the app's correct-
-				 answer register (answered-card's green-500/600). */}
+				 answer register (answered-card's success token). */}
 				{nextProblem && !busy && !canSend && !attachments.uploading ? (
 					<button
 						type="submit"
 						data-testid="next-problem-button"
 						aria-label="Next problem"
-						className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-[10px] bg-green-600 px-4 font-ui text-xs font-medium uppercase tracking-wide text-white transition-colors hover:bg-green-500"
+						className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-[10px] bg-success px-4 font-ui text-xs font-medium uppercase tracking-wide text-background transition-colors hover:bg-success/85"
 					>
 						Next problem
 						<ArrowRightIcon className="size-4" />

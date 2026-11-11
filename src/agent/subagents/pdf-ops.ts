@@ -77,4 +77,11 @@ export async function pdfSearch(file:string,query:string,opts?:{contextLines?:nu
  const x=await isolatedRender<{hits:PdfSearchHit[];pageTexts:[number,string][]}>({op:'search',pdf:await approvedPdfBytes(file),query,contextLines:opts?.contextLines??3,literal:opts?.literal??false});return {...x,pageTexts:new Map(x.pageTexts)};
 }
 export type PdfConversion={kind:'converted';pages:PdfPage[]}|{kind:'too-long';pageCount:number}|{kind:'unreadable'};
-export async function convertPdf(data:Uint8Array,maxPages:number):Promise<PdfConversion>{if(!isolatedRendererEnabled())throw Error(DISABLED);if(data.length>20*1024*1024)throw Error('PDF input too large');return isolatedRender({op:'convert',pdf:Buffer.from(data).toString('base64'),maxPages})}
+export async function convertPdf(data: Uint8Array, maxPages: number, options?: { signal?: AbortSignal }): Promise<PdfConversion> {
+ options?.signal?.throwIfAborted();
+ if (!isolatedRendererEnabled()) throw Error(DISABLED);
+ if (data.length > 20 * 1024 * 1024) throw Error("PDF input too large");
+ if (!Number.isSafeInteger(maxPages) || maxPages <= 0) throw Error("Invalid PDF page limit");
+ // New plugin callers share the existing isolated parser ceiling.
+ return isolatedRender({ op: "convert", pdf: Buffer.from(data).toString("base64"), maxPages: Math.min(maxPages, 200) }, options);
+}

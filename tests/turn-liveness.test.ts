@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { beginTurn, endTurn, isTurnRunning } from "../src/server/turn-liveness.ts";
+import { beginTurn, endTurn, isTurnRunning, isTurnOwner, handoffTurn } from "../src/server/turn-liveness.ts";
 import { subscribe, type ServerEvent } from "../src/core/events.ts";
 import { rememberTurnFailure, settledTurnResponse } from "../src/server/turn-runs.ts";
 
@@ -68,4 +68,30 @@ describe("turn lifecycle events", () => {
 		assert.equal(runningAtSettle, false, "listener sees the registry already cleared");
 		off();
 	});
+});
+
+
+it("preparation ownership and identical chat IDs remain isolated across courses", async () => {
+ const { runInCourse } = await import("../src/runtime/course-context.ts");
+ const scope = (id: string) => ({ id, name: id, dataRoot: `/tmp/${id}`, sourceRoot: undefined });
+ const a = scope("owner-test-a"), b = scope("owner-test-b");
+ const ownerA = {}, ownerB = {}, id = "same-chat";
+ try {
+  runInCourse(a, () => assert.equal(beginTurn(id, ownerA), true));
+  await runInCourse(b, async () => {
+   await Promise.resolve();
+   assert.equal(isTurnRunning(id), false);
+   assert.equal(beginTurn(id, ownerB), true);
+   assert.equal(isTurnOwner(id, ownerA), false);
+   endTurn(id, ownerA);
+   assert.equal(isTurnOwner(id, ownerB), true);
+  });
+  runInCourse(a, () => {
+   assert.equal(isTurnOwner(id, ownerA), true);
+   assert.equal(handoffTurn(id, ownerB), false);
+   assert.equal(handoffTurn(id, ownerA), true);
+   endTurn(id, ownerA);
+  });
+  runInCourse(b, () => assert.equal(isTurnOwner(id, ownerB), true));
+ } finally { runInCourse(a, () => endTurn(id)); runInCourse(b, () => endTurn(id)); }
 });

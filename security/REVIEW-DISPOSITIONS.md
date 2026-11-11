@@ -50,3 +50,40 @@ messages. This is defence in depth, not a prompt-injection proof. The loop expos
 only fixed reading operations, pins the selected file outside model arguments and
 uses the isolated parser for actual document processing. The source notice cannot
 grant additional file/network/credential permissions.
+
+## Upstream v0.6 plugin and side-conversation integration
+
+Plugin backends are native trusted Node code, not a sandbox. The hardened
+composition admits reviewed bundled core packages only; community code cannot
+activate or serve executable assets. Coding Questions remains unavailable
+because its current runner executes model-selected commands with the app's
+filesystem authority. A timeout and process cleanup do not make that runner an
+acceptable isolation boundary. Enabling it requires an independently isolated
+execution service and validation, not a change to this refusal.
+
+Each plugin host, side conversation, worker history, and notification stream
+retains its selected course. Delayed work preserves the originating asynchronous
+context, including the unbound legacy startup context. Only explicit plugin
+enable/settings records and data-only themes are global. Shared preference
+paths reject aliases; course history and learning material never move to shared
+storage. Pending side preparation, plugin inference, document conversion and
+workers are included in the maintenance activity check.
+
+All HTTP launch modes retain the gateway capability requirement. New document
+conversion retains the 20 MiB/200-page ceilings and fixed isolated renderer
+transport; no in-app Chromium, native PDF fallback, caller-supplied download URL
+or unrestricted subprocess path is restored. New inference uses the existing
+host model transport and credential broker, without API-key fallback.
+
+Rich Code's TeX engine executes in a browser Worker with bounded inputs, output,
+queue, cache and termination deadline. Its static SVG allowlist and same-origin
+resources are defense in depth, not an OS-level memory limit. SMILES and ABC
+rendering still run on the browser main thread. Browser responsiveness and
+resource probes remain required before deploying the integration.
+
+Plugin dependency setup uses locked npm installs with lifecycle scripts disabled.
+Only separately reviewed, explicit SDK/build commands run during packaging.
+UI Showcase's authoring-only Puppeteer closure is aligned with the current root
+toolchain to remove the vulnerable Zod 3 dependency. Existing build-only
+minimatch 9/10 advisories need reachability review; a major override is not a
+substitute for compatibility testing or a compatible patched release.

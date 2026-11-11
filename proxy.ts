@@ -1,14 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { desktopAPIAuthorized } from "./src/server/desktop-access.ts";
+import { apiRequestRefusal } from "./src/server/desktop-access.ts";
 import { isCourseId } from "./src/core/courses.ts";
 
 /** Protects pages (including server-rendered chat data), assets, and every API method.
  * No public callback or worker bypass: internal jobs call server functions,
  * and any legitimate self-HTTP request must carry the private capability. */
 export function proxy(request: NextRequest) {
-	if (!desktopAPIAuthorized(request.headers)) {
+	const refusal = apiRequestRefusal(request);
+	if (refusal) {
 		return NextResponse.json(
-			{ error: "Access requires the trusted LearnHarness window or authenticated gateway." },
+			{ error: refusal },
 			{ status: 403, headers: { "Cache-Control": "no-store" } },
 		);
 	}

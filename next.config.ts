@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
 	typescript: { tsconfigPath: process.env.LH_VISUAL_ISOLATED === "1" ? "tsconfig.app.json" : "tsconfig.json" },
 	// Public build metadata only; no new runtime Electron version API.
 	env: { LH_VERSION: pkg.version, LH_HOMEPAGE: pkg.homepage },
-	// Leave multipart headroom above the 25 MiB file allowance. This is a
+	// Leave multipart headroom above the retained 20 MiB file allowance. This is a
 	// proxy buffer, not a rejection gate: the import route also bounds reads,
 	// validates actual file bytes and handles incomplete multipart bodies.
 	experimental: { proxyClientMaxBodySize: MAX_IMPORT_BODY_BYTES },
@@ -86,6 +86,9 @@ const nextConfig: NextConfig = {
 			"node_modules/@napi-rs/canvas-*/**/*",
 			// Pi-compatible image resizing runs in an unbundled worker. Photon
 			// loads its colocated WASM through Node, also in packaged Electron.
+			// Side questions (2026-11-02): the side model's base prompt is read
+			// from disk per ask — a directory no agent-composition read names.
+			"src/agent/prompts/side-chat/*.md",
 			"src/agent/image-processing/*.mjs",
 			"src/agent/image-processing/LICENSE",
 			"node_modules/@silvia-odwyer/photon-node/**/*",

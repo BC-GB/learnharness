@@ -27,6 +27,8 @@ import { courseLocal } from "../runtime/course-context.ts";
  */
 
 import { ChatInputError, dismissAppends, emit } from "../core";
+import { assertPluginQuestionInputAllowed } from "../core/input-events.ts";
+import { preparePluginQuestionDismissal, type PluginQuestionDismissInput } from "./plugin-questions.ts";
 import type { ChatStore } from "../core/ports.ts";
 
 /** The parked dismissal body — exactly the parsed input the dismiss route
@@ -71,7 +73,12 @@ export function applyParkedDismissal(chatStore: ChatStore, chatId: string): void
 	const record = chatStore.getChat(chatId);
 	if (!record) return;
 	try {
-		const appends = dismissAppends(record, input as Parameters<typeof dismissAppends>[1]);
+		assertPluginQuestionInputAllowed(record.messages, input as { type: string });
+		const appends = (input as { type?: string }).type === "dismiss-plugin-question"
+			? preparePluginQuestionDismissal(record, input as PluginQuestionDismissInput)
+			: dismissAppends(record, input as Parameters<typeof dismissAppends>[1]);
+		// Settlement/dismissal does not run another model call. Keep new
+		// side exchanges pending until that call's context-budget gate.
 		chatStore.saveMessages(chatId, [...record.messages, ...appends]);
 		emit("record-changed", { chatId });
 	} catch (err) {

@@ -31,7 +31,7 @@ import { courseRoute } from "@/src/server";
  * lands here.
  */
 
-import { resolveOutlineModelSpec, type AgentSettings, type ChatSettings, type GeneralSettings, type ModelsSettings } from "@/src/core";
+import { resolveOutlineModelSpec, isBuiltinThemeId, type AgentSettings, type AppearanceSettings, type ChatSettings, type GeneralSettings, type ModelsSettings } from "@/src/core";
 import {
 	SETTINGS_SECTIONS,
 	allSegmentPaths,
@@ -41,6 +41,8 @@ import {
 	fileAccessConfigurationError,
 	promptOverrides,
 	readSettingsRecord,
+	refreshWorkerRequestAdmission,
+	themeStore,
 	validateChatSettings,
 	validateModelsSettings,
 	writeSettingsRecord,
@@ -97,6 +99,19 @@ async function handleCoursePUT(request: Request, ctx: { params: Promise<{ sectio
 			generalClamped = { ...general, outlineModel: clampChatLevel(general.outlineModel, effective ?? null) };
 		}
 	}
+	// A newly selected theme must exist. A saved theme whose file vanished
+	// already renders as Default: heal that unchanged reference on write,
+	// rather than trapping unrelated font/size/ligature edits behind a 400.
+	if (section === "appearance") {
+		const appearance = parsed.settings as AppearanceSettings;
+		const theme = appearance.theme;
+		if (theme !== undefined && !isBuiltinThemeId(theme) && themeStore.readTheme(theme) === null) {
+			if (theme !== record.appearance?.theme) {
+				return Response.json({ error: `unknown theme "${theme}"` }, { status: 400 });
+			}
+			appearance.theme = "default";
+		}
+	}
 	if (section === "agent") {
 		// Orphan-heal (contract fix, interlude 2026-09-26): an ON switch
 		// whose override file is gone (or whose segment left the source
@@ -141,6 +156,9 @@ async function handleCoursePUT(request: Request, ctx: { params: Promise<{ sectio
 	// along untouched (other sections, unknown keys — sanitize preserves).
 	const next = { ...record, [section]: sectionOut };
 	const stored = writeSettingsRecord(next);
+	// Only a successful durable write changes admission. Increasing the
+	// limit immediately drains queued requests; decreasing never cancels active work.
+	refreshWorkerRequestAdmission();
 	const fileAccessError = fileAccessConfigurationError();
 	return Response.json({ settings: stored, ...(fileAccessError ? { fileAccessError } : {}) });
 }
