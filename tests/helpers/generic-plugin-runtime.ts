@@ -4,8 +4,11 @@
 import { createPluginHost, type PluginHostDependencies } from "../../src/server/plugin-host.ts";
 import { courseLocal } from "../../src/runtime/course-context.ts";
 export async function installGenericPluginRuntime(directory: string) {
- const unavailable = new Proxy({}, { get(_target, key) { if (key === "dispose") return () => {}; throw Error("Unexpected fixture service: " + String(key)); } });
- const host = createPluginHost({ directory, appVersion: "0.6.0", createServices: () => ({ learning: unavailable, inference: unavailable, agents: unavailable, workers: unavailable, createBackgroundTool: () => { throw Error("Unexpected background task"); } }) as ReturnType<PluginHostDependencies["createServices"]> });
+ type Services = ReturnType<PluginHostDependencies["createServices"]>;
+ // These are deliberate fail-closed stand-ins, not partial working services.
+ // Every property access traps before an absent implementation could be used.
+ const unavailable = <T extends object>(): T => new Proxy({} as T, { get(_target, key) { if (key === "dispose") return () => {}; throw Error("Unexpected fixture service: " + String(key)); } });
+ const host = createPluginHost({ directory, appVersion: "0.6.0", createServices: (): Services => ({ learning: unavailable<Services["learning"]>(), inference: unavailable<Services["inference"]>(), agents: unavailable<Services["agents"]>(), workers: unavailable<Services["workers"]>(), createBackgroundTool: () => { throw Error("Unexpected background task"); } }) });
  const value = { host, ready: host.initialize() };
  if (courseLocal("plugin-runtime", () => value) !== value) throw Error("Fixture runtime already initialized");
  await value.ready;
