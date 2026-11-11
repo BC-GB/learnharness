@@ -9,6 +9,7 @@ export interface Settings {
   technicalDiagrams: boolean;
   /** Runtime availability only; never enables browser permissions. */
   technicalDiagramsUnavailable?: boolean;
+  chemicalStructuresUnavailable?: boolean;
 }
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   version: 1, revision: 0, chemicalStructures: false, musicalNotation: false, technicalDiagrams: false,
@@ -20,8 +21,8 @@ export const LABELS: Record<Family, string> = {
   chemicalStructures: "Chemical structures", musicalNotation: "Musical notation", technicalDiagrams: "Technical diagrams",
 };
 export const INSTRUCTIONS: Record<Family, string> = {
-  chemicalStructures: "For chemical structures, use a smiles fenced code block containing one SMILES molecule. Write explanations outside the block; do not author raw SVG.",
-  musicalNotation: "For musical notation, use an abc fenced code block containing one complete ABC tune with X:, M:, L: and K: headers. It renders a static score, not audio; do not author raw SVG.",
+  chemicalStructures: "For chemical structures, use a smiles fenced code block containing one SMILES molecule of at most 512 UTF-8 bytes. Write explanations outside the block; do not author raw SVG.",
+  musicalNotation: "For musical notation, use an abc fenced code block containing one complete ABC tune of at most 1 KiB UTF-8 with X:, M:, L: and K: headers. It renders a static score, not audio; do not author raw SVG.",
   technicalDiagrams: [
     "For static technical diagrams, use a tikz fenced code block containing one self-contained TeX document. These blocks support physics/free-body diagrams, geometry, circuit schematics (not simulation), commutative diagrams, and analytic function plots.",
     "Every block is compiled independently. Put all required package and library declarations before \\begin{document}, then the diagram, then \\end{document}. The engine supplies the standalone document class: never include \\documentclass or \\documentstyle, and never rely on declarations from another block.",
@@ -31,7 +32,7 @@ export const INSTRUCTIONS: Record<Family, string> = {
     "Write explanations outside the block. Author notation, not raw SVG, JavaScript, or external resources.",
   ].join("\n\n"),
 };
-export const SOURCE_LIMITS: Record<Language, number> = { smiles: 2 * 1024, abc: 16 * 1024, tikz: 32 * 1024 };
+export const SOURCE_LIMITS: Record<Language, number> = { smiles: 512, abc: 1024, tikz: 32 * 1024 };
 export const SVG_LIMIT = 2 * 1024 * 1024;
 export const TEX_TIMEOUT_MS = 10_000;
 export const TEX_QUEUE_LIMIT = 16;
@@ -42,14 +43,15 @@ export function parseSettings(value: unknown): Settings {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid Rich code blocks settings.");
   const record = value as Record<string, unknown>;
   if (record.version !== 1) throw new Error("Unsupported Rich code blocks settings version; the saved file has not been changed.");
-  if (Object.keys(record).some(key => !["version", "revision", "inkColor", "technicalDiagramsUnavailable", ...FAMILIES].includes(key))) throw new Error("Unknown Rich code blocks settings fields.");
+  if (Object.keys(record).some(key => !["version", "revision", "inkColor", "technicalDiagramsUnavailable", "chemicalStructuresUnavailable", ...FAMILIES].includes(key))) throw new Error("Unknown Rich code blocks settings fields.");
+  if (record.chemicalStructuresUnavailable !== undefined && typeof record.chemicalStructuresUnavailable !== "boolean") throw new Error("Invalid chemical structure availability.");
   if (record.technicalDiagramsUnavailable !== undefined && typeof record.technicalDiagramsUnavailable !== "boolean") throw new Error("Invalid technical diagram availability.");
   if (!Number.isSafeInteger(record.revision) || (record.revision as number) < 0 || FAMILIES.some(key => typeof record[key] !== "boolean")) {
     throw new Error("Invalid Rich code blocks settings.");
   }
   // Legacy v1 inkColor is accepted above but deliberately omitted: theme Text
   // now owns neutral ink. Reads never rewrite disk; normal saves drop the key.
-  return { version: 1, revision: record.revision as number, chemicalStructures: record.chemicalStructures as boolean,
+  return { version: 1, revision: record.revision as number, chemicalStructures: record.chemicalStructuresUnavailable === true ? false : record.chemicalStructures as boolean, ...(record.chemicalStructuresUnavailable === true ? { chemicalStructuresUnavailable: true } : {}),
     musicalNotation: record.musicalNotation as boolean, technicalDiagrams: record.technicalDiagramsUnavailable === true ? false : record.technicalDiagrams as boolean, ...(record.technicalDiagramsUnavailable === true ? { technicalDiagramsUnavailable: true } : {}) };
 }
 

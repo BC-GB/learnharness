@@ -39,6 +39,10 @@ test("technical-diagram instructions cover the observed TeX authoring failures",
 });
 
 test("UTF-8 source/output bounds are enforced without trimming valid payloads", () => {
+  assert.equal(SOURCE_LIMITS.smiles, 512);
+  assert.equal(SOURCE_LIMITS.abc, 1024);
+  checkSource("abc", "X".repeat(1024));
+  assert.throws(() => checkSource("abc", "X".repeat(1025)));
   checkSource("smiles", "C".repeat(SOURCE_LIMITS.smiles));
   assert.throws(() => checkSource("smiles", "C".repeat(SOURCE_LIMITS.smiles + 1)));
   assert.throws(() => checkSource("smiles", "é".repeat(SOURCE_LIMITS.smiles)));

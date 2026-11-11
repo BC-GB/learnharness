@@ -33,7 +33,7 @@ import {activate} from '/main.js';
 import {sanitizeSvg,RenderCache} from '/test-utils.js';
 window.sanitizeSvg=sanitizeSvg;window.RenderCache=RenderCache;
 const renders=new Map(), mounts=new Map(), notifications=new Set(), reconnects=new Set();
-let settings={version:1,revision:0,chemicalStructures:false,musicalNotation:false,technicalDiagrams:false,technicalDiagramsUnavailable:${deployedPolicy},inkColor:'black'};let registration, ownedCleanup;
+let settings={version:1,revision:0,chemicalStructures:false,musicalNotation:false,technicalDiagrams:false,technicalDiagramsUnavailable:${deployedPolicy},chemicalStructuresUnavailable:${deployedPolicy},inkColor:'black'};let registration, ownedCleanup;
 window.host={settings, schema:null, renders, mounts, calls:[],
 async enable(family,enabled=true){const row=this.schema.rows.find(row=>row.key===family);await row.onChange(enabled)},
 setTextColor(color){document.documentElement.style.setProperty('--foreground',color)},
@@ -113,19 +113,30 @@ try {
   assert.equal((await render("disabled", "smiles", "CCO")).raw, true);
   if (deployedPolicy) {
     assert.equal(await page.evaluate(() => host.schema.rows.find(row => row.key === 'technicalDiagrams').disabled), true);
-    for (const family of ['chemicalStructures','musicalNotation']) await page.evaluate(f => host.enable(f), family);
-    assert.deepEqual(await page.evaluate(() => [...host.renders.keys()]), ['smiles','abc']);
-    const cases = [['smiles','CCO'], ['smiles','C'.repeat(2048)], ['abc','X:1\nM:4/4\nL:1/4\nK:C\nC D E F |]'], ['abc','X:1\nM:4/4\nL:1/8\nK:C\n'+'C '.repeat(7900)]];
+    for (const family of ['musicalNotation']) await page.evaluate(f => host.enable(f), family);
+    assert.deepEqual(await page.evaluate(() => [...host.renders.keys()]), ['abc']);
+    const staticProof = await page.evaluate(() => {
+      const source = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" onload="window.pwned=1"><script>window.pwned=2</script><foreignObject><iframe src="/api/settings"/></foreignObject><image href="https://evil.invalid/x"/><style>@import url(https://evil.invalid/css);</style><path d="M0 0L10 10" onclick="window.pwned=3"/></svg>';
+      const svg = sanitizeSvg(source,'adversarial','smiles'); document.body.append(svg);
+      return { html:svg.outerHTML, compromised:!!window.pwned };
+    });
+    assert.equal(staticProof.compromised,false); assert.doesNotMatch(staticProof.html,/script|foreignObject|iframe|image|onload|onclick|evil\.invalid/);
+
+    console.log('STATIC_PROOF:'+JSON.stringify(staticProof));
+    assert.equal(await page.evaluate(() => host.schema.rows.find(row => row.key === 'chemicalStructures').disabled),true);
+    assert.equal((await render('disabled-smiles','smiles','C1CCCCC1'.repeat(64))).raw,true);
+    const header = 'X:1\nM:4/4\nL:1/8\nK:C\n';
+    const cases = [['abc',header+'C D E F |]'], ['abc',header+'C '.repeat(495)], ...['C99999999999999999999999999999','(999999999:99999999:999999999CDE','[CEG]99999999999999', '|: C D :|9999999999999', '('.repeat(990), '[CEG]'.repeat(190), 'C/9999999999999999999999', 'C>'.repeat(490)].map(x=>['abc',header+x])];
     const results = [];
-    for (let i=0;i<cases.length;i++) { const result = await bounded(render('policy-'+i,...cases[i]),15000); results.push(result); assert.ok(result.ms < 2500, JSON.stringify(result)); if(i===0||i===2) assert.ok(result.svg,JSON.stringify(result)); }
-    for (const [lang,n] of [['smiles',2049],['abc',16385]]) assert.match((await render('cap-'+lang,lang,'C'.repeat(n))).error,/limit/);
+    for (let i=0;i<cases.length;i++) { const result = await bounded(render('policy-'+i,...cases[i]),15000); results.push(result); console.log('CASE_PROOF:'+JSON.stringify({index:i,ms:result.ms,svg:result.svg,error:result.error})); assert.ok(result.ms < 2500, JSON.stringify(result)); if(i===0||i===1) assert.ok(result.svg,JSON.stringify(result)); }
+    for (const [lang,n] of [['abc',1025]]) assert.match((await render('cap-'+lang,lang,'C'.repeat(n))).error,/limit/);
     assert.equal((await render('disabled-tex','tikz','\\def\\x{\\x}\\x')).raw,true);
     assert.ok(!requests.some(url => /tex-worker|core.dump|tex.wasm/.test(url)));
     assert.equal(await page.evaluate(() => window.texPosts),0);
     assert.deepEqual(errors,[]); assert.deepEqual(consoleErrors,[]);
     assert.ok(network.every(url => url.startsWith(base+'/') || url.startsWith('data:')));
-    fs.writeFileSync(path.join(evidence,'report.json'),JSON.stringify({deployedPolicy,buildHashes,results,requests,network,errors,consoleErrors},null,2));
-    console.log(JSON.stringify({deployedPolicy,results}));
+    fs.writeFileSync(path.join(evidence,'report.json'),JSON.stringify({deployedPolicy,buildHashes,results,staticProof,requests,network,errors,consoleErrors},null,2));
+    console.log('REPORT_JSON:'+fs.readFileSync(path.join(evidence,'report.json'),'utf8').replaceAll('\n',''));
   } else {
   for (const family of ["chemicalStructures", "musicalNotation", "technicalDiagrams"]) await page.evaluate(family => host.enable(family), family);
   assert.deepEqual(await page.evaluate(() => [...host.renders.keys()]), ["smiles", "abc", "tikz"]);
@@ -398,7 +409,7 @@ C \arrow[r,"k"'] & D
   // Bounded malicious/near-limit inputs must leave the main-thread UI usable.
   const responsiveness = [];
   for (const [language, source] of [
-    ['smiles', 'C'.repeat(2048)],
+    ['smiles', 'C'.repeat(512)],
     ['smiles', 'C('.repeat(680) + 'C' + ')'.repeat(680)],
     ['abc', 'X:1\nM:4/4\nL:1/64\nK:C\n' + 'C'.repeat(16000)],
   ]) {

@@ -13,11 +13,11 @@ export function activate(ctx: PluginBackendContext): () => void {
     settings = { ...DEFAULT_SETTINGS };
   }
   const projectedSettings = (): Settings => ctx.browserWorkersAvailable === false
-    ? { ...settings, technicalDiagrams: false, technicalDiagramsUnavailable: true } : { ...settings };
+    ? { ...settings, technicalDiagrams: false, technicalDiagramsUnavailable: true, chemicalStructures: false, chemicalStructuresUnavailable: true } : { ...settings };
   const instructionDisposers: (() => void)[] = [];
   const updateInstructions = () => {
     instructionDisposers.splice(0).forEach(dispose => dispose());
-    for (const family of FAMILIES) if (settings[family] && !(family === "technicalDiagrams" && ctx.browserWorkersAvailable === false)) {
+    for (const family of FAMILIES) if (settings[family] && !((family === "technicalDiagrams" || family === "chemicalStructures") && ctx.browserWorkersAvailable === false)) {
       instructionDisposers.push(ctx.registerInstructions({ agents: ["prober", "teacher", "practice"], text: INSTRUCTIONS[family] }));
     }
   };
@@ -49,7 +49,7 @@ export function activate(ctx: PluginBackendContext): () => void {
   const unregisterSave = ctx.handle("set-family", input => {
     assertActive();
     const { family, enabled } = parseChange(input);
-    if (family === "technicalDiagrams" && enabled && ctx.browserWorkersAvailable === false) throw new Error("Technical diagrams are unavailable under this deployment’s browser security policy. No browser permission has been changed.");
+    if ((family === "technicalDiagrams" || family === "chemicalStructures") && enabled && ctx.browserWorkersAvailable === false) throw new Error("This renderer is unavailable under this deployment’s browser security policy. No browser permission has been changed.");
     if (settings[family] === enabled) return projectedSettings();
     return commit({ ...settings, revision: nextRevision(), [family]: enabled }, true);
   });

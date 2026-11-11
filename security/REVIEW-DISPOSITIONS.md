@@ -79,8 +79,11 @@ Upstream Rich Code's TeX engine requires a browser Worker and WebAssembly. The
 hardened gateway forbids browser Workers, so the host explicitly reports this
 capability unavailable, suppresses TeX instructions and rejects attempts to
 enable it. Existing saved preferences are not rewritten. The gateway CSP is not
-relaxed to make a plugin run. SMILES and ABC rendering still run on the browser
-main thread and require responsiveness and resource probes before deployment.
+relaxed to make a plugin run. Chemical structures are also unavailable in the
+hardened composition: adversarial SMILES inputs can monopolize the main thread
+even with a small source limit. ABC notation is limited to 1 KiB and tested with
+malformed, nested and expanded-count inputs. Those input limits and probes are
+not a hard CPU or memory isolation guarantee.
 Side-conversation newline-delimited JSON uses plain-text streaming through the
 existing gateway content-type policy; no new gateway MIME or network allowance
 is introduced.

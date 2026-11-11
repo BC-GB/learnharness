@@ -12,7 +12,8 @@ export async function activate(ctx: PluginFrontendContext): Promise<() => void> 
   let resync: Promise<void> = Promise.resolve();
   const rows = (settings: Settings): PluginSettingsSchema["rows"] => FAMILIES.map(family => ({
     key: family, type: "toggle" as const, label: LABELS[family], value: settings[family],
-    disabled: family === "technicalDiagrams" && settings.technicalDiagramsUnavailable === true,
+    disabled: (family === "technicalDiagrams" && settings.technicalDiagramsUnavailable === true) || (family === "chemicalStructures" && settings.chemicalStructuresUnavailable === true),
+      ...(family === "chemicalStructures" && settings.chemicalStructuresUnavailable ? { description: "Unavailable in this deployment: complex molecules require an isolated renderer to protect browser responsiveness." } : {}),
     ...(family === "technicalDiagrams" && settings.technicalDiagramsUnavailable ? { description: "Unavailable under this deployment�s browser security policy. TeX requires a separately isolated renderer." } : {}),
     async onChange(enabled: boolean) {
       const accepted = await ctx.call("set-family", { family, enabled });

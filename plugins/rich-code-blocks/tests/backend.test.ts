@@ -133,11 +133,12 @@ test("deployment forbids TeX without rewriting saved preference or contributing 
  fs.writeFileSync(path.join(root, "settings.json"), original);
  const host = fixture(root, undefined, false); const off = host.activate();
  try {
-  assert.deepEqual(host.call("get-settings"), { ...saved, technicalDiagrams: false, technicalDiagramsUnavailable: true });
+  assert.deepEqual(host.call("get-settings"), { ...saved, technicalDiagrams: false, technicalDiagramsUnavailable: true, chemicalStructures: false, chemicalStructuresUnavailable: true });
   assert.equal(host.instructions.size, 0);
   assert.throws(() => host.call("set-family", { family: "technicalDiagrams", enabled: true }), /unavailable/);
   assert.equal(fs.readFileSync(path.join(root, "settings.json"), "utf8"), original);
-  host.call("set-family", { family: "chemicalStructures", enabled: true });
+  assert.throws(() => host.call("set-family", { family: "chemicalStructures", enabled: true }), /unavailable/);
+  host.call("set-family", { family: "musicalNotation", enabled: true });
   assert.equal(host.instructions.size, 1);
   assert.ok([...host.instructions].every(i => i.text !== INSTRUCTIONS.technicalDiagrams));
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, "settings.json"), "utf8")).technicalDiagrams, true);
