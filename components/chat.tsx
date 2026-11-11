@@ -42,7 +42,8 @@ import { useEnterSubmits } from "@/components/enter-submits";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { dockStateKey } from "@/components/dock-state-key";
 import { clearOpeningPrompt, readOpeningPromptEntry, stashOpeningPrompt, OPENING_PROMPT_FAILURE } from "@/components/opening-prompt";
-import { forwardDockWheel, useDockHeight } from "@/components/dock-height";
+import { useDockHeight } from "@/components/dock-height";
+import { bindDockScroll, DOCK_REVEAL_EVENT } from "@/components/dock-scroll";
 import { createDockMorph } from "@/components/dock-morph";
 import { QueuedSteersBody, type QueuedSteerLine } from "@/components/queued-steers";
 import { DictationBar, finishDictation, joinDictation, useDictation, type Dictation } from "@/components/dictation";
@@ -150,14 +151,6 @@ const MARGIN_GAP = 16;
 const MARGIN_MIN_W = 220;
 // The dock overlay's gradient band (h-24) — part of the reserved tail.
 const GRADIENT_H = 96;
-// Fold thresholds (owner, scroll round 1, tuned round 3): pixel distance
-// from the bottom — position, not velocity. Leave the bottom → the box
-// folds (visual only); reach it again → it re-opens. 96 (was 64, owner
-// round 3) tolerates a small peek upward without folding; the dead band
-// vs EXPAND_DIST absorbs trackpad drift.
-const COLLAPSE_DIST = 96;
-const EXPAND_DIST = 16;
-
 /**
  * Server-sync channel for artifact renderers: the CENTRAL jobs poll in Chat
  * calls syncFromServer() when a background job settles — the wake turn's
@@ -2715,22 +2708,6 @@ export function DockOverlay({
 		return () => ro.disconnect();
 	}, [scrollRef]);
 
-	// Wheel over the dock must still scroll the transcript (owner, scroll
-	// round 2): the overlay is a SIBLING of the scroller, so the browser's
-	// native scroll chaining stops at the overlay (the old in-flow dock
-	// chained for free). Internal scrollers — the question area, textarea
-	// overflow, the model menus — keep native scrolling, including their
-	// own edge chaining; only when nothing under the cursor can take the
-	// delta do we forward it to the transcript.
-	useEffect(() => {
-		const root = blockRef.current;
-		const el = scrollRef.current;
-		if (!root || !el) return;
-		const onWheel = (e: WheelEvent) => forwardDockWheel(e, root, el);
-		root.addEventListener("wheel", onWheel, { passive: false });
-		return () => root.removeEventListener("wheel", onWheel);
-	}, [scrollRef]);
-
 	// Explicit expand (bar click): the smooth scroll to the bottom takes
 	// hundreds of ms, during which the position is still legitimately inside
 	// the collapse zone — the machine would instantly re-collapse the dock
@@ -2743,6 +2720,7 @@ export function DockOverlay({
 	const expandIntentRef = useRef(false);
 	const intentTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const suppressFoldDuringReveal = () => {
+		scrollRef.current?.dispatchEvent(new Event(DOCK_REVEAL_EVENT));
 		expandIntentRef.current = true;
 		clearTimeout(intentTimerRef.current);
 		intentTimerRef.current = setTimeout(() => {
@@ -2794,35 +2772,23 @@ export function DockOverlay({
 	}, [pending, pluginQuestion, unreadablePlugin, expanded, controller]);
 
 	useEffect(() => {
-		const el = scrollRef.current;
-		if (!el) return;
-		const onScroll = () => {
-			if (!pendingRef.current) return;
-			// Resize mute (owner, resize round): a geometry change re-clamps
-			// scrollTop and the browser emits the clamp as a scroll event —
-			// reading the transient position folded the box to the bar for a
-			// flicker. Real scrolling resumes after the brief mute window.
-			if (Date.now() - geometryAtRef.current < 400) return;
-			// Growth mute (owner round, 2026-10-05): the transcript growing
-			// under a live turn is not the learner leaving.
-			if (Date.now() - growthAtRef.current < 400) return;
-			const d = el.scrollHeight - el.clientHeight - el.scrollTop;
-			if (expandedRef.current) {
-				// INTENT-GATED FOLD (owner ruling, 2026-10-05): distance alone
-				// folded on stick-to-bottom's catch-up transients; a real fold
-				// needs the distance AND stick-to-bottom agreeing the learner
-				// left the bottom.
-				if (d > COLLAPSE_DIST && !expandIntentRef.current && !atBottomRef.current) setExpanded(false);
-			} else if (d < EXPAND_DIST) {
-				// Teach checks stay collapsed until the learner opens them (W5): the
-				// at-bottom auto-expand would pop the form over the teaching.
-				if (requiresRevealRef.current && !revealedRef.current) return;
-				setExpanded(true);
-				void scrollToBottom();
-			}
-		};
-		el.addEventListener("scroll", onScroll, { passive: true });
-		return () => el.removeEventListener("scroll", onScroll);
+		const scroll = scrollRef.current;
+		const dock = blockRef.current;
+		if (!scroll || !dock) return;
+		return bindDockScroll({
+			scroll, dock,
+			state: () => ({
+				ownsDock: pendingRef.current,
+				expanded: expandedRef.current,
+				following: atBottomRef.current,
+				expandIntent: expandIntentRef.current,
+				revealPending: requiresRevealRef.current && !revealedRef.current,
+				geometryAt: geometryAtRef.current,
+				growthAt: growthAtRef.current,
+			}),
+			setExpanded,
+			scrollToBottom: () => { void scrollToBottom(); },
+		});
 	}, [scrollRef, scrollToBottom]);
 
 	// The settled block height (gradient excluded), offered to the spacer.
@@ -2940,17 +2906,14 @@ export function DockOverlay({
 									compactionRunning={compactionRunning}
 								/>
 							) : pluginPractice ? (
-								<PluginProblemDock {...pluginPractice} viewReader={customViewReader} expanded={expanded} onExpand={() => { setExpanded(true); void suppressFoldDuringReveal(); }} />
+								<PluginProblemDock {...pluginPractice} viewReader={customViewReader} expanded={expanded} onExpand={expandAndReveal} />
 							) : practice ? (
 								<PracticeDock
 									viewReader={practiceViewReader}
 									problemCallId={practice.toolCallId}
 									input={practice.input as { statement: string }}
 									expanded={expanded}
-									onExpand={() => {
-										setExpanded(true);
-										void suppressFoldDuringReveal();
-									}}
+									onExpand={expandAndReveal}
 									onSubmit={onSubmitThinking}
 									onPrepareSubmission={onPrepareThinking}
 									hasPendingInput={pendingThinkingInput}

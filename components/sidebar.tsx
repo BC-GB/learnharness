@@ -15,6 +15,7 @@ import { CoverageMenuBlock } from "@/components/extraction-coverage";
 import { LhMark } from "@/components/lh-mark";
 import { BrailleSpinner } from "@/components/braille-spinner";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
+import { FloatingPreferenceChat } from "@/components/settings/preference-chat";
 import { SettingsDialogProvider, useSettingsDialog } from "@/components/settings/settings-dialog.tsx";
 import { Hint } from "@/components/ui/hint";
 import { Button } from "@/components/ui/button";
@@ -970,6 +971,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 				    matters for the events it dispatches, never for DOM priority. */}
 				<KeyboardShortcuts />
 				<PluginWidgets />
+				<FloatingPreferenceChat />
 			</SettingsDialogProvider></InteractionLayersProvider>
 		</HostContentRootContext.Provider>
 		</HostRouteLifetimeProvider>
