@@ -10,15 +10,15 @@ import type { PrepareThinkingSubmission } from "../components/plugin-submission-
 
 // DOM-only event tests with an injected upload response. No browser, live
 // server, filesystem image reads, provider calls or clipboard permission.
-const imagePath = `/state/courses/algebra/pasted-images/${"a".repeat(64)}.png`;
+const imagePath = `/state/courses/course_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/pasted-images/${"a".repeat(64)}.png`;
 const image = () => new File(["synthetic raster"], "working.png", { type: "image/png" });
 let cleanup: (() => Promise<void>) | undefined;
 afterEach(async () => { await cleanup?.(); cleanup = undefined; });
 
 async function fixture(options: { prepare?: PrepareThinkingSubmission; custom?: boolean } = {}) {
 	const { window: win, document: doc } = parseHTML("<html><body><div id='root'></div></body></html>");
-	doc.documentElement.dataset.courseId = "algebra";
-	const location = { href: "http://localhost/chat/practice?course=algebra", origin: "http://localhost" };
+	doc.documentElement.dataset.courseId = "course_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+	const location = { href: "http://localhost/chat/practice?course=course_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", origin: "http://localhost" };
 	Object.defineProperty(win, "location", { configurable: true, value: location });
 	Object.defineProperty(win, "lh", { configurable: true, value: undefined });
 	let active: Element = doc.body;
@@ -47,7 +47,7 @@ async function fixture(options: { prepare?: PrepareThinkingSubmission; custom?: 
 	const submissions: string[] = [];
 	const accepted = (capture: () => string, clear: (captured: string) => void) => { const value = capture(); submissions.push(value); clear(value); };
 	function draw() {
-		root.render(<CourseProvider course={{ id: "algebra", name: "Algebra", readOnlyLibrary: true }}>
+		root.render(<CourseProvider course={{ id: "course_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", name: "Algebra", readOnlyLibrary: true }}>
 			<PracticeDock problemCallId="problem-1" input={{ statement: "Show your working." }} expanded={expanded} onExpand={() => { expanded = true; draw(); }}
 				onSubmit={value => submissions.push(value)} onPrepareSubmission={options.prepare ?? accepted} preparing={preparing} compactionRunning={compacting}
 				customInput={options.custom ? { thinking: customThinking, onThinkingChange(value) { customThinking = value; draw(); },
@@ -104,12 +104,12 @@ test("thinking image paste creates a course-scoped removable preview and only ex
 	assert.equal(f.send.disabled, true);
 	assert.equal((await f.paste([image()])).defaultPrevented, true);
 	assert.equal(f.uploads.length, 1);
-	assert.equal(f.uploads[0]!.url, "/api/pasted-images?course=algebra");
-	assert.equal(new Headers(f.uploads[0]!.init?.headers).get("x-learnharness-course"), "algebra");
+	assert.equal(f.uploads[0]!.url, "/api/pasted-images?course=course_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+	assert.equal(new Headers(f.uploads[0]!.init?.headers).get("x-learnharness-course"), "course_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 	assert.equal(f.submissions.length, 0);
 	await f.resolve();
 	assert.equal(f.value.trim(), quoteFilePath(imagePath));
-	assert.equal(f.doc.querySelector("img")?.getAttribute("src"), `/api/pasted-images?name=${"a".repeat(64)}.png&course=algebra`);
+	assert.equal(f.doc.querySelector("img")?.getAttribute("src"), `/api/pasted-images?name=${"a".repeat(64)}.png&course=course_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`);
 	assert.equal(f.send.disabled, false);
 	assert.equal(f.submissions.length, 0);
 	await act(async () => f.send.click());
@@ -124,7 +124,7 @@ test("thinking picker and preview removal keep ordinary text and its paste behav
 	f.caret(f.value.length);
 	await act(async () => f.doc.querySelector<HTMLButtonElement>('[data-testid="attach-files"]')!.click());
 	assert.equal(f.pickerClicks, 1);
-	assert.match(f.picker.accept, /image\/png/);
+	assert.match(f.picker.getAttribute("accept") ?? "", /image\/png/);
 	await f.pick([image()]); await f.resolve();
 	assert.match(f.value, /^My working/);
 	await act(async () => f.doc.querySelector<HTMLButtonElement>('[aria-label="Remove attached image"]')!.click());
@@ -170,13 +170,13 @@ test("invalid or excessive attachments and upload errors retain draft without su
 test("a delayed upload cannot insert after course or chat navigation, and unmount aborts it", async () => {
 	const f = await fixture(); await f.text("Original draft");
 	await f.paste([image()]);
-	f.doc.documentElement.dataset.courseId = "geometry";
+	f.doc.documentElement.dataset.courseId = "course_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 	await f.resolve();
 	assert.equal(f.value, "Original draft");
 	assert.equal(f.doc.querySelector("img"), null);
-	f.doc.documentElement.dataset.courseId = "algebra";
+	f.doc.documentElement.dataset.courseId = "course_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 	await f.paste([image()]);
-	f.location.href = "http://localhost/chat/other?course=algebra";
+	f.location.href = "http://localhost/chat/other?course=course_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 	await f.resolve(1);
 	assert.equal(f.value, "Original draft");
 	await f.paste([image()]);
@@ -198,13 +198,10 @@ test("accepted asynchronous thinking submission cannot clear edits made after ca
 	assert.equal(f.value, "More working after submit");
 });
 
-test("custom thinking uses the shared attachment flow while keeping its readiness and preparation gates", async () => {
-	const f = await fixture({ custom: true });
-	await f.update({ customReady: false });
+test("preparation and compaction gates keep image submission explicit", async () => {
+	const f = await fixture();
 	await f.paste([image()]); await f.resolve();
-	assert.equal(f.send.disabled, true);
-	await f.enter(); assert.equal(f.submissions.length, 0);
-	await f.update({ customReady: true, preparing: true });
+	await f.update({ preparing: true });
 	await f.paste([image()]);
 	assert.equal(f.uploads.length, 1, "An occupied submission cannot accept a new upload");
 	await f.enter(); assert.equal(f.submissions.length, 0);
@@ -212,6 +209,6 @@ test("custom thinking uses the shared attachment flow while keeping its readines
 	await f.enter(); assert.equal(f.submissions.length, 0);
 	await f.update({ compacting: false });
 	await act(async () => f.send.click());
-	assert.deepEqual(f.submissions, [quoteFilePath(imagePath) + " "]);
+	assert.deepEqual(f.submissions, [quoteFilePath(imagePath)]);
 	assert.equal(f.value, "");
 });

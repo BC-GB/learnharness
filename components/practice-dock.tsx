@@ -173,7 +173,7 @@ export function PracticeDock({ viewReader, problemCallId, input, expanded, onExp
 				<div className="px-2.5 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
 					YOUR THINKING
 				</div>
-				{attachments.images.length > 0 && <div className="flex flex-wrap gap-2 px-2.5 pt-2" data-testid="pasted-image-previews">
+				{!customInput && attachments.images.length > 0 && <div className="flex flex-wrap gap-2 px-2.5 pt-2" data-testid="pasted-image-previews">
 					{attachments.images.map(image => <div key={image.start} className="relative rounded border bg-muted/50 p-1">
 						{/* eslint-disable-next-line @next/next/no-img-element -- authenticated same-origin, already normalized raster */}
 						<img src={image.url} alt="Attached image" className="h-20 max-w-40 rounded object-contain" />
@@ -186,7 +186,7 @@ export function PracticeDock({ viewReader, problemCallId, input, expanded, onExp
 					ref={editorRef}
 					value={thinking}
 					onValueChange={changeThinking}
-					onPasteImages={files => { if (!preparing) void attachments.paste(files); }}
+					onPasteImages={customInput ? undefined : files => { if (!preparing) void attachments.paste(files); }}
 					onKeyDown={(e) => {
 						if (!isInteractionScopeEligible(e.currentTarget, controller)) return;
 						// Esc ends dictation — stopPropagation claims it (the
@@ -218,7 +218,7 @@ export function PracticeDock({ viewReader, problemCallId, input, expanded, onExp
 					<span aria-hidden className="pl-1.5 text-xs text-muted-foreground">
 						{compactionRunning ? "compacting session…" : "↵ submits · ⇧↵ newline"}
 					</span>
-					<AttachFilesButton editorRef={editorRef} onImagesSelected={files => { if (!preparing) void attachments.paste(files); }} />
+					{!customInput && <AttachFilesButton editorRef={editorRef} onImagesSelected={files => { if (!preparing) void attachments.paste(files); }} />}
 					<Button
 						type="button"
 						data-testid="practice-send"
