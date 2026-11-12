@@ -1,7 +1,8 @@
 import { forwardDockWheel } from "./dock-height";
-import { RESPONSE_BOTTOM_EVENT, RESPONSE_START_EVENT } from "./streaming-response-anchor";
+import { RESPONSE_BOTTOM_EVENT, RESPONSE_START_EVENT, RESPONSE_NAVIGATE_EVENT } from "./streaming-response-anchor";
 
 export const DOCK_REVEAL_EVENT = "lh-dock-reveal";
+export const DOCK_COLLAPSE_EVENT = "lh-dock-collapse";
 
 export interface DockScrollState {
 	ownsDock: boolean;
@@ -29,6 +30,8 @@ export function bindDockScroll({ scroll, dock, state, setExpanded, scrollToBotto
 	let inputDirection = 0;
 	let draggingScrollbar = false;
 	let touchY: number | undefined;
+	let keepCollapsed = false;
+	const navigate = () => scroll.dispatchEvent(new Event(RESPONSE_NAVIGATE_EVENT));
 	const nestedConsumes = (target: EventTarget | null, direction: number) => {
 		for (let n = target as HTMLElement | null; n && n !== scroll; n = n.parentElement) {
 			if (!(n instanceof HTMLElement) || !/^(auto|scroll)$/.test(getComputedStyle(n).overflowY)) continue;
@@ -46,6 +49,7 @@ export function bindDockScroll({ scroll, dock, state, setExpanded, scrollToBotto
 		inputTop = scroll.scrollTop;
 		inputUntil = now() + 500;
 		inputDirection = direction;
+		navigate();
 	};
 	const wheel = (event: WheelEvent) => {
 		if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.shiftKey ||
@@ -63,10 +67,12 @@ export function bindDockScroll({ scroll, dock, state, setExpanded, scrollToBotto
 			inputTop = before;
 			inputUntil = now() + 500;
 			inputDirection = Math.sign(event.deltaY);
+			navigate();
 		}
 	};
 	const keydown = (event: KeyboardEvent) => {
 		const target = event.target as HTMLElement | null;
+		if (target && !scroll.contains(target) && target !== scroll.ownerDocument.body && target !== scroll.ownerDocument.documentElement) return;
 		if (event.defaultPrevented || event.altKey || event.metaKey ||
 			target?.isContentEditable || target?.closest("input, textarea, select, button, [contenteditable]:not([contenteditable=false])")) return;
 		const direction = ["ArrowUp", "PageUp", "Home"].includes(event.key) ? -1
@@ -83,10 +89,15 @@ export function bindDockScroll({ scroll, dock, state, setExpanded, scrollToBotto
 	};
 	const touchend = () => { touchY = undefined; };
 	const pointerdown = (event: PointerEvent) => {
+		if (event.button === 1) navigate(); // Native middle-button autoscroll.
 		if (event.target === scroll) {
 			draggingScrollbar = true;
 			noteInput();
 		}
+	};
+	const pointermove = (event: PointerEvent) => {
+		const selection = scroll.ownerDocument.getSelection?.();
+		if ((event.buttons & 1) && selection && !selection.isCollapsed && scroll.contains(selection.anchorNode)) noteInput();
 	};
 	const pointerup = () => { if (draggingScrollbar) inputUntil = 0; draggingScrollbar = false; };
 	const resetInput = () => {
@@ -95,6 +106,8 @@ export function bindDockScroll({ scroll, dock, state, setExpanded, scrollToBotto
 		draggingScrollbar = false;
 		touchY = undefined;
 	};
+	const collapse = () => { resetInput(); keepCollapsed = true; };
+	const reveal = () => { resetInput(); keepCollapsed = false; };
 	const onScroll = () => {
 		const top = scroll.scrollTop;
 		const delta = top - inputTop;
@@ -109,7 +122,8 @@ export function bindDockScroll({ scroll, dock, state, setExpanded, scrollToBotto
 		const distance = scroll.scrollHeight - scroll.clientHeight - top;
 		if (s.expanded) {
 			if (distance > 96 && (manual || (!s.expandIntent && !s.following))) setExpanded(false);
-		} else if (distance < 16 && !s.revealPending) {
+		} else if (distance < 16 && !s.revealPending && (!keepCollapsed || manual)) {
+			keepCollapsed = false;
 			setExpanded(true);
 			scrollToBottom();
 		}
@@ -120,13 +134,15 @@ export function bindDockScroll({ scroll, dock, state, setExpanded, scrollToBotto
 	scroll.addEventListener("touchmove", touchmove, { passive: true });
 	scroll.addEventListener("touchend", touchend, { passive: true });
 	scroll.addEventListener("touchcancel", touchend, { passive: true });
-	scroll.addEventListener("keydown", keydown);
+	scroll.ownerDocument.addEventListener("keydown", keydown);
 	scroll.addEventListener("pointerdown", pointerdown);
+	scroll.addEventListener("pointermove", pointermove);
 	scroll.ownerDocument.addEventListener("pointerup", pointerup);
 	scroll.ownerDocument.addEventListener("pointercancel", pointerup);
-	scroll.addEventListener(RESPONSE_BOTTOM_EVENT, resetInput);
+	scroll.addEventListener(RESPONSE_BOTTOM_EVENT, reveal);
 	scroll.addEventListener(RESPONSE_START_EVENT, resetInput);
-	scroll.addEventListener(DOCK_REVEAL_EVENT, resetInput);
+	scroll.addEventListener(DOCK_REVEAL_EVENT, reveal);
+	scroll.addEventListener(DOCK_COLLAPSE_EVENT, collapse);
 	scroll.addEventListener("scroll", onScroll, { passive: true });
 	return () => {
 		scroll.removeEventListener("wheel", wheel);
@@ -135,13 +151,15 @@ export function bindDockScroll({ scroll, dock, state, setExpanded, scrollToBotto
 		scroll.removeEventListener("touchmove", touchmove);
 		scroll.removeEventListener("touchend", touchend);
 		scroll.removeEventListener("touchcancel", touchend);
-		scroll.removeEventListener("keydown", keydown);
+		scroll.ownerDocument.removeEventListener("keydown", keydown);
 		scroll.removeEventListener("pointerdown", pointerdown);
+		scroll.removeEventListener("pointermove", pointermove);
 		scroll.ownerDocument.removeEventListener("pointerup", pointerup);
 		scroll.ownerDocument.removeEventListener("pointercancel", pointerup);
-		scroll.removeEventListener(RESPONSE_BOTTOM_EVENT, resetInput);
+		scroll.removeEventListener(RESPONSE_BOTTOM_EVENT, reveal);
 		scroll.removeEventListener(RESPONSE_START_EVENT, resetInput);
-		scroll.removeEventListener(DOCK_REVEAL_EVENT, resetInput);
+		scroll.removeEventListener(DOCK_REVEAL_EVENT, reveal);
+		scroll.removeEventListener(DOCK_COLLAPSE_EVENT, collapse);
 		scroll.removeEventListener("scroll", onScroll);
 	};
 }

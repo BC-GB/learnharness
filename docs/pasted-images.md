@@ -4,6 +4,11 @@ Paste an image with Ctrl+V (Cmd+V on macOS), or use the paperclip to choose
 an image. A thumbnail appears above the draft. Remove it with × or send
 normally. Pasting does not start a turn. Normal text pasting is unchanged.
 
+The practice **Your thinking** field supports the same paste, paperclip and
+removable previews. **Submit thinking** waits until an upload finishes;
+collapsing the problem keeps the draft and pending attachment intact. An
+upload error leaves the draft available to edit or retry.
+
 The browser receives only the clipboard files supplied by that paste event;
 there is no background clipboard reader or additional clipboard permission.
 HTML image URLs are not fetched. PNG, JPEG, GIF, WebP and BMP are accepted,

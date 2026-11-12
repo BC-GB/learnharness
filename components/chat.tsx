@@ -43,7 +43,7 @@ import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { dockStateKey } from "@/components/dock-state-key";
 import { clearOpeningPrompt, readOpeningPromptEntry, stashOpeningPrompt, OPENING_PROMPT_FAILURE } from "@/components/opening-prompt";
 import { useDockHeight } from "@/components/dock-height";
-import { bindDockScroll, DOCK_REVEAL_EVENT } from "@/components/dock-scroll";
+import { bindDockScroll, DOCK_REVEAL_EVENT, DOCK_COLLAPSE_EVENT } from "@/components/dock-scroll";
 import { createDockMorph } from "@/components/dock-morph";
 import { QueuedSteersBody, type QueuedSteerLine } from "@/components/queued-steers";
 import { DictationBar, finishDictation, joinDictation, useDictation, type Dictation } from "@/components/dictation";
@@ -2456,7 +2456,7 @@ export function DockOverlay({
 	 *  {toolCallId, input} — dock ownership exactly like a pending
 	 *  question (the composer is replaced); null in teaching sessions. */
 	practice: { toolCallId: string; input: unknown } | null;
-	pluginPractice?: Omit<PluginProblemDockProps, "expanded" | "onExpand">;
+	pluginPractice?: Omit<PluginProblemDockProps, "expanded" | "onExpand" | "onCollapse">;
 	/** (commit, text) — the practice dock's two submit lanes. */
 	onSubmitThinking: (text: string) => void;
 	/** Teach-phase pending question: arrives collapsed behind the reveal button (W5). */
@@ -2500,7 +2500,9 @@ export function DockOverlay({
 	setupCta?: React.ReactNode;
 }) {
 	const controller = useOptionalInteractionLayers();
-	const { isAtBottom, scrollToBottom, scrollRef } = useStickToBottomContext();
+	const { isAtBottom, scrollToBottom, stopScroll, scrollRef } = useStickToBottomContext();
+	const scrollToBottomRef = useRef(scrollToBottom);
+	scrollToBottomRef.current = scrollToBottom;
 	// Render-fresh bottom state (flicker round): the arrival block below reads
 	// it DURING RENDER — the same value the after-paint effect used to read a
 	// frame too late. Assigned per render like the other refs below.
@@ -2737,6 +2739,13 @@ export function DockOverlay({
 		setExpanded(true);
 		void suppressFoldDuringReveal();
 	};
+	const collapseProblem = () => {
+		clearTimeout(intentTimerRef.current);
+		expandIntentRef.current = false;
+		stopScroll();
+		scrollRef.current?.dispatchEvent(new Event(DOCK_COLLAPSE_EVENT));
+		setExpanded(false);
+	};
 	const expandAndRevealRef = useRef(expandAndReveal);
 	expandAndRevealRef.current = expandAndReveal;
 	// ENTER OPENS THE WAITING CHECK (owner, keyboard round 2026-10-06):
@@ -2787,9 +2796,9 @@ export function DockOverlay({
 				growthAt: growthAtRef.current,
 			}),
 			setExpanded,
-			scrollToBottom: () => { void scrollToBottom(); },
+			scrollToBottom: () => { void scrollToBottomRef.current(); },
 		});
-	}, [scrollRef, scrollToBottom]);
+	}, [scrollRef]);
 
 	// The settled block height (gradient excluded), offered to the spacer.
 	// Only ever called with NATURAL heights — never the animated mid-morph
@@ -2906,7 +2915,7 @@ export function DockOverlay({
 									compactionRunning={compactionRunning}
 								/>
 							) : pluginPractice ? (
-								<PluginProblemDock {...pluginPractice} viewReader={customViewReader} expanded={expanded} onExpand={expandAndReveal} />
+								<PluginProblemDock {...pluginPractice} viewReader={customViewReader} expanded={expanded} onExpand={expandAndReveal} onCollapse={collapseProblem} />
 							) : practice ? (
 								<PracticeDock
 									viewReader={practiceViewReader}
@@ -2914,6 +2923,7 @@ export function DockOverlay({
 									input={practice.input as { statement: string }}
 									expanded={expanded}
 									onExpand={expandAndReveal}
+									onCollapse={collapseProblem}
 									onSubmit={onSubmitThinking}
 									onPrepareSubmission={onPrepareThinking}
 									hasPendingInput={pendingThinkingInput}

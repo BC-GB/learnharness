@@ -2,7 +2,7 @@
 
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { ViewReaderRef } from "./session-view-readers";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronRightIcon, ChevronDownIcon } from "lucide-react";
 import { ToolContentResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import { joinDictation, useDictationTarget } from "@/components/dictation";
@@ -10,6 +10,8 @@ import { useEnterSubmits } from "@/components/enter-submits";
 import { useOptionalInteractionLayers } from "./interaction-layers";
 import { isInteractionScopeEligible } from "./plugin-input-focus";
 import { PathInput } from "@/components/path-input";
+import { AttachFilesButton } from "@/components/attach-files-button";
+import { usePastedImages } from "@/components/use-pasted-images";
 import type { PrepareThinkingSubmission } from "./plugin-submission-adapters";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +45,7 @@ export interface PracticeDockProps {
 	/** Collapse state, owned by the DockOverlay. */
 	expanded: boolean;
 	onExpand: () => void;
+	onCollapse?: () => void;
 	/** text — POST {type:"thinking"} (one lane; the register is read from the text). */
 	onSubmit: (text: string) => void;
 	onPrepareSubmission?: PrepareThinkingSubmission;
@@ -65,7 +68,7 @@ export interface PracticeDockProps {
 	compactionRunning?: boolean;
 }
 
-export function PracticeDock({ viewReader, problemCallId, input, expanded, onExpand, onSubmit, onPrepareSubmission, customInput, hasPendingInput = false, preparing = false, onEscape, compactionRunning = false }: PracticeDockProps) {
+export function PracticeDock({ viewReader, problemCallId, input, expanded, onExpand, onCollapse, onSubmit, onPrepareSubmission, customInput, hasPendingInput = false, preparing = false, onEscape, compactionRunning = false }: PracticeDockProps) {
 	const controller = useOptionalInteractionLayers();
 	const rootRef = useRef<HTMLElement>(null);
 	const [nativeThinking, setNativeThinking] = useState("");
@@ -77,6 +80,12 @@ export function PracticeDock({ viewReader, problemCallId, input, expanded, onExp
 	// the tail, never a stale closure.
 	const thinkingRef = useRef(thinking); thinkingRef.current = thinking;
 	const editRevision = useRef(0);
+	const editorRef = useRef<HTMLDivElement>(null);
+	const changeThinking = (value: string) => {
+		thinkingRef.current = value; editRevision.current++;
+		setThinking(value);
+	};
+	const attachments = usePastedImages(editorRef, thinking, changeThinking);
 	useLayoutEffect(() => {
 		if (!viewReader) return;
 		const read = () => thinkingRef.current;
@@ -98,7 +107,7 @@ export function PracticeDock({ viewReader, problemCallId, input, expanded, onExp
 
 	useLayoutEffect(() => { viewReader?.changed?.(); }, [viewReader, thinking]);
 	const submit = () => {
-		if (compactionRunning || preparing) return;
+		if (compactionRunning || preparing || attachments.uploading) return;
 		const prepare = customInput?.prepare ?? onPrepareSubmission;
 		if (prepare) {
 			if (customInput ? !customInput.ready : (!thinkingRef.current.trim() && !hasPendingInput)) return;
@@ -124,7 +133,6 @@ export function PracticeDock({ viewReader, problemCallId, input, expanded, onExp
 	/* ── the collapsed bar ── */
 	const bar = (
 			<button
-				ref={element => { if (!customInput) rootRef.current = element; }}
 				type="button"
 				data-testid="practice-dock-bar"
 				onClick={onExpand}
@@ -135,23 +143,29 @@ export function PracticeDock({ viewReader, problemCallId, input, expanded, onExp
 				<span className="min-w-0 flex-1 truncate">{input.statement}</span>
 			</button>
 		);
-	if (!expanded && !customInput) return bar;
+	// Keep the editor mounted while collapsed: a pending image upload must
+	// still insert into its original draft, never a detached editor.
 
 	/* ── the expanded form ── */
 	return (
 		<div ref={element => { rootRef.current = element; }} data-testid="practice-dock" data-problem={problemCallId}>
 			{!expanded && bar}
 			<div hidden={!expanded}>
+			<div className="flex items-center justify-between px-4 pt-3 pb-1">
+				<div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Problem</div>
+				{onCollapse && <Button type="button" variant="ghost" size="sm" data-testid="practice-collapse" onClick={onCollapse} className="h-7 gap-1 px-2 text-xs text-muted-foreground">
+					<ChevronDownIcon className="size-3.5" aria-hidden="true" />Collapse problem
+				</Button>}
+			</div>
 			{/* The agent's half: the 'Problem' eyebrow (mirroring the quiz
 			    cards' label row — owner round, 2026-10-05) + the statement,
 			    markdown + LaTeX rendered, capped by the measured column
 			    (--dock-max-h; the old fixed 40vh cut long problems short). */}
-			<div data-dock-scroll-area="" className="max-h-[var(--dock-max-h,40vh)] overflow-y-auto px-4 pt-3 pb-2">
-				<div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Problem</div>
+			{(expanded || customInput) && <div data-dock-scroll-area="" className="max-h-[var(--dock-max-h,40vh)] overflow-y-auto px-4 pb-2">
 				<div className="lh-prose text-[15px]">
 					<ToolContentResponse>{input.statement}</ToolContentResponse>
 				</div>
-			</div>
+			</div>}
 
 			{customInput?.editor}
 
@@ -159,17 +173,26 @@ export function PracticeDock({ viewReader, problemCallId, input, expanded, onExp
 			    Shift+Enter makes a newline — less to decide about. */}
 			<div
 				data-testid="practice-thinking-field"
+				data-attachment-composer=""
 				className="m-1.5 rounded-[10px] border border-border/70 bg-background/60 transition-colors focus-within:border-primary/50"
 			>
 				<div className="px-2.5 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
 					YOUR THINKING
 				</div>
+				{!customInput && attachments.images.length > 0 && <div className="flex flex-wrap gap-2 px-2.5 pt-2" data-testid="pasted-image-previews">
+					{attachments.images.map(image => <div key={image.start} className="relative rounded border bg-muted/50 p-1">
+						{/* eslint-disable-next-line @next/next/no-img-element -- authenticated same-origin, already normalized raster */}
+						<img src={image.url} alt="Attached image" className="h-20 max-w-40 rounded object-contain" />
+						<button type="button" aria-label="Remove attached image" onClick={() => attachments.remove(image.start, image.end)} className="absolute right-0 top-0 rounded bg-background px-1.5 text-sm">×</button>
+					</div>)}
+				</div>}
+				{attachments.uploading && <div role="status" className="px-2.5 pt-2 text-xs text-muted-foreground">Attaching image…</div>}
+				{attachments.error && <div role="alert" className="px-2.5 pt-2 text-xs text-destructive">{attachments.error}</div>}
 				<PathInput
+					ref={editorRef}
 					value={thinking}
-					onValueChange={(value) => {
-						thinkingRef.current = value; editRevision.current++;
-						setThinking(value);
-					}}
+					onValueChange={changeThinking}
+					onPasteImages={customInput ? undefined : files => { if (!preparing) void attachments.paste(files); }}
 					onKeyDown={(e) => {
 						if (!isInteractionScopeEligible(e.currentTarget, controller)) return;
 						// Esc ends dictation — stopPropagation claims it (the
@@ -201,10 +224,11 @@ export function PracticeDock({ viewReader, problemCallId, input, expanded, onExp
 					<span aria-hidden className="pl-1.5 text-xs text-muted-foreground">
 						{compactionRunning ? "compacting session…" : "↵ submits · ⇧↵ newline"}
 					</span>
+					{!customInput && <AttachFilesButton editorRef={editorRef} onImagesSelected={files => { if (!preparing) void attachments.paste(files); }} />}
 					<Button
 						type="button"
 						data-testid="practice-send"
-						disabled={(customInput ? !customInput.ready : (!thinking.trim() && !hasPendingInput)) || compactionRunning || preparing}
+						disabled={(customInput ? !customInput.ready : (!thinking.trim() && !hasPendingInput)) || compactionRunning || preparing || attachments.uploading}
 						onClick={() => submit()}
 						className="ml-auto h-9 rounded-[6px] px-3.5 text-sm font-medium"
 					>

@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { parseHTML } from "linkedom";
-import { bindDockScroll, DOCK_REVEAL_EVENT, type DockScrollState } from "../components/dock-scroll.ts";
+import { bindDockScroll, DOCK_REVEAL_EVENT, DOCK_COLLAPSE_EVENT, type DockScrollState } from "../components/dock-scroll.ts";
 import { RESPONSE_BOTTOM_EVENT, RESPONSE_START_EVENT } from "../components/streaming-response-anchor.tsx";
 
 function fixture() {
 	const { document, window } = parseHTML("<html><body><main></main><aside><div></div></aside></body></html>");
 	Object.assign(globalThis, {
+		Event: window.Event,
 		HTMLElement: window.HTMLElement,
 		getComputedStyle: (el: HTMLElement) => ({ overflowY: el.style.overflowY || "visible" }),
 	});
@@ -155,6 +156,23 @@ test("practice reopening uses the same hold-releasing reveal handler as question
 	const source = readFileSync(new URL("../components/chat.tsx", import.meta.url), "utf8");
 	assert.match(source, /<PracticeDock[\s\S]*?onExpand=\{expandAndReveal\}/);
 	assert.match(source, /<PluginProblemDock[^>]*onExpand=\{expandAndReveal\}/);
+	assert.match(source, /<PracticeDock[\s\S]*?onCollapse=\{collapseProblem\}/);
+	assert.match(source, /<PluginProblemDock[^>]*onCollapse=\{collapseProblem\}/);
 	assert.match(source, /const suppressFoldDuringReveal = \(\) => \{\s*scrollRef\.current\?\.dispatchEvent\(new Event\(DOCK_REVEAL_EVENT\)\)/);
 	assert.match(source, /const expandAndReveal = \(\) => \{\s*scrollRef\.current\?\.dispatchEvent\(new Event\(RESPONSE_BOTTOM_EVENT\)\)/);
+});
+
+test("explicit collapse remains closed through tokens, layout and completion at the bottom", () => {
+	const f = fixture(); f.fire(f.scroll, DOCK_COLLAPSE_EVENT); f.state.expanded = false;
+	f.grow(); f.move(400); f.tick(600); f.move(400);
+	f.fire(f.scroll, RESPONSE_START_EVENT); f.grow(); f.move(400);
+	assert.deepEqual(f.changes, [], "no scroll movement or growth may undo a collapse click");
+	f.move(200); f.wheel(f.scroll, 200); f.move(400);
+	assert.deepEqual(f.changes, [true], "deliberately returning to the bottom still reopens"); f.dispose();
+});
+
+test("explicit reveal clears the collapse latch", () => {
+	const f = fixture(); f.fire(f.scroll, DOCK_COLLAPSE_EVENT); f.state.expanded = false;
+	f.fire(f.scroll, DOCK_REVEAL_EVENT); f.tick(600); f.move(400);
+	assert.deepEqual(f.changes, [true]); f.dispose();
 });
