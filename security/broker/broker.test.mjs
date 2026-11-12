@@ -57,11 +57,17 @@ try {
  await test('restart does not replay pending approval',async()=>{
   const n=receipts.length,r=call(app,'/v1/responses','POST',payload).catch(e=>{assert.equal(e.code,'ECONNRESET');return {status:503}}),j=await pending();await broker.close();assert.equal((await r).status,503);broker=await startBroker(opts);assert.equal((await approve(j)).status,409);assert.equal(receipts.length,n);assert.deepEqual((await call(ctrl,'/pending')).json(),[]);
  });
- await test('URLs, headers, provider tools, persistence and oversized bodies denied',async()=>{
+ await test('URLs, headers, provider tools, persistence and oversized bodies denied',async t=>{
   assert.equal((await call(app,'/v1/responses?url=https://elsewhere','POST',payload)).status,404);
   assert.equal((await call(app,'/v1/responses','POST',payload,{authorization:'secret'})).status,400);
   for(const data of [{...payload,store:true},{...payload,tools:[{type:'web_search'}]},'x'.repeat(1024*1024+1)])assert.equal((await call(app,'/v1/responses','POST',data)).status,400);
-  await assert.rejects(()=>brokerFetch('https://evil.example/v1/responses',{method:'POST',body:'{}'}));
+  const n=receipts.length;
+  const request=t.mock.method(http,'request',()=>{throw Error('Denied URL must not contact the broker')});
+  const denied=await brokerFetch('https://evil.example/v1/responses',{method:'POST',body:'{}'});
+  assert.equal(denied.status,400);
+  assert.match((await denied.json()).error.message,/only OpenAI Responses POST requests/);
+  assert.equal(request.mock.callCount(),0);request.mock.restore();
+  assert.equal(receipts.length,n);
   assert.throws(()=>piEngineForSpec({provider:'anthropic',id:piModels().getModels('anthropic')[0].id}),/only OpenAI/);
  });
  await test('live mode refuses without explicit billing authorization',async()=>{await assert.rejects(()=>startBroker({...opts,mode:'live'}),/not authorized/)});
