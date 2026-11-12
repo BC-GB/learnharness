@@ -21,7 +21,7 @@ export function problemMountContext(snapshot: PluginProblemSnapshot, chatId: str
 export interface PluginProblemDockProps {
   viewReader?: import("./session-view-readers").ViewReaderRef<{ available: boolean }>;
   snapshot: PluginProblemSnapshot; occurrence: PluginSubmissionOccurrence; chatId: string; draft: PluginProblemDraft;
-  expanded: boolean; onExpand(): void; ready: boolean; available: boolean;
+  expanded: boolean; onExpand(): void; onCollapse?(): void; ready: boolean; available: boolean;
   reconciliation: "ready" | "syncing" | "failed";
   preparing?: boolean; compactionRunning?: boolean; onEscape?: () => void;
   prepareSubmission?: PreparePluginProblemSubmission;
@@ -118,7 +118,7 @@ export function PluginProblemDockContent(props: PluginProblemDockProps & { regis
   const canSubmit = ready && reconciliation === "ready" && available && !!registration && owner.current === registration && ownerKey.current === key && !failed && !!lease.current?.ready && draft.submission.status === "ready" && !submitting;
   const unavailable = reconciliation === "ready" && (!available || !registration || failed);
   return <div ref={root} data-testid="plugin-problem-dock">
-    <PracticeDock problemCallId={occurrence.toolCallId} input={snapshot.input} expanded={expanded} onExpand={props.onExpand}
+    <PracticeDock problemCallId={occurrence.toolCallId} input={snapshot.input} expanded={expanded} onExpand={props.onExpand} onCollapse={props.onCollapse}
       onSubmit={() => {}} preparing={props.preparing || submitting || !ready} compactionRunning={props.compactionRunning} onEscape={props.onEscape}
       customInput={{ thinking: draft.thinking, onThinkingChange(value) { draft.thinking = value; thinkingRevision.current++; render(); }, ready: canSubmit,
         editor: <div className="px-4 py-2">

@@ -6,6 +6,7 @@ import { useStickToBottomContext, type StickToBottomContext } from "use-stick-to
 export const RESPONSE_START_EVENT = "lh-response-start";
 export const RESPONSE_CANCEL_EVENT = "lh-response-cancel";
 export const RESPONSE_BOTTOM_EVENT = "lh-response-bottom";
+export const RESPONSE_NAVIGATE_EVENT = "lh-response-navigate";
 
 /** Explicit learner submissions own one snap. Passive/restored streams never
  * acquire this intent, and DOM growth never re-arms it. */
@@ -14,7 +15,6 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 	let eligible = false;
 	let holding = false;
 	let floor = 0;
-	let observedTop = context().scrollRef.current?.scrollTop ?? 0;
 	let previousTarget: StickToBottomContext["targetScrollTop"] = null;
 	const main = () => context().scrollRef.current;
 	const passages = () => Array.from(main()?.querySelectorAll<HTMLElement>("[data-response-part-id]") ?? []);
@@ -36,17 +36,6 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 	};
 	const cancelPending = () => { eligible = false; };
 	const cancel = () => { eligible = false; release(); };
-	const onScroll = () => {
-		const el = main();
-		if (!el) return;
-		const top = el.scrollTop;
-		const maximum = Math.max(0, el.scrollHeight - el.clientHeight);
-		// Replacing an answered question with the composer can shrink the
-		// transcript and clamp its old bottom position. That is not navigation.
-		const clamped = observedTop > maximum + 2 && top >= maximum - 2;
-		if (!clamped && Math.abs(top - observedTop) > 2) cancelPending();
-		observedTop = top;
-	};
 	const bottom = () => {
 		cancel();
 		floor = 0;
@@ -67,15 +56,13 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 		measure();
 		context().stopScroll();
 		el.scrollTo({ top, behavior: "instant" });
-		observedTop = el.scrollTop;
 	};
 	return {
-		measure, cancelPending, cancel, onScroll, bottom,
+		measure, cancelPending, cancel, bottom,
 		begin() {
 			release();
 			previous = new Set(passages().map(node => node.dataset.responsePartId!));
 			eligible = true;
-			observedTop = main()?.scrollTop ?? 0;
 			previousTarget = context().targetScrollTop;
 			context().stopScroll();
 			context().targetScrollTop = holdTarget;
@@ -91,6 +78,22 @@ export function createResponseAnchor(context: () => StickToBottomContext, tail: 
 	};
 }
 
+/** Scroll events do not identify their cause. Browser anchoring, input
+ * clearing and dock measurements can move scrollTop before the reply arrives.
+ * Only explicit navigation cancels the learner's pending response snap. */
+export function bindResponseAnchorEvents(el: HTMLElement, instance: ReturnType<typeof createResponseAnchor>) {
+	el.addEventListener(RESPONSE_START_EVENT, instance.begin);
+	el.addEventListener(RESPONSE_CANCEL_EVENT, instance.cancel);
+	el.addEventListener(RESPONSE_BOTTOM_EVENT, instance.bottom);
+	el.addEventListener(RESPONSE_NAVIGATE_EVENT, instance.cancelPending);
+	return () => {
+		el.removeEventListener(RESPONSE_START_EVENT, instance.begin);
+		el.removeEventListener(RESPONSE_CANCEL_EVENT, instance.cancel);
+		el.removeEventListener(RESPONSE_BOTTOM_EVENT, instance.bottom);
+		el.removeEventListener(RESPONSE_NAVIGATE_EVENT, instance.cancelPending);
+	};
+}
+
 export function StreamingResponseAnchor({ active, revision }: { active: boolean; revision: unknown }) {
 	const context = useStickToBottomContext();
 	const contextRef = useRef(context);
@@ -103,27 +106,13 @@ export function StreamingResponseAnchor({ active, revision }: { active: boolean;
 		controller.current = instance;
 		const el = contextRef.current.scrollRef.current;
 		const content = contextRef.current.contentRef.current;
-		// Confidence/dock controls do not express transcript scroll intent.
-		const wheel = (event: WheelEvent) => {
-			if (event.deltaY && !event.ctrlKey && !event.metaKey) instance.cancelPending();
-		};
-		el?.addEventListener("wheel", wheel, { passive: true });
-		el?.addEventListener("touchmove", instance.cancelPending, { passive: true });
-		el?.addEventListener("scroll", instance.onScroll, { passive: true });
-		el?.addEventListener(RESPONSE_START_EVENT, instance.begin);
-		el?.addEventListener(RESPONSE_CANCEL_EVENT, instance.cancel);
-		el?.addEventListener(RESPONSE_BOTTOM_EVENT, instance.bottom);
+		const unbind = el ? bindResponseAnchorEvents(el, instance) : undefined;
 		const observer = new ResizeObserver(instance.measure);
 		if (content) observer.observe(content);
 		if (el) observer.observe(el);
 		return () => {
 			observer.disconnect();
-			el?.removeEventListener("wheel", wheel);
-			el?.removeEventListener("touchmove", instance.cancelPending);
-			el?.removeEventListener("scroll", instance.onScroll);
-			el?.removeEventListener(RESPONSE_START_EVENT, instance.begin);
-			el?.removeEventListener(RESPONSE_CANCEL_EVENT, instance.cancel);
-			el?.removeEventListener(RESPONSE_BOTTOM_EVENT, instance.bottom);
+			unbind?.();
 			instance.dispose();
 			controller.current = null;
 		};

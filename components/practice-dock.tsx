@@ -2,7 +2,7 @@
 
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { ViewReaderRef } from "./session-view-readers";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronRightIcon, ChevronDownIcon } from "lucide-react";
 import { ToolContentResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import { joinDictation, useDictationTarget } from "@/components/dictation";
@@ -45,6 +45,7 @@ export interface PracticeDockProps {
 	/** Collapse state, owned by the DockOverlay. */
 	expanded: boolean;
 	onExpand: () => void;
+	onCollapse?: () => void;
 	/** text — POST {type:"thinking"} (one lane; the register is read from the text). */
 	onSubmit: (text: string) => void;
 	onPrepareSubmission?: PrepareThinkingSubmission;
@@ -67,7 +68,7 @@ export interface PracticeDockProps {
 	compactionRunning?: boolean;
 }
 
-export function PracticeDock({ viewReader, problemCallId, input, expanded, onExpand, onSubmit, onPrepareSubmission, customInput, hasPendingInput = false, preparing = false, onEscape, compactionRunning = false }: PracticeDockProps) {
+export function PracticeDock({ viewReader, problemCallId, input, expanded, onExpand, onCollapse, onSubmit, onPrepareSubmission, customInput, hasPendingInput = false, preparing = false, onEscape, compactionRunning = false }: PracticeDockProps) {
 	const controller = useOptionalInteractionLayers();
 	const rootRef = useRef<HTMLElement>(null);
 	const [nativeThinking, setNativeThinking] = useState("");
@@ -150,12 +151,17 @@ export function PracticeDock({ viewReader, problemCallId, input, expanded, onExp
 		<div ref={element => { rootRef.current = element; }} data-testid="practice-dock" data-problem={problemCallId}>
 			{!expanded && bar}
 			<div hidden={!expanded}>
+			<div className="flex items-center justify-between px-4 pt-3 pb-1">
+				<div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Problem</div>
+				{onCollapse && <Button type="button" variant="ghost" size="sm" data-testid="practice-collapse" onClick={onCollapse} className="h-7 gap-1 px-2 text-xs text-muted-foreground">
+					<ChevronDownIcon className="size-3.5" aria-hidden="true" />Collapse problem
+				</Button>}
+			</div>
 			{/* The agent's half: the 'Problem' eyebrow (mirroring the quiz
 			    cards' label row — owner round, 2026-10-05) + the statement,
 			    markdown + LaTeX rendered, capped by the measured column
 			    (--dock-max-h; the old fixed 40vh cut long problems short). */}
-			{(expanded || customInput) && <div data-dock-scroll-area="" className="max-h-[var(--dock-max-h,40vh)] overflow-y-auto px-4 pt-3 pb-2">
-				<div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Problem</div>
+			{(expanded || customInput) && <div data-dock-scroll-area="" className="max-h-[var(--dock-max-h,40vh)] overflow-y-auto px-4 pb-2">
 				<div className="lh-prose text-[15px]">
 					<ToolContentResponse>{input.statement}</ToolContentResponse>
 				</div>
