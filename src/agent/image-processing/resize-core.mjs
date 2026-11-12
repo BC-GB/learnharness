@@ -88,10 +88,13 @@ export async function resizeImageInProcess(inputBytes, mimeType, options) {
                 resized.free();
             }
         }
-        const qualitySteps = Array.from(new Set([opts.jpegQuality, 85, 70, 55, 40]));
+        const qualitySteps = Array.from(new Set([opts.jpegQuality, 85, 70, 55, 40])).filter((quality) => quality >= (opts.minJpegQuality ?? 0));
+        const minWidth = Math.max(1, Math.ceil(originalWidth * (opts.minScale ?? 0)));
+        const minHeight = Math.max(1, Math.ceil(originalHeight * (opts.minScale ?? 0)));
         let currentWidth = targetWidth;
         let currentHeight = targetHeight;
         while (true) {
+            if (currentWidth < minWidth || currentHeight < minHeight) break;
             const candidates = tryEncodings(currentWidth, currentHeight, qualitySteps);
             for (const candidate of candidates) {
                 if (candidate.encodedSize < opts.maxBytes) {
@@ -106,11 +109,11 @@ export async function resizeImageInProcess(inputBytes, mimeType, options) {
                     };
                 }
             }
-            if (currentWidth === 1 && currentHeight === 1) {
+            if (currentWidth === minWidth && currentHeight === minHeight) {
                 break;
             }
-            const nextWidth = currentWidth === 1 ? 1 : Math.max(1, Math.floor(currentWidth * 0.75));
-            const nextHeight = currentHeight === 1 ? 1 : Math.max(1, Math.floor(currentHeight * 0.75));
+            const nextWidth = Math.max(minWidth, Math.floor(currentWidth * 0.75));
+            const nextHeight = Math.max(minHeight, Math.floor(currentHeight * 0.75));
             if (nextWidth === currentWidth && nextHeight === currentHeight) {
                 break;
             }
