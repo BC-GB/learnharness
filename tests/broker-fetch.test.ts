@@ -77,7 +77,6 @@ test("three historical-sized image copies fit the entire UTF-8 request without c
 	assert.equal(sent.length, 1);
 	const output = sent[0]!;
 	assert.ok(output.body.length <= BROKER_REQUEST_MAX_BYTES);
-	assert.equal(output.options.headers?.["content-length" as keyof typeof output.options.headers], output.body.length);
 	assert.deepEqual(output.options.headers, { "content-type": "application/json", "content-length": output.body.length });
 	const payload = JSON.parse(output.body.toString());
 	assert.equal(payload.input.length, before.input.length);
@@ -237,7 +236,7 @@ test("real SDK serializes historical tool-result images, fits them once and pres
 	const engine = piEngineForSpec({ provider: "openai", id: "gpt-5", thinkingLevel: "off" });
 	const messages: Message[] = [{ role: "user", content: "Read three figures.", timestamp: 0 }];
 	for (const [i, data] of originalImages.entries()) {
-		messages.push(fauxAssistantMessage(engine.model, { content: [fauxToolCall(`read${i}`, "read", { path: `figure${i}.png` })], stopReason: "toolUse" }));
+		messages.push(fauxAssistantMessage([fauxToolCall("read", { path: `figure${i}.png` }, { id: `read${i}` })], { stopReason: "toolUse" }));
 		messages.push({ role: "toolResult", toolCallId: `read${i}`, toolName: "read", content: [{ type: "image", mimeType: "image/png", data }], isError: false, timestamp: i + 1 });
 	}
 	const context = normalizeContext({ messages });
