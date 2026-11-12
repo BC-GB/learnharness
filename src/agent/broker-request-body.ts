@@ -80,8 +80,7 @@ export async function prepareBrokerRequestBody(serialized: string, signal?: Abor
 		// already-minimal images must not be forced below an arbitrary equal share.
 		for (const image of images.toSorted((a, b) => b.data.length - a.data.length)) {
 			processingSignal.throwIfAborted();
-			const maxBytes = Math.floor(available * image.data.length / remainingImageBytes);
-			if (maxBytes < 4) throw tooLarge();
+			const maxBytes = Math.max(4, Math.floor(available * image.data.length / remainingImageBytes));
 			const bytes = Buffer.from(image.data, "base64");
 			if (bytes.toString("base64") !== image.data || detectSupportedImageMimeType(bytes) !== image.mime) {
 				throw new BrokerRequestBodyError("An image in this conversation has invalid image data. Replace that image and try again. Your saved conversation and original images are unchanged.", 400);
@@ -91,13 +90,17 @@ export async function prepareBrokerRequestBody(serialized: string, signal?: Abor
 			const resized = await resizeImageInBoundedWorker(bytes, image.mime, {
 				maxBytes, maxWidth: 8192, maxHeight: 8192,
 				jpegQuality: 90, minJpegQuality: 70, minScale: 0.5,
+				returnSmallestOnOverflow: true,
 			}, processingSignal);
 			processingSignal.throwIfAborted();
-			if (!resized) throw tooLarge();
-			available -= resized.data.length;
+			if (!resized) throw new BrokerRequestBodyError("An image in this conversation could not be decoded. Replace that image and try again. Your saved conversation and original images are unchanged.", 400);
+			// A local quota is only a hint. A later, more compressible image may
+			// release enough bytes even if this one cannot meet its initial share.
+			const useCopy = resized.data.length < image.data.length;
+			available -= useCopy ? resized.data.length : image.data.length;
 			remainingImageBytes -= image.data.length;
-			image.part.image_url = `data:${resized.mimeType};base64,${resized.data}`;
-			if (resized.width !== resized.originalWidth || resized.height !== resized.originalHeight) {
+			image.part.image_url = useCopy ? `data:${resized.mimeType};base64,${resized.data}` : `data:${image.mime};base64,${image.data}`;
+			if (useCopy && (resized.width !== resized.originalWidth || resized.height !== resized.originalHeight)) {
 				image.content.splice(image.content.indexOf(image.part), 0, {
 					type: "input_text",
 					text: `[Model-facing image copy resized from ${resized.originalWidth}x${resized.originalHeight} to ${resized.width}x${resized.height} to fit the request limit. Original image retained.]`,

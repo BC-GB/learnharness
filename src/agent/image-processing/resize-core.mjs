@@ -93,12 +93,12 @@ export async function resizeImageInProcess(inputBytes, mimeType, options) {
         const minHeight = Math.max(1, Math.ceil(originalHeight * (opts.minScale ?? 0)));
         let currentWidth = targetWidth;
         let currentHeight = targetHeight;
+        let smallest = null;
         while (true) {
             if (currentWidth < minWidth || currentHeight < minHeight) break;
             const candidates = tryEncodings(currentWidth, currentHeight, qualitySteps);
             for (const candidate of candidates) {
-                if (candidate.encodedSize < opts.maxBytes) {
-                    return {
+                const result = {
                         data: candidate.data,
                         mimeType: candidate.mimeType,
                         originalWidth,
@@ -106,8 +106,9 @@ export async function resizeImageInProcess(inputBytes, mimeType, options) {
                         width: currentWidth,
                         height: currentHeight,
                         wasResized: true,
-                    };
-                }
+                };
+                if (!smallest || candidate.encodedSize < smallest.data.length) smallest = result;
+                if (candidate.encodedSize < opts.maxBytes) return result;
             }
             if (currentWidth === minWidth && currentHeight === minHeight) {
                 break;
@@ -120,7 +121,7 @@ export async function resizeImageInProcess(inputBytes, mimeType, options) {
             currentWidth = nextWidth;
             currentHeight = nextHeight;
         }
-        return null;
+        return opts.returnSmallestOnOverflow ? smallest : null;
     }
     catch {
         return null;

@@ -25,6 +25,21 @@ function imageData(encodedBytes: number): string {
 	return padded.toString("base64");
 }
 const originalImages = [353052, 391632, 681248].map(imageData);
+function noisePng(width: number, height: number): Buffer {
+	const canvas = createCanvas(width, height);
+	const ctx = canvas.getContext("2d");
+	const pixels = ctx.createImageData(width, height);
+	let state = 12345;
+	for (let i = 0; i < pixels.data.length; i += 4) {
+		for (let channel = 0; channel < 3; channel++) {
+			state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+			pixels.data[i + channel] = state >>> 24;
+		}
+		pixels.data[i + 3] = 255;
+	}
+	ctx.putImageData(pixels, 0, 0);
+	return canvas.toBuffer("image/png");
+}
 const image = (data: string) => ({ type: "input_image", detail: "auto", image_url: `data:image/png;base64,${data}` });
 const bodyWithImages = () => JSON.stringify({ model: "gpt-5", instructions: "Explain λ and β accurately.", tools: [{ type: "function", name: "read", parameters: { type: "object" } }], input: [
 	{ role: "user", content: [{ type: "input_text", text: "Synthetic exercise" }, image(originalImages[0]!)] },
@@ -178,6 +193,29 @@ test("large compressible copies release budget for an already-minimal tiny image
 	payload.input[0].content.unshift(image(tiny));
 	const fitted = JSON.parse((await prepareBrokerRequestBody(JSON.stringify(payload))).toString());
 	assert.equal(fitted.input[0].content[0].image_url, `data:image/png;base64,${tiny}`);
+});
+
+test("genuine noisy PNG images compress and resize within the final request budget", async () => {
+	const data = noisePng(1024, 768).toString("base64");
+	const body = JSON.stringify({ input: [{ role: "user", content: [image(data), image(data), image(data)] }] });
+	assert.ok(Buffer.byteLength(body) > BROKER_REQUEST_MAX_BYTES);
+	const fitted = await prepareBrokerRequestBody(body);
+	assert.ok(fitted.length <= BROKER_REQUEST_MAX_BYTES);
+	const content = JSON.parse(fitted.toString()).input[0].content as { type: string; text?: string }[];
+	assert.equal(content.filter(part => part.type === "input_image").length, 3);
+	assert.ok(content.some(part => part.text?.includes("Model-facing image copy resized")), "real pixel data requires dimension reduction, not removal of padding");
+});
+
+test("an image exceeding its quota still fits when a later image frees enough bytes", async () => {
+	const bytes = noisePng(512, 512);
+	const data = bytes.toString("base64");
+	const smallest = await resizeImageInProcess(bytes, "image/png", { maxBytes: 4, maxWidth: 8192, maxHeight: 8192, jpegQuality: 90, minJpegQuality: 70, minScale: 0.5, returnSmallestOnOverflow: true });
+	assert.ok(smallest && smallest.data.length > 6000);
+	const payload = { instructions: "x".repeat(BROKER_REQUEST_MAX_BYTES - smallest.data.length - 6000), input: [{ role: "user", content: [image(data), image(imageData(data.length - 4))] }] };
+	assert.ok((smallest.data.length + 6000) / 2 < smallest.data.length, "largest image cannot fit its first proportional share");
+	const fitted = await prepareBrokerRequestBody(JSON.stringify(payload));
+	assert.ok(fitted.length <= BROKER_REQUEST_MAX_BYTES);
+	assert.equal(JSON.parse(fitted.toString()).input[0].content.filter((part: { type: string }) => part.type === "input_image").length, 2);
 });
 
 test("real SDK preserves the size error and makes no broker request or retry", async t => {
