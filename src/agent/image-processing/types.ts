@@ -5,6 +5,11 @@ export interface ModelImageResizeOptions {
 	maxHeight?: number;
 	maxBytes?: number;
 	jpegQuality?: number;
+	/** Optional quality floors for request-budget fitting; ordinary resizing is unchanged. */
+	minJpegQuality?: number;
+	minScale?: number;
+	/** Request-level allocation hint only: caller MUST enforce its final byte cap. */
+	returnSmallestOnOverflow?: boolean;
 }
 
 export interface ResizedImage {

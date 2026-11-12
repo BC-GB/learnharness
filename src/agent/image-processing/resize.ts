@@ -12,21 +12,26 @@ function isResizeImageWorkerResponse(value: unknown): value is ResizeImageWorker
 	return value !== null && typeof value === "object" && "type" in value && value.type === IMAGE_RESIZE_WORKER_RESPONSE_TYPE;
 }
 
-async function resizeImageInWorker(workerPath: string, inputBytes: Uint8Array, mimeType: string, options?: ModelImageResizeOptions): Promise<ResizedImage | null> {
+async function resizeImageInWorker(workerPath: string, inputBytes: Uint8Array, mimeType: string, options?: ModelImageResizeOptions, signal?: AbortSignal): Promise<ResizedImage | null> {
+	signal?.throwIfAborted();
 	const worker = new Worker(workerPath);
 	try {
 		// Transfer a worker-owned copy so the caller's bytes remain intact.
 		const inputBytesForWorker = new Uint8Array(inputBytes);
 		return await new Promise((resolve, reject) => {
 			let settled = false;
+			const abort = () => fail(signal?.reason ?? new DOMException("Image processing aborted", "AbortError"));
+			const cleanup = () => signal?.removeEventListener("abort", abort);
 			const settle = (result: ResizedImage | null) => {
 				if (settled) return;
 				settled = true;
+				cleanup();
 				resolve(result);
 			};
 			const fail = (error: Error) => {
 				if (settled) return;
 				settled = true;
+				cleanup();
 				reject(error);
 			};
 			worker.on("message", (message: unknown) => {
@@ -39,11 +44,19 @@ async function resizeImageInWorker(workerPath: string, inputBytes: Uint8Array, m
 			worker.once("exit", (code) => {
 				if (!settled) fail(new Error(`Image resize worker exited with code ${code}`));
 			});
-			worker.postMessage({ inputBytes: inputBytesForWorker, mimeType, options }, [inputBytesForWorker.buffer]);
+			signal?.addEventListener("abort", abort, { once: true });
+			if (signal?.aborted) abort();
+			else worker.postMessage({ inputBytes: inputBytesForWorker, mimeType, options }, [inputBytesForWorker.buffer]);
 		});
 	} finally {
-		void worker.terminate().catch(() => undefined);
+		await worker.terminate().catch(() => undefined);
 	}
+}
+
+/** Request-budget preparation must remain terminable: never fall back to the server thread. */
+export async function resizeImageInBoundedWorker(inputBytes: Uint8Array, mimeType: string, options: ModelImageResizeOptions, signal: AbortSignal): Promise<ResizedImage | null> {
+	const workerPath = path.join(process.cwd(), "src/agent/image-processing/resize-worker.mjs");
+	return resizeImageInWorker(workerPath, inputBytes, mimeType, options, signal);
 }
 
 export async function resizeImage(inputBytes: Uint8Array, mimeType: string, options?: ModelImageResizeOptions): Promise<ResizedImage | null> {
