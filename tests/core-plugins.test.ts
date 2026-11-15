@@ -111,3 +111,15 @@ test("reviewed Core defaults preserve explicit disables, never enable community 
  assert.deepEqual(fs.readFileSync(state), bytes);
  await assert.rejects(restart.setEnabled("community", true), /Community executable plugins/);
 });
+
+
+test("an enabled frontend-only Core plugin creates no server-side learning or preference records", async t => {
+ const f = fixture(t), code = f.pkg("official", "core");
+ const file = path.join(code, "manifest.json"), manifest = JSON.parse(fs.readFileSync(file, "utf8")); delete manifest.backend;
+ fs.writeFileSync(file, JSON.stringify(manifest)); fs.unlinkSync(path.join(code, "backend.cjs"));
+ f.deps.defaultEnabledCoreIds = ["official"];
+ await f.host.initialize(); assert.equal(f.host.list().find(p => p.id === "official")!.status, "active");
+ assert.equal(fs.existsSync(f.core.dataDirectory), false);
+ await f.host.setEnabled("official", false); await f.host.setEnabled("official", true);
+ assert.equal(fs.existsSync(f.core.dataDirectory), false);
+});
