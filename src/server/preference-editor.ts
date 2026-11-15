@@ -1,19 +1,13 @@
-import type { PreferenceChatContext } from "../core/preference-chat.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { PATHS, globalPreferencesEnabled, globalPreferencePath } from "../../config.ts";
-import { courseStatePath, courseLocal, currentCourseId } from "../runtime/course-context.ts";
+import { courseStatePath, currentCourseId } from "../runtime/course-context.ts";
 import { readPromptCustomization } from "../runtime/prompt-customizations.ts";
 import { promptOverrides } from "../store/prompt-overrides.ts";
 import { writeFileAtomicSync } from "../store/atomic-write.ts";
 import { stores } from "./stores.ts";
-import { piEngineForSpec } from "../agent/models.ts";
-import { resolveModelSpec } from "../core/settings-resolution.ts";
-import { draftPreferences, validatePreferenceDraft } from "../agent/preference-editor.ts";
 
-const requests = () => courseLocal("preference-editor-runs", () => new Set<symbol>());
-export const preferenceEditorRunningCount = () => requests().size;
 
 export const PREFERENCE_SEGMENT = "shared/10-voice.md";
 const historyPath = () => globalPreferencesEnabled() ? globalPreferencePath("preference-history.json") : courseStatePath(path.join(PATHS.data, "preference-history.json"));
@@ -50,7 +44,7 @@ function writeSnapshot(next: Snapshot) {
  stores.settingsStore.writeSettings({ ...record, agent: { ...record.agent, prompts: { ...record.agent?.prompts, [PREFERENCE_SEGMENT]: next.enabled } } });
 }
 export function applyPreferences(expected: string, text: string) {
- validatePreferenceDraft({ text, summary: "" });
+ if (typeof text !== "string" || text.length > 16000 || text.includes("\u0000")) throw new Error("Invalid preference addition");
  const current = preferenceView(); if (current.revision !== expected) throw new Error("Preferences changed. Reload and draft again.");
  if (!stores.settingsStore.readSettings()) throw new Error("Settings unavailable");
  const before = { text: current.text, enabled: current.enabled }; const after = { text, enabled: true };
@@ -66,14 +60,3 @@ export function undoPreferences(expected: string) {
  writeSnapshot(last.before); saveHistory(rows.slice(0, index)); return preferenceView();
 }
 
-/** Explicit user-triggered request only. No lessons, files or credentials enter its context. */
-export async function proposePreferences(current: string, message: string, signal: AbortSignal, conversation?: PreferenceChatContext) {
- if (current.length > 16000) throw new Error("Existing preferences exceed the editor limit.");
- const settings = stores.settingsStore.readSettings();
- const spec = resolveModelSpec("teacher", undefined, settings?.models);
- if (!spec) throw new Error("Choose a teaching model in Settings first.");
- const active = requests(); if (active.size >= 2) throw new Error("A preference request is already in progress.");
- const id = Symbol(); active.add(id);
- try { return { ...await draftPreferences(piEngineForSpec(spec, false), current, message, signal, conversation), model: spec.id }; }
- finally { active.delete(id); }
-}

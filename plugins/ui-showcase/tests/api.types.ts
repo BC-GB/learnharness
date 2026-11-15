@@ -9,10 +9,11 @@ import type { REQUIRED_UI_METHODS } from "../src/main.ts";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type Assert<T extends true> = T;
+type RequiredKeys<T> = { [K in keyof T]-?: {} extends Pick<T, K> ? never : K }[keyof T];
 
 export type GalleryMountContract = Assert<Equal<typeof mountGallery,
   (root: HTMLElement, context: PluginFrontendContext, signal: AbortSignal) => () => void>>;
-export type EveryPublicWidgetIsRequired = Assert<Equal<Exclude<keyof PluginUi, typeof REQUIRED_UI_METHODS[number]>, never>>;
+export type EveryPublicWidgetIsRequired = Assert<Equal<Exclude<RequiredKeys<PluginUi>, typeof REQUIRED_UI_METHODS[number]>, never>>;
 export type NativeTargetIsOpaque = Assert<Equal<{} extends PluginSurfaceTarget ? true : false, false>>;
 export type SurfaceSupportsBothPublicOverloads = Assert<PluginUi["openSurface"] extends {
   (surface: PluginSurfaceProps, options: PluginWidgetOptions): PluginWidgetHandle<PluginSurfaceProps>;

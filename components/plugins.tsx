@@ -1,6 +1,9 @@
 "use client";
 
 import { courseFetch as fetch, courseUrl } from "@/lib/course-client";
+import { PluginContributions } from "./plugin-widgets";
+import { notifySettingsSaved, onSettingsSaved, type SettingsSection } from "./settings-signal";
+import { createPluginSession } from "./plugin-session-creation";
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useRouter } from "@/components/course-navigation";
@@ -83,8 +86,11 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
 			window.__lhPluginWindow = createPluginWindowOwner({
 				reservedCodeBlockLanguages: [BUILTIN_MERMAID_LANGUAGE], reservedToolNames: reservedToolRendererNames(),
 				fetch: (...args) => fetch(...args), importModule: url => importPluginModule(courseUrl(url)),
-				pathname: () => window.location.pathname, navigate: path => routerRef.current.push(path),
+				course: () => ({ id: document.documentElement.dataset.courseId ?? "legacy", name: document.documentElement.dataset.courseName ?? "Current course" }),
+				pathname: () => window.location.pathname, navigate: path => routerRef.current.push(courseUrl(path)),
+				closeSettings: () => window.dispatchEvent(new Event("lh:close-settings")),
 				openSettings: pluginId => window.dispatchEvent(new CustomEvent("lh:open-plugin-settings", { detail: pluginId })),
+					createSession: createPluginSession,
 				style: (url, onError) => {
 					const link = document.createElement("link");
 					link.rel = "stylesheet"; link.href = courseUrl(url); link.onerror = onError;
@@ -100,16 +106,20 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
 	}, []);
 	useEffect(() => {
 		if (!manager) return;
-		const offs = SERVER_EVENT_TYPES.map(type => hub.subscribe(type, payload => {
+		const offs: (() => void)[] = SERVER_EVENT_TYPES.map(type => hub.subscribe(type, payload => {
 			if (type === "plugin-message") manager.notify(payload as Parameters<typeof manager.notify>[0]);
-			else manager.appEvent({ type, ...payload } as ServerEvent);
+			else if (type === "settings-changed") {
+                const section = (payload as { section?: string }).section;
+                if (section && ["general", "agent", "models", "appearance", "graph", "compaction", "dictation", "keys", "claudeCode"].includes(section)) notifySettingsSaved(section as SettingsSection);
+            } else manager.appEvent({ type, ...payload } as ServerEvent);
 			if (type === "plugins-changed") void manager.reload();
 		}));
 		offs.push(hub.onResync(() => manager.resync()));
+        offs.push(onSettingsSaved(section => manager.appEvent({ type: "settings-changed", section })));
 		return () => { for (const off of offs) off(); };
 	}, [hub, manager]);
 	const snapshot = useSyncExternalStore(manager?.subscribe ?? emptySubscribe, manager?.getSnapshot ?? emptySnapshot, emptySnapshot);
-	return <PluginsContext.Provider value={{ manager, snapshot, uiStore }}>{children}</PluginsContext.Provider>;
+	return <PluginsContext.Provider value={{ manager, snapshot, uiStore }}>{children}<PluginContributions location="app" /></PluginsContext.Provider>;
 }
 
 /** Missing-provider fallback is intentional: existing sidebar render tests and
@@ -124,17 +134,17 @@ export function PluginWidgets() {
 
 /** Plugins own this DOM subtree (including their own bundled React root if
  * desired). React owns only the outer frame and its inline error surface. */
-export function PluginMountPoint({ pluginId, mount, label }: { pluginId: string; mount: PluginMount; label: string }) {
+export function PluginMountPoint({ pluginId, mount, label, layout = "body" }: { pluginId: string; mount: PluginMount; label: string; layout?: "body" | "contents" }) {
 	const { manager } = usePlugins();
 	const container = useRef<HTMLDivElement>(null);
 	const [error, setError] = useState<string>();
 	useEffect(() => {
 		setError(undefined);
 		if (!manager || !container.current) return;
-		return manager.mount(pluginId, mount, container.current, setError);
-	}, [manager, pluginId, mount]);
+		return manager.mount(pluginId, mount, container.current, setError, layout);
+	}, [manager, pluginId, mount, layout]);
 	return <>
 		{error && <p role="alert" className="px-3 py-2 text-xs text-destructive">{label}: {error}</p>}
-		<div ref={container} aria-label={label} className="flex min-h-0 min-w-0 flex-1 flex-col" />
+		<div ref={container} aria-label={label} style={layout === "contents" ? { display: "contents" } : undefined} className="flex min-h-0 min-w-0 flex-1 flex-col" />
 	</>;
 }

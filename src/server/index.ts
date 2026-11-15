@@ -5,7 +5,7 @@
  */
 
 export * from "./chat-handler.ts";
-export { lessonOutlineView, refreshLessonOutline } from "./lesson-outline.ts";
+export { optionalPluginCall } from "./optional-plugin-compat.ts";
 export * from "./course-http.ts";
 export { globalPreferencesEnabled } from "../../config.ts";
 export { boundedCourseBody, courseMaterials, uploadCourseMaterials } from "./course-materials.ts";
@@ -74,6 +74,5 @@ export * from "./custom-provider.ts";
 export { customProviderGet, customProviderMutation } from "./custom-provider-http.ts";
 
 export { providerCapabilities, providerSetupDenied } from "./provider-capabilities.ts";
-export { preferenceView, applyPreferences, undoPreferences, proposePreferences } from "./preference-editor.ts";
+export { preferenceView, applyPreferences, undoPreferences } from "./preference-editor.ts";
 
-export { preferenceChatView, sendPreferenceMessage, applyPreferenceConversation, undoPreferenceConversation, PreferenceConversationConflict } from "./preference-conversation.ts";

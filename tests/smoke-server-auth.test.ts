@@ -75,7 +75,6 @@ test("core smoke authenticates list, toggles, refresh and asset requests while p
 		if (url.pathname.includes("/assets/")) return new Response(url.pathname.endsWith("main.js") ? "core fixture" : "private", { status: url.pathname.endsWith("main.js") ? 200 : 404 });
 		if (options.method === "PUT") {
 			enabled = JSON.parse(String(options.body)).enabled;
-			if (enabled) fs.mkdirSync(path.join(dataDirectory, "core-plugin-data", "one"), { recursive: true });
 		}
 		return json({ plugins: [{ id: "one", origin: "core", enabled, status: enabled ? "active" : "disabled", manifest: { main: "main.js" } }], conflicts: [{ id: "one", error: "reserved" }] });
 	});

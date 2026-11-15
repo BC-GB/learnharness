@@ -1,0 +1,141 @@
+"use client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { MessageCircle, X } from "lucide-react";
+import type { PluginFrontendContext, PluginWidgetHandle, PluginPopoverProps } from "../.sdk/index.d.ts";
+import type { PreferenceChatView } from "./contracts.ts";
+
+
+
+
+
+const OPEN_EVENT = "lh:open-preference-chat";
+type LocalDraft = { message: string; text: string; proposalRevision: string | null };
+const emptyDraft = (): LocalDraft => ({ message: "", text: "", proposalRevision: null });
+const draftKey = (courseId: string) => `lh:preference-draft:v1:${encodeURIComponent(courseId)}`;
+function readLocalDraft(courseId: string): LocalDraft {
+ try {
+  const raw = window.sessionStorage.getItem(draftKey(courseId));
+  if (!raw || raw.length > 128 * 1024) return emptyDraft();
+  const value = JSON.parse(raw) as LocalDraft;
+  if (typeof value.message !== "string" || value.message.length > 4000 || typeof value.text !== "string" || value.text.length > 16000 || (value.proposalRevision !== null && (typeof value.proposalRevision !== "string" || value.proposalRevision.length > 100))) return emptyDraft();
+  return { message: value.message, text: value.text, proposalRevision: value.proposalRevision };
+ } catch { return emptyDraft(); }
+}
+export function openPreferenceChat() { window.dispatchEvent(new window.Event(OPEN_EVENT)); }
+export function PreferenceChatShortcut({ onOpen }: { onOpen: () => void }) {
+ return <div className="space-y-3 p-5" data-testid="preference-chat-shortcut">
+  <h3 className="text-sm font-medium">Learning preferences</h3>
+  <p className="text-xs text-muted-foreground">Continue your preferences conversation in the floating chat. Review changes before applying them.</p>
+  <button type="button" className="rounded border border-border px-3 py-2 text-xs" onClick={() => { onOpen(); openPreferenceChat(); }}>Open preferences chat</button>
+ </div>;
+}
+export function PreferenceChat({ ctx, signal, courseName = "this course", courseId = "legacy" }: { ctx: PluginFrontendContext; signal: AbortSignal; courseName?: string; courseId?: string }) {
+ const [open, setOpen] = useState(false);
+ const [view, setView] = useState<PreferenceChatView | null>(null);
+ const viewRef = useRef<PreferenceChatView | null>(null);
+ const localDraft = useRef<LocalDraft>(emptyDraft());
+ const saveLocalDraft = useCallback((patch: Partial<LocalDraft>) => {
+  localDraft.current = { ...localDraft.current, ...patch };
+  // Per-tab and course, never a global conversation cache or a server-side preference write.
+  try { window.sessionStorage.setItem(draftKey(courseId), JSON.stringify(localDraft.current)); } catch { /* Storage may be unavailable; in-memory drafts still survive closing. */ }
+ }, [courseId]);
+ const [message, setMessage] = useState("");
+ const [draftText, setDraftText] = useState("");
+ const [error, setError] = useState("");
+ const [busy, setBusy] = useState(false);
+ const busyRef = useRef(false);
+ const mounted = useRef(false);
+ const generation = useRef(0);
+ const root = useRef<HTMLDivElement>(null);
+ const panel = useRef<HTMLElement>(null);
+ const trigger = useRef<HTMLButtonElement>(null);
+ const input = useRef<HTMLTextAreaElement>(null);
+ const log = useRef<HTMLDivElement>(null);
+ // Record scroll intent before a response grows the log, not after its height changes.
+ const followLog = useRef(true);
+ const close = useCallback(() => { setOpen(false); trigger.current?.focus({ preventScroll: true }); }, []);
+ const [zIndex, setZIndex] = useState(40);
+ const popover = useRef<PluginWidgetHandle<PluginPopoverProps> | null>(null);
+ useEffect(() => {
+  if (!root.current || !panel.current || !ctx.ui.mountPopover) return;
+  popover.current = ctx.ui.mountPopover(root.current, { root: root.current, panel: panel.current, open: false, onClose: close, onLayer: setZIndex }, { signal });
+  return () => { popover.current?.dispose(); popover.current = null; };
+ }, [ctx, signal, close]);
+ useEffect(() => { popover.current?.update({ open }); }, [open]);
+ useEffect(() => {
+  mounted.current = true;
+  localDraft.current = readLocalDraft(courseId); setMessage(localDraft.current.message);
+  return () => { mounted.current = false; generation.current++; };
+ }, [courseId]);
+ const accept = useCallback((next: PreferenceChatView) => {
+  if (viewRef.current?.conversation.revision !== next.conversation.revision) {
+   // Never restore manual edits over a newer server proposal from another window.
+   const text = next.conversation.proposal && localDraft.current.proposalRevision === next.conversation.revision
+    ? localDraft.current.text : next.conversation.proposal?.text ?? "";
+   setDraftText(text); saveLocalDraft({ text, proposalRevision: next.conversation.revision });
+  }
+  viewRef.current = next; setView(next);
+ }, [saveLocalDraft]);
+ const reload = useCallback(async () => {
+  if (busyRef.current) return;
+  const current = ++generation.current;
+  setError("");
+  try {
+   const next = await ctx.call<PreferenceChatView>("view");
+   if (mounted.current && generation.current === current) accept(next);
+  } catch (e) { if (mounted.current && generation.current === current) setError((e as Error).message); }
+ }, [accept, ctx]);
+ useEffect(() => { const show = () => setOpen(true); window.addEventListener(OPEN_EVENT, show); return () => window.removeEventListener(OPEN_EVENT, show); }, []);
+ useEffect(() => { if (open) { void reload(); input.current?.focus({ preventScroll: true }); } }, [open, reload]);
+ useEffect(() => {
+  const element = log.current;
+  if (open && element && followLog.current) element.scrollTop = element.scrollHeight;
+ }, [view?.conversation.messages.length, busy, open]);
+ async function send(action: "chat" | "apply" | "undo") {
+  if (!view || busyRef.current || (action === "chat" && !message.trim())) return;
+  if (action === "chat") followLog.current = true;
+  busyRef.current = true; setBusy(true); setError(""); generation.current++;
+  try {
+   const next = await ctx.call<PreferenceChatView>("edit", { action, revision: view.revision, conversationRevision: view.conversation.revision, message, text: draftText });
+   if (mounted.current) { accept(next); if (action === "chat") { setMessage(""); saveLocalDraft({ message: "" }); } }
+  } catch (e) { if (mounted.current) setError((e as Error).message); }
+  finally { busyRef.current = false; if (mounted.current) setBusy(false); }
+ }
+ const stale = !!view?.conversation.proposal && view.conversation.proposal.baseRevision !== view.revision;
+ return <div ref={root} className="lh-no-drag fixed bottom-4 right-4 max-w-[calc(100vw-2rem)]" style={{ zIndex }} data-testid="floating-preference-chat">
+  <section ref={panel} hidden={!open} role="dialog" aria-modal="false" aria-label="Learning preferences chat" className="mb-3 flex h-[min(38rem,calc(100dvh-6rem))] w-[min(25rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-xl" data-testid="preference-chat">
+   <header className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
+    <div className="min-w-0 flex-1"><h2 className="text-sm font-medium">Learning preferences</h2><p className="truncate text-[11px] text-muted-foreground">Conversation: {courseName}</p></div>
+    <button type="button" aria-label="Close preferences chat" onClick={close} className="rounded p-1 hover:bg-accent"><X size={16} /></button>
+   </header>
+   <div className="shrink-0 border-b border-border px-4 py-2 text-[11px] text-muted-foreground">
+    {view?.scope === "global" ? "Applied preferences affect all courses. " : "Applied preferences affect this course. "}
+    Chat history stays in this course. Only this conversation and preference text go to your teaching model when you send. Original prompts stay unchanged.
+   </div>
+   <div ref={log} onScroll={e => { const el = e.currentTarget; followLog.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4" role="log" aria-label="Preference conversation" aria-live="polite">
+    {!view?.conversation.messages.length && <p className="text-sm text-muted-foreground">How would you like to learn? Tell me what to change, then keep refining it here. Nothing is applied until you review it.</p>}
+    {view?.conversation.messages.map(m => <div key={m.id} className={m.role === "user" ? "ml-6 rounded-lg bg-accent p-3" : m.role === "notice" ? "text-xs text-muted-foreground" : "mr-4 rounded-lg border border-border p-3"}>
+     {m.role !== "notice" && <p className="mb-1 text-[10px] uppercase text-muted-foreground">{m.role === "user" ? "You" : "Preferences agent"}</p>}
+     <p className="whitespace-pre-wrap break-words text-sm">{m.text}</p>
+    </div>)}
+    {busy && <p className="text-xs text-muted-foreground" role="status">Working...</p>}
+   </div>
+   <div className="max-h-[45%] shrink-0 space-y-2 overflow-y-auto border-t border-border px-4 py-2">
+    {error && <div role="alert" className="text-xs text-error">{error} <button type="button" disabled={busy} className="underline" onClick={() => void reload()}>Reload saved conversation</button></div>}
+    {view?.conversation.proposal && <details data-testid="preference-review"><summary className="cursor-pointer text-xs font-medium">Review proposed preferences</summary>
+     {stale && <p className="py-2 text-xs text-error">Preferences changed elsewhere. Send a follow-up to refresh this proposal before applying.</p>}
+     <details className="py-2 text-xs"><summary>Before</summary><pre className="whitespace-pre-wrap break-words">{view.text || "(empty)"}</pre></details>
+     <label className="block text-xs">Proposed complete addition<textarea aria-label="Proposed preference addition" value={draftText} maxLength={16000} disabled={busy || stale} onInput={e => { setDraftText(e.currentTarget.value); saveLocalDraft({ text: e.currentTarget.value, proposalRevision: view.conversation.revision }); }} className="mt-1 min-h-32 w-full rounded border border-border bg-background p-2" /></label>
+     <button type="button" disabled={busy || stale} onClick={() => void send("apply")} className="my-2 rounded border border-border px-3 py-1 text-xs disabled:opacity-40">Apply and enable</button>
+    </details>}
+    <details className="text-xs"><summary className="cursor-pointer">Current preferences{view && !view.enabled ? " (disabled)" : ""}</summary><pre className="whitespace-pre-wrap break-words py-2">{view?.text || "No appended text yet."}</pre></details>
+    {view?.canUndo && <button type="button" disabled={busy} onClick={() => void send("undo")} className="text-xs underline disabled:opacity-40">Undo last change</button>}
+   </div>
+   <form className="shrink-0 space-y-2 border-t border-border p-3" onSubmit={e => { e.preventDefault(); void send("chat"); }}>
+    <textarea ref={input} aria-label="Learning preference request" placeholder="Tell me how you want to learn..." rows={2} className="w-full resize-none rounded border border-border bg-background p-2 text-sm" value={message} maxLength={4000} disabled={busy} onInput={e => { setMessage(e.currentTarget.value); saveLocalDraft({ message: e.currentTarget.value }); }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send("chat"); } }} />
+    <div className="flex items-center justify-between"><span className="text-[10px] text-muted-foreground">Enter to send · Shift+Enter for a new line</span><button type="submit" disabled={busy || !view || !message.trim()} className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40">Send</button></div>
+   </form>
+  </section>
+  <button ref={trigger} type="button" onClick={() => setOpen(value => !value)} aria-label={open ? "Hide preferences chat" : "Open preferences chat"} aria-expanded={open} className="ml-auto flex items-center gap-2 rounded-full border border-border bg-popover px-3 py-2 text-xs shadow-md hover:bg-accent" data-testid="preference-chat-toggle"><MessageCircle size={16} /><span>Preferences</span></button>
+ </div>;
+}

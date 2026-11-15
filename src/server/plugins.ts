@@ -1,3 +1,4 @@
+import { createCoreHostServices } from "./plugin-host-services.ts";
 import { AsyncResource } from "node:async_hooks";
 import { createCorePluginPreferences } from "./plugin-preferences.ts";
 import { courseLocal, courseStatePath, forEachKnownCourse } from "../runtime/course-context.ts";
@@ -15,6 +16,7 @@ import { createPluginTaskRecordStore, readPluginTaskRecord, recoverPluginTaskRec
 import corePluginIds from "../../core-plugins.json";
 import { assertGraphFormat } from "../store/graph-format.ts";
 import { createPluginLearningData } from "./plugin-learning.ts";
+import { createPluginLibrary } from "./plugin-library.ts";
 import { createPluginInference } from "./plugin-inference.ts";
 import { createPluginBackgroundTool, recoverPluginBackgroundJob } from "./plugin-background-tools.ts";
 import { registerPluginWorkerActivity } from "./plugin-worker-activity.ts";
@@ -55,7 +57,7 @@ function runtime(): Runtime {
         "coding-questions": "Native code execution is unavailable in this hardened deployment. An isolated execution service is required.",
     });
 	const host = createPluginHost({
-		directory, core, allowCommunity: false, browserWorkersAvailable: false, preferencesFor: createCorePluginPreferences,
+		directory, core, defaultEnabledCoreIds: ["learning-path", "lesson-outline", "learning-preferences", "response-notifications"], allowCommunity: false, browserWorkersAvailable: false, preferencesFor: createCorePluginPreferences,
         stateFile: () => sharedPreferencePath(BASE_DATA_ROOT, "global-plugins.json"), appVersion: packageJson.version, installationErrors,
 		// The process-global runtime owns one admission slot across all plugins
 		// and every separately compiled Next route module.
@@ -76,7 +78,7 @@ function runtime(): Runtime {
 				engineFor: inference.engineFor, onUsage: inference.onUsage, signal,
 				onChange: workerActivity,
 			});
-			return { learning, inference: inference.inference, agents, workers,
+			return { ...createCoreHostServices(manifest.id, signal), learning, library: createPluginLibrary(signal), inference: inference.inference, agents, workers,
 				createBackgroundTool(context, definition) {
 					return createPluginBackgroundTool({
 						pluginId: manifest.id, context, definition, workers, signal, jobStore: stores.jobStore,

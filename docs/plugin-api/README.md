@@ -32,6 +32,8 @@ The SDK is **type-only**. Call the contexts supplied by LearnHarness, not runtim
 - [native-messages](native-messages.md)
 - [phases](phases.md)
 - [plugin-agents](plugin-agents.md)
+- [plugin-host-services](plugin-host-services.md)
+- [plugin-library](plugin-library.md)
 - [plugin-problems](plugin-problems.md)
 - [plugin-questions](plugin-questions.md)
 - [plugin-shortcuts](plugin-shortcuts.md)
@@ -86,6 +88,9 @@ The SDK is **type-only**. Call the contexts supplied by LearnHarness, not runtim
 | [PluginCodeBlockProps](plugins.md#plugincodeblockprops) | `plugins` |
 | [PluginCodeBlockRenderer](plugins.md#plugincodeblockrenderer) | `plugins` |
 | [PluginComposerProps](plugin-ui.md#plugincomposerprops) | `plugin-ui` |
+| [PluginConfiguration](plugin-host-services.md#pluginconfiguration) | `plugin-host-services` |
+| [PluginCourseIdentity](plugin-host-services.md#plugincourseidentity) | `plugin-host-services` |
+| [PluginCreatedSession](plugins.md#plugincreatedsession) | `plugins` |
 | [PluginDialogProps](plugin-ui.md#plugindialogprops) | `plugin-ui` |
 | [PluginDictationHandle](plugin-ui.md#plugindictationhandle) | `plugin-ui` |
 | [PluginDictationProps](plugin-ui.md#plugindictationprops) | `plugin-ui` |
@@ -99,6 +104,8 @@ The SDK is **type-only**. Call the contexts supplied by LearnHarness, not runtim
 | [PluginInstructions](plugins.md#plugininstructions) | `plugins` |
 | [PluginKnowledgePickerProps](plugin-ui.md#pluginknowledgepickerprops) | `plugin-ui` |
 | [PluginLearningData](plugins.md#pluginlearningdata) | `plugins` |
+| [PluginLibrary](plugin-library.md#pluginlibrary) | `plugin-library` |
+| [PluginLibraryFile](plugin-library.md#pluginlibraryfile) | `plugin-library` |
 | [PluginManifest](plugins.md#pluginmanifest) | `plugins` |
 | [PluginMarkdownProps](plugin-ui.md#pluginmarkdownprops) | `plugin-ui` |
 | [PluginMenuItem](plugin-ui.md#pluginmenuitem) | `plugin-ui` |
@@ -110,6 +117,7 @@ The SDK is **type-only**. Call the contexts supplied by LearnHarness, not runtim
 | [PluginNotification](plugins.md#pluginnotification) | `plugins` |
 | [PluginPageActionContext](plugins.md#pluginpageactioncontext) | `plugins` |
 | [PluginPendingInput](plugin-agents.md#pluginpendinginput) | `plugin-agents` |
+| [PluginPopoverProps](plugin-ui.md#pluginpopoverprops) | `plugin-ui` |
 | [PluginProblemEditorHandle](plugin-problems.md#pluginproblemeditorhandle) | `plugin-problems` |
 | [PluginProblemEditorProps](plugin-problems.md#pluginproblemeditorprops) | `plugin-problems` |
 | [PluginProblemInput](plugin-problems.md#pluginprobleminput) | `plugin-problems` |
@@ -124,6 +132,7 @@ The SDK is **type-only**. Call the contexts supplied by LearnHarness, not runtim
 | [PluginProblemSubmissionValidationContext](plugin-problems.md#pluginproblemsubmissionvalidationcontext) | `plugin-problems` |
 | [PluginProblemTypeDefinition](plugin-problems.md#pluginproblemtypedefinition) | `plugin-problems` |
 | [PluginProblemValidationContext](plugin-problems.md#pluginproblemvalidationcontext) | `plugin-problems` |
+| [PluginPromptEditor](plugin-host-services.md#pluginprompteditor) | `plugin-host-services` |
 | [PluginQuestionAnnotationRead](plugin-questions.md#pluginquestionannotationread) | `plugin-questions` |
 | [PluginQuestionAnswer](plugin-questions.md#pluginquestionanswer) | `plugin-questions` |
 | [PluginQuestionAnswerState](plugin-questions.md#pluginquestionanswerstate) | `plugin-questions` |
@@ -180,6 +189,7 @@ The SDK is **type-only**. Call the contexts supplied by LearnHarness, not runtim
 | [PluginUiCallback](plugin-ui.md#pluginuicallback) | `plugin-ui` |
 | [PluginUiContent](plugin-ui.md#pluginuicontent) | `plugin-ui` |
 | [PluginView](plugins.md#pluginview) | `plugins` |
+| [PluginWidget](plugin-host-services.md#pluginwidget) | `plugin-host-services` |
 | [PluginWidgetHandle](plugin-ui.md#pluginwidgethandle) | `plugin-ui` |
 | [PluginWidgetOptions](plugin-ui.md#pluginwidgetoptions) | `plugin-ui` |
 | [PluginWorkerContext](plugin-workers.md#pluginworkercontext) | `plugin-workers` |
@@ -256,4 +266,4 @@ These are reachable through public data, event, inheritance or helper-type relat
 
 Standard JavaScript/DOM types (`Promise`, `AbortSignal`, `File`, `HTMLElement`, and utility types) use their standard contracts. Pi model/messages/tools and TypeBox schemas use the exact peer versions declared by the bundled SDK's `package.json`. Supply those peers when typechecking; they are development types, not permission to import private LearnHarness runtime modules.
 
-Coverage: **140 public types**, **57 supporting declarations**, **902 declared member signatures/variants**. Generation contains no build timestamps or absolute source paths.
+Coverage: **148 public types**, **57 supporting declarations**, **956 declared member signatures/variants**. Generation contains no build timestamps or absolute source paths.

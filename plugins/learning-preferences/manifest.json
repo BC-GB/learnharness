@@ -1,0 +1,10 @@
+{
+  "apiVersion": 1,
+  "id": "learning-preferences",
+  "name": "Learning preferences",
+  "version": "0.1.0",
+  "minAppVersion": "0.6.1",
+  "description": "A private preferences conversation with explicit Apply and recoverable Undo.",
+  "main": "main.js",
+  "backend": "backend.cjs"
+}

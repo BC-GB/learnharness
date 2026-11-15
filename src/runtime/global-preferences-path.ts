@@ -25,7 +25,7 @@ export function sharedPreferencePath(root: string, relative: string): string {
 	const promptParts = parts[1] === ".additions" ? parts.slice(2) : parts.slice(1);
 	const promptKey = promptParts.join("/");
 	const directory = promptKey === "" || ["teacher", "prober", "practice", "shared"].includes(promptKey);
-	if (!themePreference(relative, true) && !/^global-plugin-(drawing-pad|rich-code-blocks|flashcards)\.json$/.test(relative) && relative !== "global-plugins.json" && relative !== "global-settings.json" && relative !== "preference-history.json" && !(parts[0] === "global-prompts" && (directory || isValidSegmentPath(promptKey)))) throw new Error("Invalid global preference path.");
+	if (!themePreference(relative, true) && !/^global-plugin-(drawing-pad|rich-code-blocks|flashcards|learning-path)\.json$/.test(relative) && relative !== "global-plugins.json" && relative !== "global-settings.json" && relative !== "preference-history.json" && !(parts[0] === "global-prompts" && (directory || isValidSegmentPath(promptKey)))) throw new Error("Invalid global preference path.");
 	const target = path.join(/* turbopackIgnore: true */ root, ...parts);
 	if (canonical(target) !== path.join(/* turbopackIgnore: true */ canonical(root), ...parts)) throw new Error("Global preferences cannot use aliased paths.");
 	return target;
@@ -40,6 +40,6 @@ export function sharedPreferenceFile(root: string, file: string): string | undef
 	const relative = path.relative(root, file).split(path.sep).join("/");
 	const parts = relative.split("/");
 	const key = (parts[1] === ".additions" ? parts.slice(2) : parts.slice(1)).join("/");
-	if (!themePreference(relative) && !/^global-plugin-(drawing-pad|rich-code-blocks|flashcards)\.json$/.test(relative) && relative !== "global-plugins.json" && relative !== "global-settings.json" && relative !== "preference-history.json" && !(parts[0] === "global-prompts" && isValidSegmentPath(key))) return undefined;
+	if (!themePreference(relative) && !/^global-plugin-(drawing-pad|rich-code-blocks|flashcards|learning-path)\.json$/.test(relative) && relative !== "global-plugins.json" && relative !== "global-settings.json" && relative !== "preference-history.json" && !(parts[0] === "global-prompts" && isValidSegmentPath(key))) return undefined;
 	return sharedPreferencePath(root, relative);
 }

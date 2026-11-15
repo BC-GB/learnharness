@@ -13,15 +13,15 @@ export interface OpeningPrompt {
 	attempted: boolean;
 }
 
-const keyFor = (id: string) => documentCourse() === "legacy" ? `lh.openingPrompt.${id}` : `lh.openingPrompt.${documentCourse()}.${id}`;
+const keyFor = (id: string, course = documentCourse()) => course === "legacy" ? `lh.openingPrompt.${id}` : `lh.openingPrompt.${course}.${id}`;
 
-export function stashOpeningPrompt(id: string, text: string, attempted = false): boolean {
+export function stashOpeningPrompt(id: string, text: string, attempted = false, course = documentCourse()): boolean {
 	try {
 		const value = JSON.stringify({ text, attempted } satisfies OpeningPrompt);
 		// Catch both the storage getter and its methods (quota/security errors).
 		const storage = globalThis.sessionStorage;
-		storage.setItem(keyFor(id), value);
-		return storage.getItem(keyFor(id)) === value;
+		storage.setItem(keyFor(id, course), value);
+		return storage.getItem(keyFor(id, course)) === value;
 	} catch {
 		return false;
 	}
@@ -48,9 +48,9 @@ export function readOpeningPrompt(id: string): string | undefined {
 	return readOpeningPromptEntry(id)?.text;
 }
 
-export function clearOpeningPrompt(id: string): boolean {
+export function clearOpeningPrompt(id: string, course = documentCourse()): boolean {
 	try {
-		globalThis.sessionStorage.removeItem(keyFor(id));
+		globalThis.sessionStorage.removeItem(keyFor(id, course));
 		return true;
 	} catch {
 		// Canonical conversation/acknowledgment remains the truth. A later

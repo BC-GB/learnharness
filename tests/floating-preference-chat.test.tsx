@@ -16,8 +16,10 @@ async function fixture() {
   previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
  }
  const { createRoot } = await import("react-dom/client");
- const { PreferenceChat } = await import("../components/settings/preference-chat.tsx");
+ const { PreferenceChat } = await import("../plugins/learning-preferences/src/chat.tsx");
  const { InteractionLayersProvider } = await import("../components/interaction-layers.tsx");
+ const { createPluginUiStore, PluginUiHost } = await import("../components/plugin-ui-host.tsx");
+ const uiStore = createPluginUiStore(); const controller = new AbortController();
  const root = createRoot(document.getElementById("root")!);
  let saved: PreferenceChatView = { text: "Use examples.", revision: "prefs1", scope: "global", enabled: true, canUndo: false, conversation: { version: 1, revision: "chat1", messages: [{ id: "a", role: "user", text: "Short examples", at: "now" }, { id: "b", role: "assistant", text: "I propose short examples.", at: "now" }], proposal: { text: "Use short examples.", summary: "Short examples.", baseRevision: "prefs1" } } };
  const calls: { action?: string; revision?: string; conversationRevision?: string; text?: string; message?: string }[] = [];
@@ -31,7 +33,11 @@ async function fixture() {
   if (body.action === "undo") saved = { ...saved, text: "Use examples.", revision: "prefs3", canUndo: false, conversation: { ...saved.conversation, revision: "chat3", proposal: null } };
   return Response.json(saved);
  };
- const render = async (key: string, courseId = "a") => { await act(async () => root.render(<InteractionLayersProvider><PreferenceChat key={key} courseId={courseId} courseName="Test course" /></InteractionLayersProvider>)); };
+ const ctx = { signal: controller.signal, ui: uiStore.createUi({ signal: controller.signal }), call: async (operation: string, input?: unknown) => {
+  const response = operation === "view" ? await globalThis.fetch("/fixture", {}) : await globalThis.fetch("/fixture", { method: "POST", body: JSON.stringify(input) });
+  const value = await response.json(); if (!response.ok) throw new Error(value.error); return value;
+ } } as unknown as import("../plugins/learning-preferences/.sdk/index.d.ts").PluginFrontendContext;
+ const render = async (key: string, courseId = "a") => { await act(async () => root.render(<InteractionLayersProvider><PluginUiHost store={uiStore} /><PreferenceChat key={key} ctx={ctx} signal={controller.signal} courseId={courseId} courseName="Test course" /></InteractionLayersProvider>)); };
  cleanup = async () => { await act(async () => root.unmount()); globalThis.fetch = originalFetch; for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); } };
  await render("a");
  return { calls, render, fail: () => { fail = true; }, replaceProposal: () => { saved = { ...saved, conversation: { ...saved.conversation, revision: "other-window", proposal: { text: "Newer proposal.", summary: "Newer", baseRevision: saved.revision } } }; } };

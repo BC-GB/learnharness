@@ -731,3 +731,29 @@ describe("plugin frontend surface and native importer", () => {
 		assert.doesNotMatch(provider, /new EventSource|setInterval/);
 	});
 });
+
+
+describe("plugin native widget placements", () => {
+ it("validates registrations, freezes placement, scopes mounts and aborts late callbacks on disable", async () => {
+  let context!: PluginFrontendContext, disposed = 0, expired = false;
+  const f = fixture({ activate(ctx) {
+   context = ctx;
+   const widget = { id: "outline", location: "session" as const, mount(container: HTMLElement, signal: AbortSignal) {
+    container.textContent = "Owned panel"; signal.addEventListener("abort", () => { expired = true; }); return () => { disposed++; };
+   } };
+   ctx.registerWidget!(widget); widget.id = "mutated";
+   assert.throws(() => ctx.registerWidget!({ ...widget, id: "outline" }), /Duplicate/);
+   assert.throws(() => ctx.registerWidget!({ ...widget, id: "bad/path" }), /Invalid/);
+  } });
+  f.manager.reconcile([info()]); await tick();
+  const entry = f.manager.getSnapshot().plugins[0]!.widgets![0]!; assert.equal(entry.id, "outline");
+  const dom = parseHTML("<html><body><div id='target'></div></body></html>"), target = dom.document.getElementById("target")!;
+  f.manager.mount("fixture", (container, signal) => entry.mount(container, signal, { id: "native", kind: "teaching" }), target, error => { throw Error(error); }, "contents");
+  await tick(); assert.equal(target.textContent, "Owned panel");
+  assert.equal((target.firstElementChild as HTMLElement).style.display, "contents", "floating widgets retain their native page ownership without a layout box");
+  f.manager.reconcile([info("fixture", { enabled: false, status: "disabled" })]); await tick();
+  assert.equal(expired, true); assert.equal(disposed, 1); assert.equal(target.textContent, ""); assert.deepEqual(f.manager.getSnapshot().plugins[0]!.widgets, []);
+  context.registerWidget!({ id: "late", location: "app", mount() { throw Error("Expired mount"); } });
+  assert.deepEqual(f.manager.getSnapshot().plugins[0]!.widgets, []); f.manager.dispose();
+ });
+});

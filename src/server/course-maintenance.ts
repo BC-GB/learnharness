@@ -1,3 +1,4 @@
+import { pluginHostServiceRunningCount } from "./plugin-host-services.ts";
 import { pluginDocumentRunningCount } from "./plugin-documents.ts";
 import { sideChats } from "./side-chat.ts";
 import { pluginWorkerActivities } from "./plugin-worker-activity.ts";
@@ -12,8 +13,6 @@ import { runningTurnCount } from "./turn-liveness.ts";
 import { runningCompactionCount } from "./compaction.ts";
 import { extractionStatuses } from "../agent/subagents/extraction.ts";
 import { liveJobCount } from "../agent/subagents/aborts.ts";
-import { preferenceEditorRunningCount } from "./preference-editor.ts";
-import { outlineRunningCount } from "./lesson-outline.ts";
 
 /** Counts only: the installer must see all active courses, while learning
  * APIs never receive another course's titles, records or graph. Deliberately
@@ -32,7 +31,7 @@ export function courseMaintenanceStatus(): CourseMaintenanceStatus {
 			if (!job || !["running", "done", "error"].includes(job.status)) throw new Error("Background activity could not be verified.");
 			if (job.status === "running") backgroundJobs++;
 		}
-		return { activeTurns: runningTurnCount() + sideChats.runningCount(), compactions: runningCompactionCount(), extractions: extractionStatuses().length, backgroundJobs: Math.max(backgroundJobs, liveJobCount()) + outlineRunningCount() + preferenceEditorRunningCount() + pluginWorkerActivities().length + pluginInferenceRunningCount() + pluginDocumentRunningCount() };
+		return { activeTurns: runningTurnCount() + sideChats.runningCount(), compactions: runningCompactionCount(), extractions: extractionStatuses().length, backgroundJobs: Math.max(backgroundJobs, liveJobCount()) + pluginHostServiceRunningCount() + pluginWorkerActivities().length + pluginInferenceRunningCount() + pluginDocumentRunningCount() };
 	});
 	return courses.reduce<CourseMaintenanceStatus>((total, course) => ({ courseCount: total.courseCount + 1, activeTurns: total.activeTurns + course.activeTurns, compactions: total.compactions + course.compactions, extractions: total.extractions + course.extractions, backgroundJobs: total.backgroundJobs + course.backgroundJobs }), { courseCount: 0, activeTurns: 0, compactions: 0, extractions: 0, backgroundJobs: 0 });
 }

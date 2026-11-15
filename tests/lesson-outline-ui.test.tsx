@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { OutlinePanel } from "../components/lesson-outline.tsx";
+import { OutlinePanel } from "../plugins/lesson-outline/src/panel.tsx";
 
 test("floating outline shows AI headings, current group and distinguishable encounter states", () => {
-	const html = renderToStaticMarkup(<OutlinePanel view={{ enabled: true, available: true, busy: false, currentGroup: "models", focusGroup: "models", groups: [
+	const html = renderToStaticMarkup(<OutlinePanel onSettings={() => {}} view={{ enabled: true, available: true, busy: false, currentGroup: "models", focusGroup: "models", groups: [
 		{ id: "basics", title: "Repeated observations", items: [{ id: "obs", label: "Same units", state: "discussed" }] },
 		{ id: "models", title: "Comparing within a unit", items: [{ id: "subtract", label: "Subtract the unit average", state: "current" }, { id: "estimate", label: "Estimate using changes", state: "upcoming" }] },
 	] }} />);

@@ -62,3 +62,13 @@ test("core preferences are shared but notifications run in their original course
  assert.equal(fs.existsSync(a.dataRoot), false);
  assert.equal(fs.existsSync(b.dataRoot), false);
 });
+
+
+test("Learning Paths shares only its bounded preference record through the reviewed global path", t => {
+ const root = fs.mkdtempSync(path.join(os.tmpdir(), "lp-global-prefs-")); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+ const a = createCorePluginPreferences("learning-path", root)!, b = createCorePluginPreferences("learning-path", root)!;
+ assert(a && b); a.write({ artifactDefaults: { concept: "derivation_trace" }, architect: { followHostSlot: true } });
+ assert.deepEqual(b.read(), { artifactDefaults: { concept: "derivation_trace" }, architect: { followHostSlot: true } });
+ assert.deepEqual(fs.readdirSync(root), ["global-plugin-learning-path.json"]); assert.throws(() => a.write({ oversized: "x".repeat(17000) }), /oversized/);
+ assert.equal(createCorePluginPreferences("learning-path-other", root), undefined);
+});

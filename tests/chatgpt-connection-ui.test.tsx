@@ -75,11 +75,9 @@ afterEach(async () => { await act(async () => root?.unmount()); host?.remove(); 
 test("Providers is the first/default page; General closes the native group before Core/Community plugins", () => {
  const html = renderToStaticMarkup(<SettingsDialogBody onClose={() => {}} />);
  const ids = [...html.matchAll(/data-testid="settings-nav-([^"]+)"/g)].map((m) => m[1]);
- assert.deepEqual(ids, ["keys", "agent", "preferences", "appearance", "graph", "keyboard", "general", "core-plugins", "plugins"]);
+ assert.deepEqual(ids, ["keys", "agent", "appearance", "graph", "keyboard", "general", "core-plugins", "plugins"]);
  assert.match(html, /settings-nav-keys[^>]*aria-current="true"/); assert.equal(parseHTML(html).document.querySelector('[data-testid="settings-nav-keys"]')?.textContent, "Providers");
  assert.doesNotMatch(html, />Model providers<\/button>/);
- const preferences = renderToStaticMarkup(<SettingsDialogBody onClose={() => {}} initialSection="preferences" />);
- assert.match(preferences, /settings-nav-preferences[^>]*aria-current="true"/);
 
 });
 
@@ -91,7 +89,8 @@ test("Preferences selection opens the floating chat without inference", async ()
   assert.equal(url, "/api/settings"); return Response.json({ settings: { version: 1 } });
  };
  try {
-  await mount(<SettingsDialogBody onClose={() => { closed++; }} initialSection="preferences" />);
+  const { PreferenceChatShortcut } = await import("../plugins/learning-preferences/src/chat.tsx");
+  await mount(<PreferenceChatShortcut onOpen={() => { closed++; }} />);
   assert(byTest("preference-chat-shortcut"));
   await click(button("Open preferences chat"));
   assert.equal(opened, 1); assert.equal(closed, 1);

@@ -16,6 +16,8 @@ it("plugin learning reader preserves native data and provides reads only", () =>
 	assert.equal(reader.directory, "/learning");
 	assert.deepEqual(reader.getSession("chat_a"), record);
 	assert.equal(reader.getSession("missing"), null);
+ assert.deepEqual(reader.getSessionSnapshot!("chat_a"), { record, currentNode: null, passages: [], busy: true });
+ assert.equal(reader.getSessionSnapshot!("missing"), null);
 	assert.deepEqual(reader.listSessions(), [{ id: "chat_a", kind: "teach", busy: true, compacting: false }]);
 	assert.deepEqual(reader.readGraphFile("nodes.jsonl"), nodes);
 	assert.deepEqual(reader.readGraphFile("sources.json"), sources);
@@ -28,5 +30,5 @@ it("plugin learning reader preserves native data and provides reads only", () =>
 	assert.deepEqual(graph.positions, { node: { x: 1, y: 2 } });
 	assert.throws(() => reader.getSession("../../auth"), /Invalid/);
 	assert.throws(() => reader.readGraphFile("../../auth.json" as never), /Unknown/);
-	assert.deepEqual(Object.keys(reader).sort(), ["directory", "getSession", "graph", "listSessions", "readGraphFile"]);
+	assert.deepEqual(Object.keys(reader).sort(), ["directory", "getSession", "getSessionSnapshot", "graph", "listSessions", "readGraphFile"]);
 });

@@ -64,6 +64,18 @@ async function handleCoursePUT(request: Request, ctx: { params: Promise<{ sectio
 		);
 	}
 	const body = await request.json().catch(() => null);
+	// The remaining native General control edits one field. Preserve choices
+    // acknowledged by independent plugin writers, even if this view is stale.
+    // Legacy whole-section PUT/reset semantics remain unchanged.
+    if (section === "general" && body && typeof body === "object" && !Array.isArray(body) && Object.hasOwn(body, "patch")) {
+        const patch = body.patch;
+        if (Object.keys(body).length !== 1 || !patch || typeof patch !== "object" || Array.isArray(patch) || Object.keys(patch).length !== 1 || !Object.hasOwn(patch, "autoUpdate") || typeof patch.autoUpdate !== "boolean") return Response.json({ error: "General patch accepts only autoUpdate: boolean" }, { status: 400 });
+        const record = readSettingsRecord() ?? { version: 1 };
+        const stored = writeSettingsRecord({ ...record, general: { ...record.general, autoUpdate: patch.autoUpdate } });
+        refreshWorkerRequestAdmission();
+        const fileAccessError = fileAccessConfigurationError();
+        return Response.json({ settings: stored, ...(fileAccessError ? { fileAccessError } : {}) });
+    }
 	const parsed = parser(body);
 	if (!parsed.ok) {
 		return Response.json({ error: parsed.error }, { status: 400 });

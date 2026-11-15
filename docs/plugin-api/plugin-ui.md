@@ -18,6 +18,7 @@
 - [PluginMenuProps](#pluginmenuprops)
 - [PluginModelPickerProps](#pluginmodelpickerprops)
 - [PluginModelValue](#pluginmodelvalue)
+- [PluginPopoverProps](#pluginpopoverprops)
 - [PluginSettingsRow](#pluginsettingsrow)
 - [PluginSettingsRowBase](#pluginsettingsrowbase) — supporting declaration
 - [PluginSettingsSchema](#pluginsettingsschema)
@@ -687,6 +688,71 @@ provider: string;
 id: string;
 ```
 
+## PluginPopoverProps
+
+Public SDK type, exported as `PluginPopoverProps`. Import with `import type`; the SDK has no runtime exports.
+
+Controlled host presentation: plugins own values, persistence and accepted-value
+updates. Every method returns a shallow-update/idempotent-dispose handle and is
+scoped to options.signal plus activation; aborted scopes produce inert handles.
+Async interaction failures are reported by the host, not silently saved.
+
+```ts
+export interface PluginPopoverProps {
+    root: HTMLElement;
+    panel: HTMLElement;
+    open: boolean;
+    onClose: () => void;
+    onLayer: (zIndex: number) => void;
+}
+```
+
+**Member index** (including nested object members; inherited members are defined in the linked base types):
+
+- [root](#pluginpopoverprops-root)
+- [panel](#pluginpopoverprops-panel)
+- [open](#pluginpopoverprops-open)
+- [onClose](#pluginpopoverprops-onclose)
+- [onLayer](#pluginpopoverprops-onlayer)
+
+### PluginPopoverProps root
+
+```ts
+root: HTMLElement;
+```
+
+### PluginPopoverProps panel
+
+```ts
+panel: HTMLElement;
+```
+
+### PluginPopoverProps open
+
+```ts
+open: boolean;
+```
+
+### PluginPopoverProps onClose
+
+```ts
+onClose: () => void;
+```
+
+**Returns:** `void`.
+
+### PluginPopoverProps onLayer
+
+```ts
+onLayer: (zIndex: number) => void;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `zIndex` | `number` |
+
+**Returns:** `void`.
+
 ## PluginSettingsRow
 
 Public SDK type, exported as `PluginSettingsRow`. Import with `import type`; the SDK has no runtime exports.
@@ -1047,13 +1113,9 @@ disabled?: boolean;
 
 Public SDK type, exported as `PluginUi`. Import with `import type`; the SDK has no runtime exports.
 
-Controlled host presentation: plugins own values, persistence and accepted-value
-updates. Every method returns a shallow-update/idempotent-dispose handle and is
-scoped to options.signal plus activation; aborted scopes produce inert handles.
-Async interaction failures are reported by the host, not silently saved.
-
 ```ts
 export interface PluginUi {
+    mountPopover?(container: HTMLElement, props: PluginPopoverProps, options: PluginWidgetOptions): PluginWidgetHandle<PluginPopoverProps>;
     mountModelPicker(container: HTMLElement, props: PluginModelPickerProps, options: PluginWidgetOptions): PluginWidgetHandle<PluginModelPickerProps>;
     mountThinkingPicker(container: HTMLElement, props: PluginThinkingPickerProps, options: PluginWidgetOptions): PluginWidgetHandle<PluginThinkingPickerProps>;
     mountKnowledgePicker(container: HTMLElement, props: PluginKnowledgePickerProps, options: PluginWidgetOptions): PluginWidgetHandle<PluginKnowledgePickerProps>;
@@ -1073,10 +1135,11 @@ export interface PluginUi {
 }
 ```
 
-**Related types:** [PluginBadgeProps](plugin-ui.md#pluginbadgeprops), [PluginButtonProps](plugin-ui.md#pluginbuttonprops), [PluginComposerProps](plugin-ui.md#plugincomposerprops), [PluginDialogProps](plugin-ui.md#plugindialogprops), [PluginDictationHandle](plugin-ui.md#plugindictationhandle), [PluginDictationProps](plugin-ui.md#plugindictationprops), [PluginKnowledgePickerProps](plugin-ui.md#pluginknowledgepickerprops), [PluginMarkdownProps](plugin-ui.md#pluginmarkdownprops), [PluginMenuProps](plugin-ui.md#pluginmenuprops), [PluginModelPickerProps](plugin-ui.md#pluginmodelpickerprops), [PluginSettingsSchema](plugin-ui.md#pluginsettingsschema), [PluginStandardComposerProps](plugin-ui.md#pluginstandardcomposerprops), [PluginSurfaceProps](plugin-ui.md#pluginsurfaceprops), [PluginSurfaceTarget](plugin-ui.md#pluginsurfacetarget), [PluginThinkingPickerProps](plugin-ui.md#pluginthinkingpickerprops), [PluginTreeProps](plugin-tree.md#plugintreeprops), [PluginWidgetHandle](plugin-ui.md#pluginwidgethandle), [PluginWidgetOptions](plugin-ui.md#pluginwidgetoptions), [PluginWorkerResultProps](plugin-ui.md#pluginworkerresultprops).
+**Related types:** [PluginBadgeProps](plugin-ui.md#pluginbadgeprops), [PluginButtonProps](plugin-ui.md#pluginbuttonprops), [PluginComposerProps](plugin-ui.md#plugincomposerprops), [PluginDialogProps](plugin-ui.md#plugindialogprops), [PluginDictationHandle](plugin-ui.md#plugindictationhandle), [PluginDictationProps](plugin-ui.md#plugindictationprops), [PluginKnowledgePickerProps](plugin-ui.md#pluginknowledgepickerprops), [PluginMarkdownProps](plugin-ui.md#pluginmarkdownprops), [PluginMenuProps](plugin-ui.md#pluginmenuprops), [PluginModelPickerProps](plugin-ui.md#pluginmodelpickerprops), [PluginPopoverProps](plugin-ui.md#pluginpopoverprops), [PluginSettingsSchema](plugin-ui.md#pluginsettingsschema), [PluginStandardComposerProps](plugin-ui.md#pluginstandardcomposerprops), [PluginSurfaceProps](plugin-ui.md#pluginsurfaceprops), [PluginSurfaceTarget](plugin-ui.md#pluginsurfacetarget), [PluginThinkingPickerProps](plugin-ui.md#pluginthinkingpickerprops), [PluginTreeProps](plugin-tree.md#plugintreeprops), [PluginWidgetHandle](plugin-ui.md#pluginwidgethandle), [PluginWidgetOptions](plugin-ui.md#pluginwidgetoptions), [PluginWorkerResultProps](plugin-ui.md#pluginworkerresultprops).
 
 **Member index** (including nested object members; inherited members are defined in the linked base types):
 
+- [mountPopover](#pluginui-mountpopover)
 - [mountModelPicker](#pluginui-mountmodelpicker)
 - [mountThinkingPicker](#pluginui-mountthinkingpicker)
 - [mountKnowledgePicker](#pluginui-mountknowledgepicker)
@@ -1092,6 +1155,22 @@ export interface PluginUi {
 - [openMenu](#pluginui-openmenu)
 - [openDialog](#pluginui-opendialog)
 - [openSurface](#pluginui-opensurface) — 2 signatures/variants
+
+### PluginUi mountPopover
+
+Bind a plugin-owned nonmodal popup to native Escape/outside-click/modal ordering.
+
+```ts
+mountPopover?(container: HTMLElement, props: PluginPopoverProps, options: PluginWidgetOptions): PluginWidgetHandle<PluginPopoverProps>;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `container` | `HTMLElement` |
+| `props` | `PluginPopoverProps` |
+| `options` | `PluginWidgetOptions` |
+
+**Returns:** `PluginWidgetHandle<PluginPopoverProps>`.
 
 ### PluginUi mountModelPicker
 

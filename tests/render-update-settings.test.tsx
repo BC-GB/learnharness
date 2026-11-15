@@ -234,23 +234,23 @@ describe("General update rows", () => {
 });
 
 describe("Settings integration", () => {
-	it("the toggle sends the complete General section and follows stored server truth", async () => {
+	it("the toggle patches only its field and follows the canonical stored General record", async () => {
 		bridge();
-		// A synthetic future sibling exercises the caller's section-preserving
-		// contract without introducing a new product setting or changing its API.
+		// The server merges a narrow edit against its current record, preserving
+		// independent plugin choices and future siblings even when this view is stale.
 		const record = { version: 1, general: { autoUpdate: true, futureSibling: "keep" } };
 		const puts: unknown[] = [];
 		globalThis.fetch = async (input, init) => {
 			assert.equal(String(input), init?.method === "PUT" ? "/api/settings/general" : "/api/settings");
 			if (init?.method === "PUT") {
 				const body = JSON.parse(String(init.body)); puts.push(body);
-				return Response.json({ settings: { ...record, general: body } });
+				return Response.json({ settings: { ...record, general: { ...record.general, ...body.patch } } });
 			}
 			return Response.json({ settings: record });
 		};
 		const host = await mount(<SettingsDialogBody initialSection="general" onClose={() => {}} />);
 		await click(q(host, "toggle-auto-update"));
-		assert.deepEqual(puts, [{ autoUpdate: false, futureSibling: "keep" }]);
+		assert.deepEqual(puts, [{ patch: { autoUpdate: false } }]);
 		assert.equal(q(host, "toggle-auto-update")!.getAttribute("aria-checked"), "false");
 	});
 

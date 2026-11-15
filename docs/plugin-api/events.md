@@ -39,6 +39,9 @@ The core event vocabulary plus the namespaced plugin extension channel.
 
 ```ts
 export interface ServerEvents {
+    "settings-changed": {
+        section: string;
+    };
     "turn-started": {
         chatId: string;
     };
@@ -77,6 +80,8 @@ export interface ServerEvents {
 
 **Member index** (including nested object members; inherited members are defined in the linked base types):
 
+- ["settings-changed"](#serverevents-settings-changed)
+- ["settings-changed".section](#serverevents-settings-changedsection)
 - ["turn-started"](#serverevents-turn-started)
 - ["turn-started".chatId](#serverevents-turn-startedchatid)
 - ["turn-settled"](#serverevents-turn-settled)
@@ -102,6 +107,20 @@ export interface ServerEvents {
 - ["plugin-message".pluginId](#serverevents-plugin-messagepluginid)
 - ["plugin-message".topic](#serverevents-plugin-messagetopic)
 - ["plugin-message".data](#serverevents-plugin-messagedata)
+
+### ServerEvents "settings-changed"
+
+```ts
+"settings-changed": {
+    section: string;
+};
+```
+
+### ServerEvents "settings-changed".section
+
+```ts
+section: string;
+```
 
 ### ServerEvents "turn-started"
 

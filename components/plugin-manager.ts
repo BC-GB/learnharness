@@ -21,6 +21,7 @@ export interface FrontendPlugin {
 	phase: "disabled" | "loading" | "active" | "error";
 	error?: string;
 	views: PluginView[];
+	widgets?: import("@/src/core").PluginWidget[];
 	actions: PluginAction[];
 	shortcuts?: readonly { actionId: string; shortcut: PluginActionShortcut }[];
 	placements: PluginActionPlacement[];
@@ -50,6 +51,7 @@ interface Lifecycle {
 	tasks: Set<Promise<void>>;
 	teardown?: Promise<void>;
 	views: Map<string, PluginView>;
+	widgets: Map<string, import("@/src/core").PluginWidget>;
 	actions: Map<string, PluginAction>;
 	shortcuts: Map<string, PluginActionShortcut>;
 	placements: Map<string, PluginActionPlacement>;
@@ -72,9 +74,12 @@ export interface PluginHost {
 	reservedToolNames?: readonly string[];
 	fetch: typeof fetch;
 	importModule(url: string): Promise<PluginFrontendModule>;
+	course?(): import("@/src/core").PluginCourseIdentity;
 	pathname(): string;
 	navigate(path: string): void;
 	openSettings?(pluginId: string): void;
+	closeSettings?(): void;
+	createSession?(input: { title: string; kind: "teaching" | "practice" }, signal: AbortSignal): Promise<import("@/src/core").PluginCreatedSession>;
 	createUi?(options: { signal: AbortSignal; pluginId?: string; onError: (error: unknown) => void }): import("@/src/core/plugin-ui").PluginUi;
 	style?(url: string, onError: () => void): PluginCleanup;
 }
@@ -149,7 +154,7 @@ export class PluginFrontendManager {
 			const life = this.lives.get(info.id);
 			return {
 				info, phase: life?.phase ?? (info.enabled ? (info.status === "error" ? "error" : "active") : "disabled"),
-				error: life?.error ?? this.cleanupErrors.get(info.id) ?? info.error, views: [...(life?.views.values() ?? [])],
+				error: life?.error ?? this.cleanupErrors.get(info.id) ?? info.error, views: [...(life?.views.values() ?? [])], widgets: [...(life?.widgets.values() ?? [])],
 				actions: [...(life?.actions.values() ?? [])], shortcuts: [...(life?.shortcuts ?? [])].map(([actionId, shortcut]) => ({ actionId, shortcut })), placements: [...(life?.placements.values() ?? [])],
 				actionBusy: [...(life?.actionBusy ?? [])], settings: life?.settings, busy: this.pending.has(info.id),
 			};
@@ -201,7 +206,7 @@ export class PluginFrontendManager {
 		if (this.lives.get(life.id) === life) this.lives.delete(life.id);
 		if (life.teardown) return life.teardown;
 		life.controller.abort();
-		life.views.clear(); life.actions.clear(); life.placements.clear(); life.actionBusy.clear(); life.settings = undefined;
+		life.views.clear(); life.widgets.clear(); life.actions.clear(); life.placements.clear(); life.actionBusy.clear(); life.settings = undefined;
 		life.codeBlocks.clear(); life.toolRenderers.clear(); life.questionRenderers.clear(); life.problemRenderers.clear(); life.submissionInterceptors.clear();
 		life.notifications.clear(); life.events.clear(); life.resyncs.clear();
 		const cleanups = [...life.cleanups].reverse();
@@ -252,7 +257,7 @@ export class PluginFrontendManager {
 			const life: Lifecycle = {
 				id: info.id, revision: info.revision, controller: new AbortController(), cleanups: new Set(),
 				activation: Promise.resolve(), tasks: new Set(),
-				views: new Map(), actions: new Map(), shortcuts: new Map(), placements: new Map(), actionBusy: new Set(), codeBlocks: new Map(), toolRenderers: new Map(), questionRenderers: new Map(), problemRenderers: new Map(), submissionInterceptors: new Map(),
+				views: new Map(), widgets: new Map(), actions: new Map(), shortcuts: new Map(), placements: new Map(), actionBusy: new Set(), codeBlocks: new Map(), toolRenderers: new Map(), questionRenderers: new Map(), problemRenderers: new Map(), submissionInterceptors: new Map(),
 				notifications: new Set(), events: new Set(), resyncs: new Set(), phase: "loading",
 			};
 			this.cleanupErrors.delete(info.id);
@@ -359,6 +364,14 @@ export class PluginFrontendManager {
 		const context: PluginFrontendContext = {
 			manifest, signal: life.controller.signal,
 			cleanup: cleanup => { this.addCleanup(life, cleanup); },
+			registerWidget: widget => {
+                if (!this.current(life)) return () => {};
+                if (!widget || typeof widget.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(widget.id) || !["app", "session", "settings-general"].includes(widget.location) || typeof widget.mount !== "function") throw new Error("Invalid plugin widget");
+                if (life.widgets.has(widget.id)) throw new Error("Duplicate plugin widget");
+                const owned = Object.freeze({ id: widget.id, location: widget.location, mount: widget.mount.bind(widget) });
+                life.widgets.set(owned.id, owned); this.publish();
+                return () => { if (life.widgets.get(owned.id) === owned) { life.widgets.delete(owned.id); this.publish(); } };
+            },
 			registerView: view => register(life.views, view, "mount"),
 			registerAction: action => register(life.actions, action, "run"),
 			placeAction: placement => {
@@ -463,10 +476,19 @@ export class PluginFrontendManager {
 			onAppEvent: listener => listen(life.events, listener),
 			onResync: listener => listen(life.resyncs, listener),
 			app: {
+				createSession: async input => {
+					if (!this.current(life) || !this.host.createSession) throw new Error("Native session creation is unavailable");
+					const created = await this.host.createSession(input, life.controller.signal);
+					if (!this.current(life)) { created.clearOpeningPrompt(); throw new Error("Plugin is no longer active"); }
+					this.addCleanup(life, () => created.clearOpeningPrompt());
+					return created;
+				},
+				course: () => { if (!this.current(life) || !this.host.course) throw new Error("Course metadata unavailable"); return { ...this.host.course() }; },
 				pathname: () => this.host.pathname(),
 				openHome: () => { if (this.current(life)) this.host.navigate("/"); },
 				openSession: id => { if (this.current(life)) this.host.navigate(`/chat/${encodeURIComponent(id)}`); },
 				openView: id => { if (this.current(life)) this.host.navigate(pluginViewPath(info.id, id)); },
+				closeSettings: () => { if (this.current(life)) this.host.closeSettings?.(); },
 				openSettings: () => { if (this.current(life)) this.host.openSettings?.(info.id); },
 			},
 		};
@@ -625,7 +647,7 @@ export class PluginFrontendManager {
 	}
 	/** Each mount gets a private child. A late cleanup can never erase a new
 	 * view's DOM, including when navigating away and immediately back. */
-	mount(id: string, mount: PluginMount, container: HTMLElement, onError: (error: string) => void): () => void {
+	mount(id: string, mount: PluginMount, container: HTMLElement, onError: (error: string) => void, layout: "body" | "contents" = "body"): () => void {
 		const life = this.lives.get(id);
 		if (!life || !this.current(life)) return () => {};
 		let alive = true;
@@ -633,6 +655,7 @@ export class PluginFrontendManager {
 		let returned: PluginCleanup | undefined;
 		const child = container.ownerDocument.createElement("div");
 		child.className = "min-h-0 min-w-0 flex-1";
+        if (layout === "contents") child.style.display = "contents";
 		container.appendChild(child);
 		const off = this.addCleanup(life, () => {
 			alive = false; controller.abort(); child.remove();
