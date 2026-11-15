@@ -154,9 +154,9 @@ test("pending upload blocks button and both Enter paths, survives collapse, and 
 
 test("invalid or excessive attachments and upload errors retain draft without submission", async () => {
 	const f = await fixture(); await f.text("Keep this");
-	await f.pick([new File(["document"], "no.pdf", { type: "application/pdf" })]);
+	await f.pick([new File(["document"], "no.docx", { type: "application/octet-stream" })]);
 	assert.equal(f.uploads.length, 0);
-	assert.match(f.doc.querySelector('[role="alert"]')?.textContent ?? "", /Use PNG/);
+	assert.match(f.doc.querySelector('[role="alert"]')?.textContent ?? "", /Use PDFs/);
 	await f.pick(Array.from({ length: 5 }, image));
 	assert.equal(f.uploads.length, 0);
 	assert.match(f.doc.querySelector('[role="alert"]')?.textContent ?? "", /four images/);
