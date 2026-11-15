@@ -647,7 +647,7 @@ export class PluginFrontendManager {
 	}
 	/** Each mount gets a private child. A late cleanup can never erase a new
 	 * view's DOM, including when navigating away and immediately back. */
-	mount(id: string, mount: PluginMount, container: HTMLElement, onError: (error: string) => void): () => void {
+	mount(id: string, mount: PluginMount, container: HTMLElement, onError: (error: string) => void, layout: "body" | "contents" = "body"): () => void {
 		const life = this.lives.get(id);
 		if (!life || !this.current(life)) return () => {};
 		let alive = true;
@@ -655,6 +655,7 @@ export class PluginFrontendManager {
 		let returned: PluginCleanup | undefined;
 		const child = container.ownerDocument.createElement("div");
 		child.className = "min-h-0 min-w-0 flex-1";
+        if (layout === "contents") child.style.display = "contents";
 		container.appendChild(child);
 		const off = this.addCleanup(life, () => {
 			alive = false; controller.abort(); child.remove();

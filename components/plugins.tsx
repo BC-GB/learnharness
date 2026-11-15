@@ -134,17 +134,17 @@ export function PluginWidgets() {
 
 /** Plugins own this DOM subtree (including their own bundled React root if
  * desired). React owns only the outer frame and its inline error surface. */
-export function PluginMountPoint({ pluginId, mount, label }: { pluginId: string; mount: PluginMount; label: string }) {
+export function PluginMountPoint({ pluginId, mount, label, layout = "body" }: { pluginId: string; mount: PluginMount; label: string; layout?: "body" | "contents" }) {
 	const { manager } = usePlugins();
 	const container = useRef<HTMLDivElement>(null);
 	const [error, setError] = useState<string>();
 	useEffect(() => {
 		setError(undefined);
 		if (!manager || !container.current) return;
-		return manager.mount(pluginId, mount, container.current, setError);
-	}, [manager, pluginId, mount]);
+		return manager.mount(pluginId, mount, container.current, setError, layout);
+	}, [manager, pluginId, mount, layout]);
 	return <>
 		{error && <p role="alert" className="px-3 py-2 text-xs text-destructive">{label}: {error}</p>}
-		<div ref={container} aria-label={label} className="flex min-h-0 min-w-0 flex-1 flex-col" />
+		<div ref={container} aria-label={label} style={layout === "contents" ? { display: "contents" } : undefined} className="flex min-h-0 min-w-0 flex-1 flex-col" />
 	</>;
 }

@@ -748,8 +748,9 @@ describe("plugin native widget placements", () => {
   f.manager.reconcile([info()]); await tick();
   const entry = f.manager.getSnapshot().plugins[0]!.widgets![0]!; assert.equal(entry.id, "outline");
   const dom = parseHTML("<html><body><div id='target'></div></body></html>"), target = dom.document.getElementById("target")!;
-  f.manager.mount("fixture", (container, signal) => entry.mount(container, signal, { id: "native", kind: "teaching" }), target, error => { throw Error(error); });
+  f.manager.mount("fixture", (container, signal) => entry.mount(container, signal, { id: "native", kind: "teaching" }), target, error => { throw Error(error); }, "contents");
   await tick(); assert.equal(target.textContent, "Owned panel");
+  assert.equal((target.firstElementChild as HTMLElement).style.display, "contents", "floating widgets retain their native page ownership without a layout box");
   f.manager.reconcile([info("fixture", { enabled: false, status: "disabled" })]); await tick();
   assert.equal(expired, true); assert.equal(disposed, 1); assert.equal(target.textContent, ""); assert.deepEqual(f.manager.getSnapshot().plugins[0]!.widgets, []);
   context.registerWidget!({ id: "late", location: "app", mount() { throw Error("Expired mount"); } });

@@ -9,5 +9,5 @@ export function PluginContributions({ location, session }: { location: PluginWid
 function Widget({ pluginId, widget, session }: { pluginId: string; widget: PluginWidget; session?: { id: string; kind: "teaching" | "practice" } }) {
  const id = session?.id, kind = session?.kind;
  const mount = useMemo(() => (container: HTMLElement, signal: AbortSignal) => widget.mount(container, signal, id && kind ? { id, kind } : undefined), [widget, id, kind]);
- return <PluginMountPoint pluginId={pluginId} mount={mount} label={widget.id} />;
+ return <PluginMountPoint pluginId={pluginId} mount={mount} label={widget.id} layout={widget.location === "settings-general" ? "body" : "contents"} />;
 }
