@@ -70,7 +70,8 @@ export async function verifyCorePlugins({ root, standalone, dataDirectory, url, 
 		for (const id of available) {
 			const catalog = await request(`/api/plugins/${id}`, { enabled: true });
 			const info = catalog.plugins.find(p => p.id === id); assert.equal(info.origin, "core"); assert.equal(info.status, "active", JSON.stringify(info));
-			assert.ok(fs.statSync(path.join(dataDirectory, "core-plugin-data", id)).isDirectory());
+			if (info.manifest.backend) assert.ok(fs.statSync(path.join(dataDirectory, "core-plugin-data", id)).isDirectory());
+            else assert.equal(fs.existsSync(path.join(dataDirectory, "core-plugin-data", id)), false, "frontend-only preferences stay browser-local");
 			for (const entry of [info.manifest.main, info.manifest.styles].filter(Boolean)) {
 				const response = await serverRequest(`/api/plugins/${id}/assets/${entry}`);
 				const bytes = Buffer.from(await response.arrayBuffer()); assert.equal(response.status, 200, `${id}/${entry}`);
