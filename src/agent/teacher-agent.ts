@@ -30,6 +30,7 @@ import { toLlmMessages, nativeInputCause, PRACTICE_PROBLEM_TOOL } from "../core/
 import type { ChatGPTRequestCycle } from "./chatgpt-request-cycle.ts";
 import { usageWasAdmitted } from "./subscription-request-cycle.ts";
 import { PluginQuestionLedger, type NativePluginQuestionContribution } from "./plugin-question-tools.ts";
+import { courseLibraryInstructions } from "./course-library-context.ts";
 
 /**
  * The two teaching-side agents (docs/archive/probe-teach-split.md): the PROBER and
@@ -217,7 +218,9 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	const composedPrompt = opts.promptSwitches || globalPreferencesEnabled()
 		? composeInstructions(kind, opts.promptSwitches ?? globalPromptSwitches())
 		: composedInstructions[kind]!;
-	const builtinPrompt = narrationGuard ? `${composedPrompt}\n\n---\n\n${SEND_TO_USER_DELIVERY_RULE}` : composedPrompt;
+	const library = courseLibraryInstructions();
+	const scopedPrompt = library ? `${composedPrompt}\n\n---\n\n${library}` : composedPrompt;
+	const builtinPrompt = narrationGuard ? `${scopedPrompt}\n\n---\n\n${SEND_TO_USER_DELIVERY_RULE}` : scopedPrompt;
 	// Bind native read and preserve the kind/model-aware Claude output gate
 	// before resolving additive plugins. Explicit registries remain caller-owned.
 	const builtinTools = [
