@@ -333,13 +333,13 @@ export function activate(ctx: PluginBackendContext): void {
           ?.id ?? null
       );
     } catch {
-      return null;
+      throw new Error("Architect conversation state unavailable");
     }
   };
 
   const ownedChange = async <T>(id: string | null, work: () => Promise<T>): Promise<T> => {
     const running = runningArchitectConversation();
-    if (ownershipPending || (running && running !== id)) throw new Error("An Architect conversation is running. Stop it or wait before starting another conversation.");
+    if (ownershipPending || (running && running !== id)) throw new Error("An Architect conversation is still running. Stop it or wait before starting another conversation.");
     ownershipPending = true;
     try { return await work(); } finally { ownershipPending = false; }
   };

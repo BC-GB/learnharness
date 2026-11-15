@@ -1,0 +1,10 @@
+{
+  "name": "learnharness-learning-preferences",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sdk": "node ../../scripts/build-plugin-types.mjs .sdk",
+    "build": "node scripts/build.mjs"
+  }
+}

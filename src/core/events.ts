@@ -8,6 +8,7 @@
 
 /** The core event vocabulary plus the namespaced plugin extension channel. */
 export interface ServerEvents {
+ "settings-changed": { section: string };
 	/** A native conversation turn began server-side, including sends, wake
 	 * turns and turns initiated from another window. */
 	"turn-started": { chatId: string };
@@ -51,6 +52,7 @@ export type ServerEventType = keyof ServerEvents;
  *  name (types are erased; this list is the single source of truth for
  *  what the SSE channel can carry). */
 export const SERVER_EVENT_TYPES = [
+ "settings-changed",
 	"turn-started",
 	"turn-settled",
 	"response-ready",

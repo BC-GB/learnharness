@@ -165,7 +165,16 @@ export interface PluginSettingsSchema { rows: PluginSettingsRow[] }
  * updates. Every method returns a shallow-update/idempotent-dispose handle and is
  * scoped to options.signal plus activation; aborted scopes produce inert handles.
  * Async interaction failures are reported by the host, not silently saved. */
+export interface PluginPopoverProps {
+ root: HTMLElement;
+ panel: HTMLElement;
+ open: boolean;
+ onClose: () => void;
+ onLayer: (zIndex: number) => void;
+}
 export interface PluginUi {
+ /** Bind a plugin-owned nonmodal popup to native Escape/outside-click/modal ordering. */
+ mountPopover?(container: HTMLElement, props: PluginPopoverProps, options: PluginWidgetOptions): PluginWidgetHandle<PluginPopoverProps>;
 	/** Mount host-catalog model selection; returns a controlled picker handle.
 	 * Does not change core defaults, silently refresh accounts or choose a fallback. */
 	mountModelPicker(container: HTMLElement, props: PluginModelPickerProps, options: PluginWidgetOptions): PluginWidgetHandle<PluginModelPickerProps>;

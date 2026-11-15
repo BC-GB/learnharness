@@ -47,7 +47,8 @@ test("the Architect prompt enforces every framework rule", () => {
   assert.match(prompt, /Never rewrite, reorder or delete the path/);
   assert.match(prompt, /save_learning_path/);
   assert.match(prompt, /Do not require the learner to supply a reference/);
-  assert.match(prompt, /Call list_uploaded_sources at the start/);
+  assert.match(prompt, /When list_course_materials is available/);
+  assert.match(prompt, /Optional plugin uploads are available through list_uploaded_sources/);
   assert.match(prompt, /contents\/table of contents, chapter headings/);
   assert.match(prompt, /Do not read the whole book/);
   assert.match(prompt, /Never invent chapter numbers/);

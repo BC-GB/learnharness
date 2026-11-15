@@ -312,7 +312,8 @@ test("install:local updates dist, preserves data and runs without warnings", (t)
   const installedData = path.join(installed, "data");
 
   const packageJson = JSON.parse(fs.readFileSync(path.join(project, "package.json"), "utf8"));
-  assert.equal(packageJson.scripts["install:local"], "npm run build && node scripts/install-plugin-local.mjs");
+  assert.equal(packageJson.scripts.build, "node scripts/build.mjs");
+  assert.equal(packageJson.scripts["install:local"], undefined, "bundled package uses host deployment");
 
   const build = runNode("scripts/build.mjs", [], project);
   assert.equal(build.status, 0, build.stderr);

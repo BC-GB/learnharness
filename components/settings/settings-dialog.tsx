@@ -50,9 +50,6 @@ import {
 import { useAppearance } from "./appearance.tsx";
 import { SettingsSection, SettingsRow, Toggle } from "./controls.tsx";
 import { UpdateSettings } from "./update-settings.tsx";
-import { NotificationSettings } from "./notification-settings.tsx";
-import { OutlineModelSettings } from "./outline-model-settings.tsx";
-import { PreferenceChatShortcut } from "./preference-chat.tsx";
 import { AgentSection } from "./agent-section.tsx";
 import type { ModelsSettings } from "@/src/core";
 import { MENU_CLOSE_EVENT, MENU_OPEN_EVENT } from "@/components/menu-shell";
@@ -64,6 +61,7 @@ import { KeyboardSection } from "./keyboard-section.tsx";
 import { PluginsSection } from "./plugins-section.tsx";
 import { PluginSettingsPage } from "./plugin-settings-page.tsx";
 import { usePlugins } from "@/components/plugins";
+import { PluginContributions } from "@/components/plugin-widgets";
 import { ChatGPTUIProvider } from "./chatgpt-connection.tsx";
 import { NativeSubscriptionUIProvider } from "./subscription-connections.tsx";
 
@@ -73,7 +71,6 @@ import { NativeSubscriptionUIProvider } from "./subscription-connections.tsx";
 const SECTIONS = [
 	{ id: "keys", label: "Providers", icon: KeyIcon },
 	{ id: "agent", label: "Agent", icon: BotIcon },
-	{ id: "preferences", label: "Preferences", icon: SettingsIcon },
 	{ id: "appearance", label: "Appearance", icon: PaletteIcon },
 	{ id: "graph", label: "Graph", icon: WaypointsIcon },
 	{ id: "keyboard", label: "Keyboard", icon: KeyboardIcon, hint: "Stored on this device" },
@@ -130,9 +127,11 @@ export function SettingsDialogProvider({
 			const pluginId: unknown = (event as CustomEvent<unknown>).detail;
 			if (typeof pluginId === "string") open(`plugin:${pluginId}`);
 		};
+		const onCloseSettings = () => { if (interactions.getLayer(layerId) && interactions.popTo(layerId) === "closed") close(); };
+        window.addEventListener("lh:close-settings", onCloseSettings);
 		window.addEventListener("lh:open-plugin-settings", onPluginSettings);
-		return () => window.removeEventListener("lh:open-plugin-settings", onPluginSettings);
-	}, [open]);
+		return () => { window.removeEventListener("lh:open-plugin-settings", onPluginSettings); window.removeEventListener("lh:close-settings", onCloseSettings); };
+	}, [open, interactions, layerId, close]);
 	return (
 		<ChatGPTUIProvider><NativeSubscriptionUIProvider><WriteOrderContext.Provider value={writeOrder}><DialogContext.Provider value={{ open }}>
 			{children}
@@ -484,14 +483,9 @@ export function SettingsDialogBody({
 											void write("general", { ...record.general, autoUpdate: on })
 										}
 									/>
-									<NotificationSettings />
-									<SettingsRow label="Lesson outline" hint="A separate AI organises the lesson using its plan and course readings. Teaching stays unchanged." testid="row-lesson-outline">
-										<Toggle checked={record.general?.lessonOutline ?? false} onChange={on => void write("general", { ...record.general, lessonOutline: on })} label="Lesson outline" />
-									</SettingsRow>
-									<OutlineModelSettings settings={record} onChange={async next => { await write("general", next); }} autofocus={initialRow === "outline-model"} />
+									<PluginContributions location="settings-general" />
 								</SettingsSection>
 							)}
-							{active === "preferences" && <PreferenceChatShortcut onOpen={onClose} />}
 							{active === "keys" && (
 								<SettingsSection title="Providers" testid="section-keys">
 									<KeysSection initialRow={initialRow ?? undefined} />

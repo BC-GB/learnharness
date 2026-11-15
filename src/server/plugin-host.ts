@@ -39,6 +39,8 @@ export interface PluginHostDependencies {
     /** Production refuses unreviewed native community code, including frontend assets. */
     allowCommunity?: boolean;
     browserWorkersAvailable?: boolean;
+	/** App-owned reviewed defaults. Explicit saved choices always win. */
+	defaultEnabledCoreIds?: readonly string[];
     /** Shared preference only; never a learning-data location. */
     stateFile?: () => string;
     preferencesFor?: (id: string) => PluginBackendContext["preferences"];
@@ -48,6 +50,10 @@ export interface PluginHostDependencies {
 	createServices(info: { manifest: PluginManifest; directory: string; dataDirectory: string; signal: AbortSignal; cleanup: (fn: PluginCleanup) => void }): {
 		learning: PluginLearningData; inference: PluginInference; agents: PluginAgentService; workers: PluginWorkerService;
 		library?: PluginBackendContext["library"];
+		course?: PluginBackendContext["course"];
+		configuration?: PluginBackendContext["configuration"];
+		admission?: PluginBackendContext["admission"];
+		promptEditor?: PluginBackendContext["promptEditor"];
 		createBackgroundTool: PluginBackendContext["createBackgroundTool"];
 	};
 	/** One process-wide pure converter; no backend services are needed for uploads. */
@@ -388,7 +394,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 				}
 				continue;
 			}
-			candidate.info.enabled = state.enabled[id] === true;
+			candidate.info.enabled = (state.enabled[id] ?? (candidate.info.origin === "core" && deps.defaultEnabledCoreIds?.includes(id))) === true;
 			packages.set(id, candidate);
 			if (candidate.info.enabled && !candidate.blocked) await activate(candidate);
 		}
@@ -584,7 +590,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
             assertOpen(); await initializeInternal();
             const state = readState(stateFile());
             for (const pkg of packages.values()) {
-                const enabled = state.enabled[pkg.info.id] === true && !(pkg.info.origin === "community" && deps.allowCommunity === false);
+                const enabled = (state.enabled[pkg.info.id] ?? (pkg.info.origin === "core" && deps.defaultEnabledCoreIds?.includes(pkg.info.id))) === true && !(pkg.info.origin === "community" && deps.allowCommunity === false);
                 if (pkg.info.enabled === enabled) continue;
                 pkg.info.enabled = enabled;
                 if (enabled) await activate(pkg);

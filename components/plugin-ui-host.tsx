@@ -14,7 +14,9 @@ import { PluginWorkerResultSurface } from "@/components/plugin-worker-result";
 import { HostMarkdown } from "@/components/host-markdown";
 import { PluginTree, validatePluginTree } from "@/components/plugin-tree";
 import { MenuShell } from "@/components/menu-shell";
-import { HostDialog } from "@/components/host-dialog";
+import { HostDialog, INTERACTION_LAYER_Z_BASE } from "@/components/host-dialog";
+import { usePopoverDismiss } from "./popover-dismiss";
+import type { PluginPopoverProps } from "@/src/core";
 import { findCurrentSurfaceBoundary, requireSurfaceBoundary } from "./plugin-surface-targets";
 import { PluginSurface } from "./plugin-surface-shell";
 import { isInteractionElementVisible, useInteractionLayers, type CloseOutcome, type CloseReason } from "@/components/interaction-layers";
@@ -182,6 +184,7 @@ export function createPluginUiStore() {
 				};
 			}
 			return {
+				mountPopover: (target, props, options) => mount(target, props, options, props => <PluginPopover {...props} />),
 				mountModelPicker: (target, props, options) => mount(target, props, options, (props, runtime) => <PluginModelPicker {...props} onError={runtime.report} />),
 				mountThinkingPicker: (target, props, options) => mount(target, props, options, (props, runtime) => <PluginThinkingPicker {...props} onError={runtime.report} />),
 				mountKnowledgePicker: (target, props, options) => mount(target, props, options, (props, runtime) => <PluginKnowledgePicker {...props} signal={runtime.signal} onError={runtime.report} />),
@@ -281,6 +284,13 @@ export function PluginUiHost({ store }: { store: PluginUiStore }) {
 	))}</>;
 }
 
+function PluginPopover({ root, panel, open, onClose, onLayer }: PluginPopoverProps) {
+ const rootRef = useRef(root), panelRef = useRef(panel);
+ rootRef.current = root; panelRef.current = panel;
+ const layer = usePopoverDismiss(rootRef, open, onClose, { layerRootRef: panelRef });
+ useEffect(() => { onLayer(open ? INTERACTION_LAYER_Z_BASE + layer.order : 40); }, [open, layer.order, onLayer]);
+ return null;
+}
 function PluginMenu({ anchor, items, label, preferredSide = "down", closeMenu, runtime }: PluginMenuProps & { anchor: HTMLElement; runtime: Runtime; closeMenu(): boolean }) {
 	const root = useRef<HTMLDivElement>(null);
 	const anchorRef = useRef(anchor);

@@ -1,0 +1,10 @@
+{
+  "apiVersion": 1,
+  "id": "lesson-outline",
+  "name": "Lesson outline",
+  "version": "0.1.0",
+  "minAppVersion": "0.6.1",
+  "description": "Independent course-backed lesson navigation, without changing teaching.",
+  "main": "main.js",
+  "backend": "backend.cjs"
+}

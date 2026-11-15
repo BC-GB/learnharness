@@ -1,6 +1,7 @@
 "use client";
 
 import { courseFetch as fetch, courseUrl } from "@/lib/course-client";
+import { PluginContributions } from "./plugin-widgets";
 import { createPluginSession } from "./plugin-session-creation";
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -84,7 +85,9 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
 			window.__lhPluginWindow = createPluginWindowOwner({
 				reservedCodeBlockLanguages: [BUILTIN_MERMAID_LANGUAGE], reservedToolNames: reservedToolRendererNames(),
 				fetch: (...args) => fetch(...args), importModule: url => importPluginModule(courseUrl(url)),
-				pathname: () => window.location.pathname, navigate: path => routerRef.current.push(path),
+				course: () => ({ id: document.documentElement.dataset.courseId ?? "legacy", name: document.documentElement.dataset.courseName ?? "Current course" }),
+				pathname: () => window.location.pathname, navigate: path => routerRef.current.push(courseUrl(path)),
+				closeSettings: () => window.dispatchEvent(new Event("lh:close-settings")),
 				openSettings: pluginId => window.dispatchEvent(new CustomEvent("lh:open-plugin-settings", { detail: pluginId })),
 					createSession: createPluginSession,
 				style: (url, onError) => {
@@ -111,7 +114,7 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
 		return () => { for (const off of offs) off(); };
 	}, [hub, manager]);
 	const snapshot = useSyncExternalStore(manager?.subscribe ?? emptySubscribe, manager?.getSnapshot ?? emptySnapshot, emptySnapshot);
-	return <PluginsContext.Provider value={{ manager, snapshot, uiStore }}>{children}</PluginsContext.Provider>;
+	return <PluginsContext.Provider value={{ manager, snapshot, uiStore }}>{children}<PluginContributions location="app" /></PluginsContext.Provider>;
 }
 
 /** Missing-provider fallback is intentional: existing sidebar render tests and

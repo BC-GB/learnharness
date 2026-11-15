@@ -94,7 +94,7 @@ test("built backend activates and answers its operation", () => {
     });
     assert.deepEqual(handlers.get("paths.status")(), {
       id: "learning-path",
-      version: "0.1.0",
+      version: "0.1.1",
       active: true,
     });
     // Every activation resource is registered for teardown, including the

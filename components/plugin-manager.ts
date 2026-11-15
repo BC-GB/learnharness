@@ -21,6 +21,7 @@ export interface FrontendPlugin {
 	phase: "disabled" | "loading" | "active" | "error";
 	error?: string;
 	views: PluginView[];
+	widgets?: import("@/src/core/plugin-host-services").PluginWidget[];
 	actions: PluginAction[];
 	shortcuts?: readonly { actionId: string; shortcut: PluginActionShortcut }[];
 	placements: PluginActionPlacement[];
@@ -50,6 +51,7 @@ interface Lifecycle {
 	tasks: Set<Promise<void>>;
 	teardown?: Promise<void>;
 	views: Map<string, PluginView>;
+	widgets: Map<string, import("@/src/core/plugin-host-services").PluginWidget>;
 	actions: Map<string, PluginAction>;
 	shortcuts: Map<string, PluginActionShortcut>;
 	placements: Map<string, PluginActionPlacement>;
@@ -72,9 +74,11 @@ export interface PluginHost {
 	reservedToolNames?: readonly string[];
 	fetch: typeof fetch;
 	importModule(url: string): Promise<PluginFrontendModule>;
+	course?(): import("@/src/core/plugin-host-services").PluginCourseIdentity;
 	pathname(): string;
 	navigate(path: string): void;
 	openSettings?(pluginId: string): void;
+	closeSettings?(): void;
 	createSession?(input: { title: string; kind: "teaching" | "practice" }, signal: AbortSignal): Promise<import("@/src/core").PluginCreatedSession>;
 	createUi?(options: { signal: AbortSignal; pluginId?: string; onError: (error: unknown) => void }): import("@/src/core/plugin-ui").PluginUi;
 	style?(url: string, onError: () => void): PluginCleanup;
@@ -150,7 +154,7 @@ export class PluginFrontendManager {
 			const life = this.lives.get(info.id);
 			return {
 				info, phase: life?.phase ?? (info.enabled ? (info.status === "error" ? "error" : "active") : "disabled"),
-				error: life?.error ?? this.cleanupErrors.get(info.id) ?? info.error, views: [...(life?.views.values() ?? [])],
+				error: life?.error ?? this.cleanupErrors.get(info.id) ?? info.error, views: [...(life?.views.values() ?? [])], widgets: [...(life?.widgets.values() ?? [])],
 				actions: [...(life?.actions.values() ?? [])], shortcuts: [...(life?.shortcuts ?? [])].map(([actionId, shortcut]) => ({ actionId, shortcut })), placements: [...(life?.placements.values() ?? [])],
 				actionBusy: [...(life?.actionBusy ?? [])], settings: life?.settings, busy: this.pending.has(info.id),
 			};
@@ -253,7 +257,7 @@ export class PluginFrontendManager {
 			const life: Lifecycle = {
 				id: info.id, revision: info.revision, controller: new AbortController(), cleanups: new Set(),
 				activation: Promise.resolve(), tasks: new Set(),
-				views: new Map(), actions: new Map(), shortcuts: new Map(), placements: new Map(), actionBusy: new Set(), codeBlocks: new Map(), toolRenderers: new Map(), questionRenderers: new Map(), problemRenderers: new Map(), submissionInterceptors: new Map(),
+				views: new Map(), widgets: new Map(), actions: new Map(), shortcuts: new Map(), placements: new Map(), actionBusy: new Set(), codeBlocks: new Map(), toolRenderers: new Map(), questionRenderers: new Map(), problemRenderers: new Map(), submissionInterceptors: new Map(),
 				notifications: new Set(), events: new Set(), resyncs: new Set(), phase: "loading",
 			};
 			this.cleanupErrors.delete(info.id);
@@ -360,6 +364,10 @@ export class PluginFrontendManager {
 		const context: PluginFrontendContext = {
 			manifest, signal: life.controller.signal,
 			cleanup: cleanup => { this.addCleanup(life, cleanup); },
+			registerWidget: widget => {
+                if (!["app", "session", "settings-general"].includes(widget?.location)) throw new Error("Invalid widget location");
+                return register(life.widgets, Object.freeze({ ...widget, mount: widget.mount.bind(widget) }), "mount");
+            },
 			registerView: view => register(life.views, view, "mount"),
 			registerAction: action => register(life.actions, action, "run"),
 			placeAction: placement => {
@@ -471,10 +479,12 @@ export class PluginFrontendManager {
 					this.addCleanup(life, () => created.clearOpeningPrompt());
 					return created;
 				},
+				course: () => { if (!this.current(life) || !this.host.course) throw new Error("Course metadata unavailable"); return { ...this.host.course() }; },
 				pathname: () => this.host.pathname(),
 				openHome: () => { if (this.current(life)) this.host.navigate("/"); },
 				openSession: id => { if (this.current(life)) this.host.navigate(`/chat/${encodeURIComponent(id)}`); },
 				openView: id => { if (this.current(life)) this.host.navigate(pluginViewPath(info.id, id)); },
+				closeSettings: () => { if (this.current(life)) this.host.closeSettings?.(); },
 				openSettings: () => { if (this.current(life)) this.host.openSettings?.(info.id); },
 			},
 		};

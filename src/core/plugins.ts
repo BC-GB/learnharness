@@ -76,6 +76,8 @@ export interface PluginLearningData {
 	/** Read a complete saved native session, or null when absent. Invalid IDs throw.
 	 * Transcripts preserve learner answers/thinking not represented by the graph. */
 	getSession(id: string): ChatRecord | null;
+	/** Host-native prose/plan interpretation from one saved record read. No inference. */
+	getSessionSnapshot?(id: string): { record: ChatRecord; currentNode: string | null; passages: { id: string; text: string; nodeId: string | null; index: number }[]; busy: boolean } | null;
 	/** Read the current graph projection and raw records, without a second query
 	 * language. This is not a complete learner-response transcript. */
 	graph(): GraphSnapshot;
@@ -153,6 +155,10 @@ export interface PluginBackendContext {
 	/** Register resource cleanup for deactivation, also supported as activate's
 	 * return value. A cleanup registered after expiry is still invoked. */
 	cleanup(dispose: PluginCleanup): void;
+	readonly course?: import("./plugin-host-services.ts").PluginCourseIdentity;
+	admission?: { run<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> };
+	configuration?: import("./plugin-host-services.ts").PluginConfiguration;
+	promptEditor?: import("./plugin-host-services.ts").PluginPromptEditor;
 	/** Read-only native learning records; not a programmable core-data write API. */
 	learning: PluginLearningData;
 	/** Optional host-selected read-only course library. Does not grant wider filesystem access. */
@@ -299,6 +305,8 @@ export interface PluginFrontendContext {
 	/** Register sync/async resource cleanup for deactivation; late registrations
 	 * are still invoked. An activation may also return a cleanup function. */
 	cleanup(dispose: PluginCleanup): void;
+	/** Optional nonblocking app/session widgets and General settings contributions. */
+	registerWidget?(widget: import("./plugin-host-services.ts").PluginWidget): () => void;
 	/** Register a plugin-owned body view with host chrome. Invalid/duplicate IDs
 	 * throw; returned unregister removes the view without deleting plugin data. */
 	registerView(view: PluginView): () => void;
@@ -374,6 +382,8 @@ export interface PluginFrontendContext {
 		/** Create an empty native session in this window's selected course. Does not
 		 * navigate or infer. The returned staging handle cannot target other chats. */
 		createSession(input: { title: string; kind: "teaching" | "practice" }): Promise<PluginCreatedSession>;
+		/** Selected course metadata only. */
+		course?(): import("./plugin-host-services.ts").PluginCourseIdentity;
 		/** Read the current host pathname, not a captured invocation-page snapshot. */
 		pathname(): string;
 		/** Navigate to a native session by ID; does not create or run a session. */
@@ -384,6 +394,8 @@ export interface PluginFrontendContext {
 		openView(id: string): void;
 		/** Open this plugin's dedicated Settings page, not package management. */
 		openSettings(): void;
+		/** Close the host Settings panel through its normal interaction owner. */
+		closeSettings?(): void;
 	};
 }
 export interface PluginFrontendModule {
