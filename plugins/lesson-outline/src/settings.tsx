@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PluginFrontendContext, PluginModelSpec, PluginWidgetHandle, PluginModelPickerProps, PluginThinkingPickerProps } from "../.sdk/index.d.ts";
-type Configuration = { values: { lessonOutline?: boolean; outlineModel?: { model?: { id: string; provider: string }; thinkingLevel?: PluginModelSpec["thinkingLevel"] } }; models: { background: PluginModelSpec | null } };
+type Configuration = { values: { lessonOutline?: boolean; backgroundThinkingLevel?: PluginModelSpec["thinkingLevel"]; outlineModel?: { model?: { id: string; provider: string }; thinkingLevel?: PluginModelSpec["thinkingLevel"] } }; models: { background: PluginModelSpec | null } };
 export function OutlineSettings({ ctx, signal }: { ctx: PluginFrontendContext; signal: AbortSignal }) {
  const [config, setConfig] = useState<Configuration | null>(null), [error, setError] = useState("");
  const [busy, setBusy] = useState(false); const alive = useRef(true);
@@ -22,11 +22,11 @@ export function OutlineSettings({ ctx, signal }: { ctx: PluginFrontendContext; s
  }, [ctx, signal]);
  useEffect(() => {
   if (!modelContainer.current || !thinkingContainer.current) return;
-  model.current = ctx.ui.mountModelPicker(modelContainer.current, { value: undefined, disabled: true, onChange: value => saveRef.current({ outlineModel: { ...current.current?.values.outlineModel, model: value } }) }, { signal });
+  model.current = ctx.ui.mountModelPicker(modelContainer.current, { value: undefined, disabled: true, onChange: value => saveRef.current({ outlineModel: { ...current.current?.values.outlineModel, model: value, thinkingLevel: current.current?.values.backgroundThinkingLevel ?? current.current?.models.background?.thinkingLevel } }) }, { signal });
   thinking.current = ctx.ui.mountThinkingPicker(thinkingContainer.current, { model: undefined, value: undefined, disabled: true, onChange: thinkingLevel => saveRef.current({ outlineModel: { ...current.current?.values.outlineModel, thinkingLevel } }) }, { signal });
   return () => { model.current?.dispose(); thinking.current?.dispose(); };
  }, [ctx, signal]);
- useEffect(() => { const spec = config?.models.background; model.current?.update({ value: spec ?? undefined, disabled: busy || !config }); thinking.current?.update({ model: spec ?? undefined, value: spec?.thinkingLevel, disabled: busy || !spec }); }, [config, busy]);
+ useEffect(() => { const spec = config?.models.background; model.current?.update({ value: spec ?? undefined, disabled: busy || !config }); thinking.current?.update({ model: spec ?? undefined, value: config?.values.backgroundThinkingLevel ?? spec?.thinkingLevel, disabled: busy || !spec }); }, [config, busy]);
  return <div className="space-y-3 py-3" data-testid="outline-model-settings">
   <div className="flex items-center justify-between gap-3" data-testid="row-lesson-outline"><div><p className="text-sm">Lesson outline</p><p className="text-xs text-muted-foreground">A separate AI organises the lesson using its plan and course readings. Teaching stays unchanged.</p></div><button type="button" role="switch" data-testid="toggle-lesson-outline" aria-label="Lesson outline" aria-checked={config?.values.lessonOutline === true} disabled={busy || !config} onClick={() => void save({ lessonOutline: !config?.values.lessonOutline })} className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40">{config?.values.lessonOutline ? "On" : "Off"}</button></div>
   <div className="flex flex-wrap items-center gap-3"><span className="text-sm">Outline model</span><div ref={modelContainer} data-testid="outline-model" /><span className="text-sm">Outline reasoning</span><div ref={thinkingContainer} data-testid="outline-reasoning" /></div>
