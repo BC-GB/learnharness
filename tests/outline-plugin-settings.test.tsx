@@ -6,7 +6,7 @@ import { OutlineSettings } from "../plugins/lesson-outline/src/settings.tsx";
 test("a delayed settings read cannot roll back an acknowledged outline choice, and controls never infer", async () => {
  const dom = parseHTML("<html><body><div id='root'></div></body></html>");
  const values = { React, window: dom.window, document: dom.document, HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, navigator: { userAgent: "" }, IS_REACT_ACT_ENVIRONMENT: true };
- const before = new Map(Object.keys(values).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)])); Object.assign(globalThis, values);
+ const before = new Map(Object.keys(values).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)])); for (const [key, value] of Object.entries(values)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
  const { createRoot } = await import("react-dom/client"); const root = createRoot(document.getElementById("root")!);
  const signal = new AbortController().signal; let reads = 0, refresh!: () => void, release!: (value: unknown) => void;
  const stale = new Promise(resolve => { release = resolve; }); const initial = { values: { lessonOutline: false }, models: { background: null } };

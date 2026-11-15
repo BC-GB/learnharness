@@ -1,7 +1,7 @@
 "use client";
 import { useMemo } from "react";
 import { PluginMountPoint, usePlugins } from "./plugins";
-import type { PluginWidget } from "@/src/core/plugin-host-services";
+import type { PluginWidget } from "@/src/core";
 export function PluginContributions({ location, session }: { location: PluginWidget["location"]; session?: { id: string; kind: "teaching" | "practice" } }) {
  const { snapshot } = usePlugins();
  return <>{snapshot.plugins.flatMap(p => (p.widgets ?? []).filter(w => w.location === location).map(w => <Widget key={p.info.id + ":" + w.id} pluginId={p.info.id} widget={w} session={session} />))}</>;

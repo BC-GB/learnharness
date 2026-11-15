@@ -13,6 +13,7 @@
 - [PluginCleanup](#plugincleanup)
 - [PluginCodeBlockProps](#plugincodeblockprops)
 - [PluginCodeBlockRenderer](#plugincodeblockrenderer)
+- [PluginCreatedSession](#plugincreatedsession)
 - [PluginFrontendContext](#pluginfrontendcontext)
 - [PluginFrontendModule](#pluginfrontendmodule)
 - [PluginGraphFileData](#plugingraphfiledata)
@@ -261,7 +262,14 @@ export interface PluginBackendContext {
     };
     readonly signal: AbortSignal;
     cleanup(dispose: PluginCleanup): void;
+    readonly course?: import("./plugin-host-services.ts").PluginCourseIdentity;
+    admission?: {
+        run<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T>;
+    };
+    configuration?: import("./plugin-host-services.ts").PluginConfiguration;
+    promptEditor?: import("./plugin-host-services.ts").PluginPromptEditor;
     learning: PluginLearningData;
+    library?: import("./plugin-library.ts").PluginLibrary;
     inference: PluginInference;
     agents: PluginAgentService;
     workers: PluginWorkerService;
@@ -278,7 +286,7 @@ export interface PluginBackendContext {
 }
 ```
 
-**Related types:** [PluginAgentService](plugin-agents.md#pluginagentservice), [PluginBackgroundTool](plugin-workers.md#pluginbackgroundtool), [PluginCleanup](plugins.md#plugincleanup), [PluginInference](plugins.md#plugininference), [PluginInstructions](plugins.md#plugininstructions), [PluginLearningData](plugins.md#pluginlearningdata), [PluginManifest](plugins.md#pluginmanifest), [PluginProblemTypeDefinition](plugin-problems.md#pluginproblemtypedefinition), [PluginQuestionTypeDefinition](plugin-questions.md#pluginquestiontypedefinition), [PluginToolContext](plugins.md#plugintoolcontext), [PluginTools](plugins.md#plugintools), [PluginWorkerService](plugin-workers.md#pluginworkerservice), [ServerEvent](events.md#serverevent).
+**Related types:** [PluginAgentService](plugin-agents.md#pluginagentservice), [PluginBackgroundTool](plugin-workers.md#pluginbackgroundtool), [PluginCleanup](plugins.md#plugincleanup), [PluginConfiguration](plugin-host-services.md#pluginconfiguration), [PluginCourseIdentity](plugin-host-services.md#plugincourseidentity), [PluginInference](plugins.md#plugininference), [PluginInstructions](plugins.md#plugininstructions), [PluginLearningData](plugins.md#pluginlearningdata), [PluginLibrary](plugin-library.md#pluginlibrary), [PluginManifest](plugins.md#pluginmanifest), [PluginProblemTypeDefinition](plugin-problems.md#pluginproblemtypedefinition), [PluginPromptEditor](plugin-host-services.md#pluginprompteditor), [PluginQuestionTypeDefinition](plugin-questions.md#pluginquestiontypedefinition), [PluginToolContext](plugins.md#plugintoolcontext), [PluginTools](plugins.md#plugintools), [PluginWorkerService](plugin-workers.md#pluginworkerservice), [ServerEvent](events.md#serverevent).
 
 **Member index** (including nested object members; inherited members are defined in the linked base types):
 
@@ -292,7 +300,13 @@ export interface PluginBackendContext {
 - [preferences.subscribe](#pluginbackendcontext-preferencessubscribe)
 - [signal](#pluginbackendcontext-signal)
 - [cleanup](#pluginbackendcontext-cleanup)
+- [course](#pluginbackendcontext-course)
+- [admission](#pluginbackendcontext-admission)
+- [admission.run](#pluginbackendcontext-admissionrun)
+- [configuration](#pluginbackendcontext-configuration)
+- [promptEditor](#pluginbackendcontext-prompteditor)
 - [learning](#pluginbackendcontext-learning)
+- [library](#pluginbackendcontext-library)
 - [inference](#pluginbackendcontext-inference)
 - [agents](#pluginbackendcontext-agents)
 - [workers](#pluginbackendcontext-workers)
@@ -404,12 +418,59 @@ cleanup(dispose: PluginCleanup): void;
 
 **Returns:** `void`.
 
+### PluginBackendContext course
+
+```ts
+readonly course?: import("./plugin-host-services.ts").PluginCourseIdentity;
+```
+
+### PluginBackendContext admission
+
+```ts
+admission?: {
+    run<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T>;
+};
+```
+
+### PluginBackendContext admission.run
+
+```ts
+run<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T>;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `signal` | `AbortSignal` |
+| `work` | `() => Promise<T>` |
+
+**Returns:** `Promise<T>`.
+
+### PluginBackendContext configuration
+
+```ts
+configuration?: import("./plugin-host-services.ts").PluginConfiguration;
+```
+
+### PluginBackendContext promptEditor
+
+```ts
+promptEditor?: import("./plugin-host-services.ts").PluginPromptEditor;
+```
+
 ### PluginBackendContext learning
 
 Read-only native learning records; not a programmable core-data write API.
 
 ```ts
 learning: PluginLearningData;
+```
+
+### PluginBackendContext library
+
+Optional host-selected read-only course library. Does not grant wider filesystem access.
+
+```ts
+library?: import("./plugin-library.ts").PluginLibrary;
 ```
 
 ### PluginBackendContext inference
@@ -715,18 +776,67 @@ mount(container: HTMLElement, block: PluginCodeBlockProps): void | PluginCleanup
 
 **Returns:** `void \| PluginCleanup \| Promise<void \| PluginCleanup>`.
 
-## PluginFrontendContext
+## PluginCreatedSession
 
-Public SDK type, exported as `PluginFrontendContext`. Import with `import type`; the SDK has no runtime exports.
+Public SDK type, exported as `PluginCreatedSession`. Import with `import type`; the SDK has no runtime exports.
 
 Frontend activation scope, once per enabled plugin per window. Registrations,
 subscriptions and UI expire with this activation; backend work is server-owned.
+
+A newly created native session, bound to its original course and window.
+Staging writes only its one-time opening draft; it never dispatches a model.
+Explicit navigation uses app.openSession. Cleanup remains safe after expiry.
+
+```ts
+export interface PluginCreatedSession {
+    readonly id: string;
+    stageOpeningPrompt(text: string): boolean;
+    clearOpeningPrompt(): void;
+}
+```
+
+**Member index** (including nested object members; inherited members are defined in the linked base types):
+
+- [id](#plugincreatedsession-id)
+- [stageOpeningPrompt](#plugincreatedsession-stageopeningprompt)
+- [clearOpeningPrompt](#plugincreatedsession-clearopeningprompt)
+
+### PluginCreatedSession id
+
+```ts
+readonly id: string;
+```
+
+### PluginCreatedSession stageOpeningPrompt
+
+```ts
+stageOpeningPrompt(text: string): boolean;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `text` | `string` |
+
+**Returns:** `boolean`.
+
+### PluginCreatedSession clearOpeningPrompt
+
+```ts
+clearOpeningPrompt(): void;
+```
+
+**Returns:** `void`.
+
+## PluginFrontendContext
+
+Public SDK type, exported as `PluginFrontendContext`. Import with `import type`; the SDK has no runtime exports.
 
 ```ts
 export interface PluginFrontendContext {
     readonly manifest: PluginManifest;
     readonly signal: AbortSignal;
     cleanup(dispose: PluginCleanup): void;
+    registerWidget?(widget: import("./plugin-host-services.ts").PluginWidget): () => void;
     registerView(view: PluginView): () => void;
     registerAction(action: PluginAction): () => void;
     placeAction(placement: PluginActionPlacement): () => void;
@@ -755,22 +865,29 @@ export interface PluginFrontendContext {
     onAppEvent(listener: (event: ServerEvent) => void): () => void;
     onResync(listener: () => void): () => void;
     app: {
+        createSession(input: {
+            title: string;
+            kind: "teaching" | "practice";
+        }): Promise<PluginCreatedSession>;
+        course?(): import("./plugin-host-services.ts").PluginCourseIdentity;
         pathname(): string;
         openSession(id: string): void;
         openHome(): void;
         openView(id: string): void;
         openSettings(): void;
+        closeSettings?(): void;
     };
 }
 ```
 
-**Related types:** [PluginAction](plugins.md#pluginaction), [PluginActionPlacement](plugins.md#pluginactionplacement), [PluginCleanup](plugins.md#plugincleanup), [PluginCodeBlockRenderer](plugins.md#plugincodeblockrenderer), [PluginManifest](plugins.md#pluginmanifest), [PluginNotification](plugins.md#pluginnotification), [PluginProblemRenderer](plugin-problems.md#pluginproblemrenderer), [PluginQuestionRenderer](plugin-questions.md#pluginquestionrenderer), [PluginSettingsRegistration](plugins.md#pluginsettingsregistration), [PluginSettingsSchema](plugin-ui.md#pluginsettingsschema), [PluginSubmissionInterceptor](plugin-submissions.md#pluginsubmissioninterceptor), [PluginToolRenderer](plugins.md#plugintoolrenderer), [PluginUi](plugin-ui.md#pluginui), [PluginView](plugins.md#pluginview), [PluginWidgetHandle](plugin-ui.md#pluginwidgethandle), [ServerEvent](events.md#serverevent).
+**Related types:** [PluginAction](plugins.md#pluginaction), [PluginActionPlacement](plugins.md#pluginactionplacement), [PluginCleanup](plugins.md#plugincleanup), [PluginCodeBlockRenderer](plugins.md#plugincodeblockrenderer), [PluginCourseIdentity](plugin-host-services.md#plugincourseidentity), [PluginCreatedSession](plugins.md#plugincreatedsession), [PluginManifest](plugins.md#pluginmanifest), [PluginNotification](plugins.md#pluginnotification), [PluginProblemRenderer](plugin-problems.md#pluginproblemrenderer), [PluginQuestionRenderer](plugin-questions.md#pluginquestionrenderer), [PluginSettingsRegistration](plugins.md#pluginsettingsregistration), [PluginSettingsSchema](plugin-ui.md#pluginsettingsschema), [PluginSubmissionInterceptor](plugin-submissions.md#pluginsubmissioninterceptor), [PluginToolRenderer](plugins.md#plugintoolrenderer), [PluginUi](plugin-ui.md#pluginui), [PluginView](plugins.md#pluginview), [PluginWidget](plugin-host-services.md#pluginwidget), [PluginWidgetHandle](plugin-ui.md#pluginwidgethandle), [ServerEvent](events.md#serverevent).
 
 **Member index** (including nested object members; inherited members are defined in the linked base types):
 
 - [manifest](#pluginfrontendcontext-manifest)
 - [signal](#pluginfrontendcontext-signal)
 - [cleanup](#pluginfrontendcontext-cleanup)
+- [registerWidget](#pluginfrontendcontext-registerwidget)
 - [registerView](#pluginfrontendcontext-registerview)
 - [registerAction](#pluginfrontendcontext-registeraction)
 - [placeAction](#pluginfrontendcontext-placeaction)
@@ -790,11 +907,14 @@ export interface PluginFrontendContext {
 - [onAppEvent](#pluginfrontendcontext-onappevent)
 - [onResync](#pluginfrontendcontext-onresync)
 - [app](#pluginfrontendcontext-app)
+- [app.createSession](#pluginfrontendcontext-appcreatesession)
+- [app.course](#pluginfrontendcontext-appcourse)
 - [app.pathname](#pluginfrontendcontext-apppathname)
 - [app.openSession](#pluginfrontendcontext-appopensession)
 - [app.openHome](#pluginfrontendcontext-appopenhome)
 - [app.openView](#pluginfrontendcontext-appopenview)
 - [app.openSettings](#pluginfrontendcontext-appopensettings)
+- [app.closeSettings](#pluginfrontendcontext-appclosesettings)
 
 ### PluginFrontendContext manifest
 
@@ -825,6 +945,20 @@ cleanup(dispose: PluginCleanup): void;
 | `dispose` | `PluginCleanup` |
 
 **Returns:** `void`.
+
+### PluginFrontendContext registerWidget
+
+Optional nonblocking app/session widgets and General settings contributions.
+
+```ts
+registerWidget?(widget: import("./plugin-host-services.ts").PluginWidget): () => void;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `widget` | `import("./plugin-host-services.ts").PluginWidget` |
+
+**Returns:** `() => void`.
 
 ### PluginFrontendContext registerView
 
@@ -1133,13 +1267,47 @@ Navigation methods are inert after activation expiry and do not await mounts.
 
 ```ts
 app: {
+    createSession(input: {
+        title: string;
+        kind: "teaching" | "practice";
+    }): Promise<PluginCreatedSession>;
+    course?(): import("./plugin-host-services.ts").PluginCourseIdentity;
     pathname(): string;
     openSession(id: string): void;
     openHome(): void;
     openView(id: string): void;
     openSettings(): void;
+    closeSettings?(): void;
 };
 ```
+
+### PluginFrontendContext app.createSession
+
+Create an empty native session in this window's selected course. Does not
+navigate or infer. The returned staging handle cannot target other chats.
+
+```ts
+createSession(input: {
+    title: string;
+    kind: "teaching" | "practice";
+}): Promise<PluginCreatedSession>;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `input` | `{             title: string;             kind: "teaching" \| "practice";         }` |
+
+**Returns:** `Promise<PluginCreatedSession>`.
+
+### PluginFrontendContext app.course
+
+Selected course metadata only.
+
+```ts
+course?(): import("./plugin-host-services.ts").PluginCourseIdentity;
+```
+
+**Returns:** `import("./plugin-host-services.ts").PluginCourseIdentity`.
 
 ### PluginFrontendContext app.pathname
 
@@ -1195,6 +1363,16 @@ Open this plugin's dedicated Settings page, not package management.
 
 ```ts
 openSettings(): void;
+```
+
+**Returns:** `void`.
+
+### PluginFrontendContext app.closeSettings
+
+Close the host Settings panel through its normal interaction owner.
+
+```ts
+closeSettings?(): void;
 ```
 
 **Returns:** `void`.
@@ -1563,6 +1741,17 @@ export interface PluginLearningData {
     readonly directory: string;
     listSessions(): ChatListItem[];
     getSession(id: string): ChatRecord | null;
+    getSessionSnapshot?(id: string): {
+        record: ChatRecord;
+        currentNode: string | null;
+        passages: {
+            id: string;
+            text: string;
+            nodeId: string | null;
+            index: number;
+        }[];
+        busy: boolean;
+    } | null;
     graph(): GraphSnapshot;
     readGraphFile<K extends keyof PluginGraphFileData>(name: K): PluginGraphFileData[K];
 }
@@ -1575,6 +1764,11 @@ export interface PluginLearningData {
 - [directory](#pluginlearningdata-directory)
 - [listSessions](#pluginlearningdata-listsessions)
 - [getSession](#pluginlearningdata-getsession)
+- [getSessionSnapshot](#pluginlearningdata-getsessionsnapshot)
+- [getSessionSnapshot.record](#pluginlearningdata-getsessionsnapshotrecord)
+- [getSessionSnapshot.currentNode](#pluginlearningdata-getsessionsnapshotcurrentnode)
+- [getSessionSnapshot.passages](#pluginlearningdata-getsessionsnapshotpassages)
+- [getSessionSnapshot.busy](#pluginlearningdata-getsessionsnapshotbusy)
 - [graph](#pluginlearningdata-graph)
 - [readGraphFile](#pluginlearningdata-readgraphfile)
 
@@ -1610,6 +1804,59 @@ getSession(id: string): ChatRecord | null;
 | `id` | `string` |
 
 **Returns:** `ChatRecord \| null`.
+
+### PluginLearningData getSessionSnapshot
+
+Host-native prose/plan interpretation from one saved record read. No inference.
+
+```ts
+getSessionSnapshot?(id: string): {
+    record: ChatRecord;
+    currentNode: string | null;
+    passages: {
+        id: string;
+        text: string;
+        nodeId: string | null;
+        index: number;
+    }[];
+    busy: boolean;
+} | null;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `id` | `string` |
+
+**Returns:** `{         record: ChatRecord;         currentNode: string \| null;         passages: {             id: string;             text: string;             nodeId: string \| null;             index: number;         }[];         busy: boolean;     } \| null`.
+
+### PluginLearningData getSessionSnapshot.record
+
+```ts
+record: ChatRecord;
+```
+
+### PluginLearningData getSessionSnapshot.currentNode
+
+```ts
+currentNode: string | null;
+```
+
+### PluginLearningData getSessionSnapshot.passages
+
+```ts
+passages: {
+    id: string;
+    text: string;
+    nodeId: string | null;
+    index: number;
+}[];
+```
+
+### PluginLearningData getSessionSnapshot.busy
+
+```ts
+busy: boolean;
+```
 
 ### PluginLearningData graph
 

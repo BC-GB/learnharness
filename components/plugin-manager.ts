@@ -21,7 +21,7 @@ export interface FrontendPlugin {
 	phase: "disabled" | "loading" | "active" | "error";
 	error?: string;
 	views: PluginView[];
-	widgets?: import("@/src/core/plugin-host-services").PluginWidget[];
+	widgets?: import("@/src/core").PluginWidget[];
 	actions: PluginAction[];
 	shortcuts?: readonly { actionId: string; shortcut: PluginActionShortcut }[];
 	placements: PluginActionPlacement[];
@@ -51,7 +51,7 @@ interface Lifecycle {
 	tasks: Set<Promise<void>>;
 	teardown?: Promise<void>;
 	views: Map<string, PluginView>;
-	widgets: Map<string, import("@/src/core/plugin-host-services").PluginWidget>;
+	widgets: Map<string, import("@/src/core").PluginWidget>;
 	actions: Map<string, PluginAction>;
 	shortcuts: Map<string, PluginActionShortcut>;
 	placements: Map<string, PluginActionPlacement>;
@@ -74,7 +74,7 @@ export interface PluginHost {
 	reservedToolNames?: readonly string[];
 	fetch: typeof fetch;
 	importModule(url: string): Promise<PluginFrontendModule>;
-	course?(): import("@/src/core/plugin-host-services").PluginCourseIdentity;
+	course?(): import("@/src/core").PluginCourseIdentity;
 	pathname(): string;
 	navigate(path: string): void;
 	openSettings?(pluginId: string): void;
