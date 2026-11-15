@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { resolveSourcePath } from "../tools/fs-shared.ts";
+import { resolvePdfPath } from "../tools/pdf-path.ts";
 import { isolatedRender, isolatedRendererEnabled } from "./render-client.ts";
 import type { PdfPage } from "./pdf-markdown.ts";
 import * as path from "node:path";
@@ -66,7 +66,7 @@ export function renderDir(filePath: string): string {
 const DISABLED = "PDF processing is disabled by deployment policy: an isolated parser is required.";
 export async function approvedPdfBytes(file:string):Promise<string>{
  if(!isolatedRendererEnabled())throw Error(DISABLED);
- const safe=resolveSourcePath(file),stat=await fs.stat(safe);
+ const safe=resolvePdfPath(file),stat=await fs.stat(safe);
  if(!stat.isFile()||stat.size>20*1024*1024)throw Error('PDF file limit');
  const bytes=await fs.readFile(safe);if(bytes.length>20*1024*1024||bytes.subarray(0,5).toString()!=='%PDF-')throw Error('Invalid PDF');return bytes.toString('base64');
 }

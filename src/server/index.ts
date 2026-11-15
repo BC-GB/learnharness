@@ -10,6 +10,7 @@ export * from "./course-http.ts";
 export { globalPreferencesEnabled } from "../../config.ts";
 export { boundedCourseBody, courseMaterials, uploadCourseMaterials } from "./course-materials.ts";
 export { uploadPastedImage, pastedImageResponse } from "./pasted-images.ts";
+export { uploadChatPdf, chatPdfResponse } from "./chat-pdfs.ts";
 export { courseMaintenanceStatus } from "./course-maintenance.ts";
 export * from "./events-stream.ts";
 export * from "./chats.ts";

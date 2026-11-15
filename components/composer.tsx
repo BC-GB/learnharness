@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { PathInput } from "@/components/path-input";
 import { AttachFilesButton } from "@/components/attach-files-button";
 import { usePastedImages } from "@/components/use-pasted-images";
+import { PdfAttachmentPreviews } from "@/components/pdf-attachment-previews";
 import { useOptionalInteractionLayers } from "./interaction-layers";
 import { isInteractionScopeEligible } from "./plugin-input-focus";
 
@@ -159,7 +160,7 @@ export function Composer({
 	};
 	const ownInputRef = useRef<HTMLDivElement>(null);
 	const editorRef = inputRef ?? ownInputRef;
-	const attachments = usePastedImages(editorRef, value, onChange);
+	const attachments = usePastedImages(editorRef, value, onChange, fileInsertion);
 	const readyToSend = canSend && !attachments.uploading;
 	return (
 		<form
@@ -177,7 +178,8 @@ export function Composer({
 					<button type="button" aria-label="Remove attached image" onClick={() => attachments.remove(image.start, image.end)} className="absolute right-0 top-0 rounded bg-background px-1.5 text-sm">×</button>
 				</div>)}
 			</div>}
-			{attachments.uploading && <div role="status" className="w-full px-2 text-xs text-muted-foreground">Attaching image…</div>}
+			<PdfAttachmentPreviews pdfs={attachments.pdfs} remove={attachments.remove} />
+			{attachments.uploading && <div role="status" className="w-full px-2 text-xs text-muted-foreground">Attaching file…</div>}
 			{attachments.error && <div role="alert" className="w-full px-2 text-xs text-destructive">{attachments.error}</div>}
 			<PathInput
 				ref={editorRef}
