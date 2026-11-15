@@ -7,17 +7,18 @@ export function OutlineSettings({ ctx, signal }: { ctx: PluginFrontendContext; s
  const modelContainer = useRef<HTMLDivElement>(null), thinkingContainer = useRef<HTMLDivElement>(null);
  const model = useRef<PluginWidgetHandle<PluginModelPickerProps> | null>(null), thinking = useRef<PluginWidgetHandle<PluginThinkingPickerProps> | null>(null);
  const current = useRef(config); current.current = config;
+ const generation = useRef(0), saving = useRef(false);
  const save = async (patch: Record<string, unknown>) => {
-  if (signal.aborted) return; setBusy(true); setError("");
-  try { const next = await ctx.call<Configuration>("configure", patch); if (alive.current && !signal.aborted) setConfig(next); }
-  catch (e) { if (alive.current && !signal.aborted) setError((e as Error).message); } finally { if (alive.current) setBusy(false); }
+  if (signal.aborted || saving.current) return; saving.current = true; const ticket = ++generation.current; setBusy(true); setError("");
+  try { const next = await ctx.call<Configuration>("configure", patch); if (alive.current && !signal.aborted && ticket === generation.current) setConfig(next); }
+  catch (e) { if (alive.current && !signal.aborted && ticket === generation.current) setError((e as Error).message); } finally { saving.current = false; if (alive.current) setBusy(false); }
  };
  const saveRef = useRef(save); saveRef.current = save;
  useEffect(() => {
   alive.current = true;
-  const refresh = () => { void ctx.call<Configuration>("configuration").then(next => { if (alive.current && !signal.aborted) setConfig(next); }).catch(e => { if (alive.current && !signal.aborted) setError((e as Error).message); }); };
-  refresh(); const off = ctx.onNotification(refresh), resync = ctx.onResync(refresh);
-  return () => { alive.current = false; off(); resync(); };
+  const refresh = () => { const ticket = ++generation.current; void ctx.call<Configuration>("configuration").then(next => { if (alive.current && !signal.aborted && ticket === generation.current) setConfig(next); }).catch(e => { if (alive.current && !signal.aborted && ticket === generation.current) setError((e as Error).message); }); };
+  refresh(); const off = ctx.onNotification(refresh), resync = ctx.onResync(refresh), events = ctx.onAppEvent(event => { if (event.type === "settings-changed") refresh(); });
+  return () => { alive.current = false; generation.current++; off(); resync(); events(); };
  }, [ctx, signal]);
  useEffect(() => {
   if (!modelContainer.current || !thinkingContainer.current) return;

@@ -10,7 +10,7 @@ async function boundedBody(request: Request): Promise<string> {
 }
 export const GET = courseRoute(async () => {
  try { return Response.json(await optionalPluginCall("learning-preferences", "view"), { headers: { "Cache-Control": "no-store" } }); }
- catch { return Response.json({ error: "Learning preferences plugin is unavailable" }, { status: 400 }); }
+ catch { return Response.json({ error: "Learning preferences plugin is unavailable" }, { status: 409 }); }
 });
 export const POST = courseRoute(async (request: Request) => {
  try {

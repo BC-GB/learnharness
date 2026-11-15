@@ -2,6 +2,7 @@
 
 import { courseFetch as fetch, courseUrl } from "@/lib/course-client";
 import { PluginContributions } from "./plugin-widgets";
+import { notifySettingsSaved, onSettingsSaved, type SettingsSection } from "./settings-signal";
 import { createPluginSession } from "./plugin-session-creation";
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -107,10 +108,14 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
 		if (!manager) return;
 		const offs = SERVER_EVENT_TYPES.map(type => hub.subscribe(type, payload => {
 			if (type === "plugin-message") manager.notify(payload as Parameters<typeof manager.notify>[0]);
-			else manager.appEvent({ type, ...payload } as ServerEvent);
+			else if (type === "settings-changed") {
+                const section = (payload as { section?: string }).section;
+                if (section && ["general", "agent", "models", "appearance", "graph", "compaction", "dictation", "keys", "claudeCode"].includes(section)) notifySettingsSaved(section as SettingsSection);
+            } else manager.appEvent({ type, ...payload } as ServerEvent);
 			if (type === "plugins-changed") void manager.reload();
 		}));
 		offs.push(hub.onResync(() => manager.resync()));
+        offs.push(onSettingsSaved(section => manager.appEvent({ type: "settings-changed", section })));
 		return () => { for (const off of offs) off(); };
 	}, [hub, manager]);
 	const snapshot = useSyncExternalStore(manager?.subscribe ?? emptySubscribe, manager?.getSnapshot ?? emptySnapshot, emptySnapshot);

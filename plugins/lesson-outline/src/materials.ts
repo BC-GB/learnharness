@@ -6,7 +6,7 @@ import type { OutlineSource } from "./contracts.ts";
 const excluded = new Set(["apps", "practice", "my notes", "assignment work", "original files", "supporting files", "node_modules", "course-profiles"]);
 const words = (s: string) => new Set((s.toLowerCase().match(/[a-z]{3,}/g) ?? []).filter(w => !["the", "and", "for", "with", "this", "that", "from", "what", "which", "course", "lecture"].includes(w)));
 type Reference = { path: string; quote: string };
-interface Reading { path: string; text: string; fileWords: Set<string>; bodyWords: Set<string> }
+interface Reading { path: string; text: string; sha256: string; fileWords: Set<string>; bodyWords: Set<string> }
 
 /** One bounded selected-course walk per update, never one walk per plan node. */
 async function catalog(library: PluginLibrary): Promise<Reading[]> {
@@ -20,7 +20,7 @@ async function catalog(library: PluginLibrary): Promise<Reading[]> {
   const source = await library.read({ path: file.path, limit: 512 * 1024 });
   if (source.nextOffset !== null) continue;
   bytes += file.bytes;
-  candidates.push({ path: file.path, text: source.text, fileWords: words(file.path), bodyWords: words(source.text) });
+  candidates.push({ path: file.path, text: source.text, sha256: source.sha256, fileWords: words(file.path), bodyWords: words(source.text) });
  }
 	const editions = new Map<string, { version: number; source: Reading }>();
 	for (const source of candidates) {
@@ -45,7 +45,7 @@ function excerpt(source: Reading, query: string, previous: Reference[], limit: n
 		const score = [...words(lines.slice(index, index + 20).join(" "))].filter(w => wanted.has(w)).length;
 		if (score > best) { best = score; at = Math.max(0, index - 3); }
 	}
-	const sha256 = createHash("sha256").update(source.text).digest("hex");
+	const sha256 = source.sha256;
 	const retained = retainedQuotes(source, previous);
 	const headings = lines.filter(l => /^#{1,4}\s/.test(l)).join("\n").slice(0, 1000);
 	return { id: "s_" + createHash("sha256").update(source.path + sha256).digest("hex").slice(0, 16), path: source.path,

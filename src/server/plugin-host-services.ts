@@ -41,8 +41,8 @@ export function createCoreHostServices(id: string, signal: AbortSignal): Pick<Pl
  };
  if (id === "learning-preferences") services.promptEditor = {
   read: () => bound(preferenceView),
-  apply: (revision, text) => bound(() => applyPreferences(revision, text)),
-  undo: revision => bound(() => undoPreferences(revision)),
+  apply: (revision, text) => bound(() => { const result = applyPreferences(revision, text); forEachKnownCourse(() => emit("settings-changed", { section: "agent" })); return result; }),
+  undo: revision => bound(() => { const result = undoPreferences(revision); forEachKnownCourse(() => emit("settings-changed", { section: "agent" })); return result; }),
  };
  return services;
 }

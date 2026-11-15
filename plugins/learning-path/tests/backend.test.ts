@@ -442,8 +442,9 @@ test("switching the shared Architect model is refused while a conversation is ru
   );
   assert.deepEqual(h.unregistered, [], "the running conversation was not cancelled");
   assert.equal(h.definitions.get(ARCHITECT_DEFINITION_ID)?.model.id, "architect-model");
-  // The same model needs no re-registration, so a new conversation can start.
-  await h.call("architect.create");
+  // Even the same model cannot rebind tool ownership while a run is active.
+  await assert.rejects(h.call("architect.create"), /still running/);
+  assert.deepEqual(h.unregistered, []);
   await h.call("architect.abort", { id: chatId });
   await h.call("architect.create", { model: { provider: "test", id: "other-model" } });
   assert.equal(h.definitions.get(ARCHITECT_DEFINITION_ID)?.model.id, "other-model");

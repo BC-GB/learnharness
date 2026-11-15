@@ -180,7 +180,7 @@ test("readings and records stay course-scoped, prefer revised sources and reject
 	});
 	await runInCourse(b, async () => {
 		writeSettings({ version: 1, general: { lessonOutline: true } }); assert.equal(readLessonOutline(aId), null);
-		assert.equal((await GET(new Request("http://test/api/chats/foreign/outline?course=" + b.id), { params: Promise.resolve({ id: aId }) })).status, 409);
+		assert.equal((await GET(new Request("http://test/api/chats/foreign/outline?course=" + b.id), { params: Promise.resolve({ id: aId }) })).status, 404);
 		assert.throws(() => readLessonOutline("../chats/foreign"));
 	});
 	if (process.platform !== "win32") runInCourse(a, () => {
