@@ -356,11 +356,11 @@ function completeDraft(args: Record<string, unknown>, existing: LearningPath | n
     architectChatId: chatId,
     modules: modules.map((rawModule) => {
       if (!isRecord(rawModule)) return rawModule;
-      const module = rawModule;
-      const old = typeof module.id === "string" ? previousModules.get(module.id) : undefined;
+      const pathModule = rawModule;
+      const old = typeof pathModule.id === "string" ? previousModules.get(pathModule.id) : undefined;
       return {
-        ...old, ...module, id: module.id ?? randomUUID(),
-        nodes: Array.isArray(module.nodes) ? module.nodes.map((rawNode) => {
+        ...old, ...pathModule, id: pathModule.id ?? randomUUID(),
+        nodes: Array.isArray(pathModule.nodes) ? pathModule.nodes.map((rawNode) => {
           if (!isRecord(rawNode)) return rawNode;
           const node = rawNode;
           const oldNode = typeof node.id === "string" ? previousNodes.get(node.id) : undefined;
@@ -377,7 +377,7 @@ function completeDraft(args: Record<string, unknown>, existing: LearningPath | n
           };
           preceding.push(id as string);
           return complete;
-        }) : module.nodes,
+        }) : pathModule.nodes,
       };
     }),
   };

@@ -654,16 +654,16 @@ function readLearningPathValue(value: unknown): LearningPath {
 function assertPathGraph(path: LearningPath): void {
   const moduleIds = new Set<string>();
   const nodes = new Map<string, PathNode>();
-  for (const module of path.modules) {
-    if (moduleIds.has(module.id)) fail("path.modules", `duplicate module id "${module.id}"`);
-    moduleIds.add(module.id);
-    for (const node of module.nodes) {
+  for (const pathModule of path.modules) {
+    if (moduleIds.has(pathModule.id)) fail("path.modules", `duplicate module id "${pathModule.id}"`);
+    moduleIds.add(pathModule.id);
+    for (const node of pathModule.nodes) {
       if (nodes.has(node.id)) fail("path.modules", `duplicate node id "${node.id}"`);
       nodes.set(node.id, node);
     }
   }
-  for (const module of path.modules) {
-    for (const node of module.nodes) {
+  for (const pathModule of path.modules) {
+    for (const node of pathModule.nodes) {
       if (node.interleavesNodeIds.includes(node.id)) {
         fail(`node "${node.id}".interleavesNodeIds`, "must not reference the node itself");
       }

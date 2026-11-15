@@ -84,8 +84,8 @@ function element<K extends keyof HTMLElementTagNameMap>(
 }
 
 function findNode(path: LearningPath, nodeId: string): PathNode | null {
-  for (const module of path.modules) {
-    const node = module.nodes.find((candidate) => candidate.id === nodeId);
+  for (const pathModule of path.modules) {
+    const node = pathModule.nodes.find((candidate) => candidate.id === nodeId);
     if (node) return node;
   }
   return null;

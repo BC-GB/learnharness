@@ -84,8 +84,8 @@ function element<K extends keyof HTMLElementTagNameMap>(
 
 function nodeById(path: LearningPath, nodeId: string | null): PathNode | null {
   if (!nodeId) return null;
-  for (const module of path.modules) {
-    const node = module.nodes.find((candidate) => candidate.id === nodeId);
+  for (const pathModule of path.modules) {
+    const node = pathModule.nodes.find((candidate) => candidate.id === nodeId);
     if (node) return node;
   }
   return null;
@@ -95,8 +95,8 @@ function countNodes(path: LearningPath): { total: number; consolidated: number; 
   let total = 0;
   let consolidated = 0;
   let inProgress = 0;
-  for (const module of path.modules) {
-    for (const node of module.nodes) {
+  for (const pathModule of path.modules) {
+    for (const node of pathModule.nodes) {
       total += 1;
       if (node.progression === "consolidated") consolidated += 1;
       if (node.progression === "in_progress") inProgress += 1;
