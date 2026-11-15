@@ -181,7 +181,7 @@ describe("composer attach button", () => {
 		const attach = html.indexOf('data-testid="attach-files"');
 		const send = html.indexOf('aria-label="Send"');
 		assert.ok(editor >= 0 && editor < attach && attach < send, "the paperclip follows the input and precedes Send");
-		assert.ok(html.includes('type="file"') && html.includes('accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"'), "browser attachments are raster images");
+		assert.ok(html.includes('type="file"') && html.includes('accept=".pdf,application/pdf,image/png,image/jpeg,image/gif,image/webp,image/bmp"'), "browser attachments are PDFs and raster images");
 	});
 
 	it("desktop: the button offers Files/Folder, and Files keeps multi-file any-type chips at the caret", async () => {
@@ -287,14 +287,14 @@ describe("composer attach button", () => {
 		assert.equal(f.sends, 0);
 	});
 
-	it("browser: the button opens image selection and refuses non-image files without sending", async () => {
+	it("browser: the button opens attachment selection and refuses unsupported files without sending", async () => {
 		const f = await fixture({ desktop: false });
 		assert.equal(f.button.getAttribute("aria-disabled"), "false");
 		await act(async () => { f.button.click(); });
 		assert.equal(f.pickerClicks, 1);
-		await f.pick([f.file("a.pdf", "/a.pdf")]);
+		await f.pick([new File(["unsupported text"], "a.txt", { type: "text/plain" })]);
 		assert.equal(f.value, "readthis");
 		assert.equal(f.sends, 0);
-		assert.match(f.doc.querySelector('[role="alert"]')?.textContent ?? "", /Use PNG/);
+		assert.match(f.doc.querySelector('[role="alert"]')?.textContent ?? "", /Use PDFs/);
 	});
 });
