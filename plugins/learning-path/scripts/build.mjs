@@ -95,6 +95,7 @@ for (const [label, result] of [["frontend", frontend], ["backend", backend]]) {
 
 fs.copyFileSync(path.join(root, "src/styles.css"), path.join(output, "styles.css"));
 fs.copyFileSync(path.join(root, "manifest.json"), path.join(output, "manifest.json"));
+for (const name of ["LICENSE", "README.md", "UPSTREAM.md"]) fs.copyFileSync(path.join(root, name), path.join(output, name));
 
 // Every declared entry must exist at the root of dist/ under its exact filename.
 for (const key of Object.keys(ENTRY_EXTENSIONS)) {

@@ -18,7 +18,9 @@ function fixture({ manifest = sourceManifest } = {}) {
   fs.copyFileSync(path.join(project, "scripts/build.mjs"), path.join(root, "scripts/build.mjs"));
   fs.cpSync(path.join(project, "src"), path.join(root, "src"), { recursive: true });
   fs.writeFileSync(path.join(root, "manifest.json"), JSON.stringify(manifest, null, 2));
-  fs.symlinkSync(path.join(project, "node_modules"), path.join(root, "node_modules"));
+  const modules = path.dirname(path.dirname(createRequire(import.meta.url).resolve("esbuild/package.json")));
+  fs.symlinkSync(modules, path.join(root, "node_modules"));
+  for (const name of ["LICENSE", "README.md", "UPSTREAM.md"]) fs.copyFileSync(path.join(project, name), path.join(root, name));
   return {
     root,
     dist: path.join(root, "dist"),
@@ -34,13 +36,13 @@ function built() {
   return f;
 }
 
-test("manifest is valid for plugin API v1 on LearnHarness 0.6.0", () => {
+test("manifest is valid for the course-aware bundled host", () => {
   assert.equal(sourceManifest.apiVersion, 1);
   assert.equal(sourceManifest.id, "learning-path");
   assert.equal(sourceManifest.name, "Learning Paths");
   assert.match(sourceManifest.version, /^\d+\.\d+\.\d+$/);
-  assert.equal(sourceManifest.version, "0.1.0");
-  assert.equal(sourceManifest.minAppVersion, "0.6.0");
+  assert.equal(sourceManifest.version, "0.1.1");
+  assert.equal(sourceManifest.minAppVersion, "0.6.1");
   assert.equal(sourceManifest.main, "main.js");
   assert.equal(sourceManifest.backend, "backend.cjs");
   assert.equal(sourceManifest.styles, "styles.css");
@@ -51,7 +53,7 @@ test("build emits exactly the declared dist layout", () => {
   const f = built();
   try {
     const entries = fs.readdirSync(f.dist).sort();
-    assert.deepEqual(entries, ["backend.cjs", "main.js", "manifest.json", "styles.css"]);
+    assert.deepEqual(entries, ["LICENSE", "README.md", "UPSTREAM.md", "backend.cjs", "main.js", "manifest.json", "styles.css"]);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.dist, "manifest.json"), "utf8")), sourceManifest);
     assert.equal(
       fs.readFileSync(path.join(f.dist, "styles.css"), "utf8"),
