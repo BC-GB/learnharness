@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
-import { validateOutlineSubmission, type OutlineSource } from "../src/core/lesson-outline.ts";
+import { validateOutlineSubmission, type OutlineSource } from "../plugins/lesson-outline/src/contracts.ts";
 
 const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "lh-outline-")));
 process.env.LH_DATA_DIR = path.join(scratch, "state"); process.env.LH_SOURCE_ROOT = path.join(scratch, "source"); process.env.LH_AUTH_FILE = path.join(scratch, "auth.json");
@@ -12,11 +12,11 @@ fs.mkdirSync(process.env.LH_DATA_DIR); fs.mkdirSync(process.env.LH_SOURCE_ROOT);
 after(() => fs.rmSync(scratch, { recursive: true, force: true }));
 const { chatStore } = await import("../src/store/chats.ts");
 const { writeSettings } = await import("../src/store/settings.ts");
-const { refreshLessonOutline, lessonOutlineView, outlineRunningCount, outlinePassages, selectOutlinePassages } = await import("../src/server/lesson-outline.ts");
-const { readLessonOutline, writeLessonOutline, readLegacyLessonOutline } = await import("../src/store/lesson-outline.ts");
+const { refreshLessonOutline, lessonOutlineView, outlineRunningCount, outlinePassages, selectOutlinePassages } = await import("./optional-plugin-fixtures.ts");
+const { readLessonOutline, writeLessonOutline, readLegacyLessonOutline } = await import("./optional-plugin-fixtures.ts");
 const { runInCourse } = await import("../src/runtime/course-context.ts");
 const { addCourse, resolveCourse } = await import("../src/store/courses.ts");
-const { outlineMaterials, outlineMaterialPack } = await import("../src/server/outline-materials.ts");
+const { outlineMaterials, outlineMaterialPack } = await import("./optional-plugin-fixtures.ts");
 const { toLlmMessages } = await import("../src/core/native-messages.ts");
 const { GET, POST } = await import("../app/api/chats/[id]/outline/route.ts");
 const { parseGeneralSettingsBody } = await import("../src/server/settings-body.ts");
@@ -168,23 +168,23 @@ test("readings and records stay course-scoped, prefer revised sources and reject
 	let aId = "";
 	await runInCourse(a, async () => {
 		writeSettings({ version: 1, general: { lessonOutline: true } }); const record = fixture(); aId = record.id;
-		assert.ok(JSON.stringify(outlineMaterials("Panel same units")).includes("CANARY_A")); assert.ok(!JSON.stringify(outlineMaterials("Panel same units")).includes("CANARY_B"));
+		assert.ok(JSON.stringify(await outlineMaterials("Panel same units")).includes("CANARY_A")); assert.ok(!JSON.stringify(await outlineMaterials("Panel same units")).includes("CANARY_B"));
 		fs.writeFileSync(path.join(a.sourceRoot!, "lecture (v2).md"), "Panel same units CURRENT_READING");
-		assert.ok(outlineMaterials("Panel same units").some(s => s.path === "lecture (v2).md")); assert.ok(!outlineMaterials("Panel same units").some(s => s.path === "lecture.md"));
-		const pack = outlineMaterialPack(tree, "Panel");
+		assert.ok((await outlineMaterials("Panel same units")).some(s => s.path === "lecture (v2).md")); assert.ok(!(await outlineMaterials("Panel same units")).some(s => s.path === "lecture.md"));
+		const pack = await outlineMaterialPack(tree, "Panel");
 		assert.equal(pack.sourceCoverage.length, 2); assert.ok(JSON.stringify(pack).includes("CURRENT_READING")); assert.ok(!JSON.stringify(pack).includes("CANARY_B"));
 		fs.writeFileSync(path.join(a.sourceRoot!, "lecture.md"), "retiredsubject appears only in the obsolete reading"); fs.writeFileSync(path.join(a.sourceRoot!, "lecture (v2).md"), "Updated content with different scope.");
-		assert.deepEqual(outlineMaterials("retiredsubject"), []);
-		assert.deepEqual(outlineMaterialPack(tree, "retiredsubject").sourceCoverage.map(x => x.sourceIds), [[], []]);
+		assert.deepEqual(await outlineMaterials("retiredsubject"), []);
+		assert.deepEqual((await outlineMaterialPack(tree, "retiredsubject")).sourceCoverage.map(x => x.sourceIds), [[], []]);
 		await refreshLessonOutline(record.id, { engine: engine(), materials: () => sources }); assert.ok(readLessonOutline(record.id));
 	});
 	await runInCourse(b, async () => {
 		writeSettings({ version: 1, general: { lessonOutline: true } }); assert.equal(readLessonOutline(aId), null);
-		assert.equal((await GET(new Request("http://test/api/chats/foreign/outline?course=" + b.id), { params: Promise.resolve({ id: aId }) })).status, 404);
+		assert.equal((await GET(new Request("http://test/api/chats/foreign/outline?course=" + b.id), { params: Promise.resolve({ id: aId }) })).status, 409);
 		assert.throws(() => readLessonOutline("../chats/foreign"));
 	});
 	if (process.platform !== "win32") runInCourse(a, () => {
-		const target = path.join(a.dataRoot, "lesson-outlines-v2", aId + ".json"); fs.unlinkSync(target);
+		const target = path.join(a.dataRoot, "core-plugin-data", "lesson-outline", "outlines-v2", aId + ".json"); fs.unlinkSync(target);
 		const chat = path.join(a.dataRoot, "chats", aId + ".json"); const bytes = fs.readFileSync(chat); fs.symlinkSync(chat, target);
 		assert.throws(() => readLessonOutline(aId));
 		assert.throws(() => writeLessonOutline({ version: 2, chatId: aId, groups: [], currentItem: null, revisionReason: null, planKey: "", cursor: 0, prefixKey: "", nativeNode: null, updatedAt: "", sources: [] }));
@@ -192,11 +192,11 @@ test("readings and records stay course-scoped, prefer revised sources and reject
 	});
 });
 
-test("broad material pack retains prior supporting quotes beyond the former single-excerpt limit", () => runInCourse(resolveCourse("legacy"), () => {
+test("broad material pack retains prior supporting quotes beyond the former single-excerpt limit", () => runInCourse(resolveCourse("legacy"), async () => {
 	const quotes = Array.from({ length: 18 }, (_, n) => ("Evidence passage " + n + ": ").padEnd(300, String.fromCharCode(97 + n)));
 	fs.writeFileSync(path.join(process.env.LH_SOURCE_ROOT!, "panel-evidence.md"), "# Panel observations\n" + quotes.join("\n"));
 	const refs = quotes.map(quote => ({ path: "panel-evidence.md", quote }));
-	const pack = outlineMaterialPack(tree, "Panel observations", refs);
+	const pack = await outlineMaterialPack(tree, "Panel observations", refs);
 	const source = pack.sources.find(s => s.path === "panel-evidence.md"); assert.ok(source);
 	assert.ok(quotes.every(q => source.text.includes(q)));
 	assert.ok(pack.sources.reduce((n, s) => n + s.text.length, 0) < 80000);

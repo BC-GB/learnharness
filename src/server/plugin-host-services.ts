@@ -1,4 +1,4 @@
-import { currentCourse, currentCourseId, runInCourse, forEachKnownCourse } from "../runtime/course-context.ts";
+import { currentCourse, currentCourseId, runInCourse, forEachKnownCourse, courseLocal } from "../runtime/course-context.ts";
 import type { PluginBackendContext } from "../core/plugins.ts";
 import { emit } from "../core/events.ts";
 import { stores } from "./stores.ts";
@@ -8,13 +8,16 @@ import { validateModelsSettings, clampChatLevel } from "./model-catalog.ts";
 import { preferenceView, applyPreferences, undoPreferences } from "./preference-editor.ts";
 import { withWorkerRequestSlot } from "../agent/worker-request-admission.ts";
 
+const activity = () => courseLocal("plugin-host-service-activity", () => ({ count: 0 }));
+export const pluginHostServiceRunningCount = () => activity().count;
+
 /** Policy belongs to the app. Packages cannot request more keys through manifests.
  * Existing global choices stay in their original stores; no migration or startup writes. */
 export function createCoreHostServices(id: string, signal: AbortSignal): Pick<PluginBackendContext, "course" | "configuration" | "promptEditor" | "admission"> {
  const scope = currentCourse();
  const bound = <T>(work: () => T): T => { signal.throwIfAborted(); return scope ? runInCourse(scope, work) : work(); };
  const course = Object.freeze({ id: currentCourseId(), name: scope?.name ?? "Current course" });
- const services: ReturnType<typeof createCoreHostServices> = { course, admission: { run: (requestSignal, work) => bound(() => withWorkerRequestSlot(AbortSignal.any([signal, requestSignal]), work)) } };
+ const services: ReturnType<typeof createCoreHostServices> = { course, admission: { run: (requestSignal, work) => bound(async () => { const live = activity(); live.count++; try { return await withWorkerRequestSlot(AbortSignal.any([signal, requestSignal]), work); } finally { live.count--; } }) } };
  if (id === "lesson-outline" || id === "learning-preferences") services.configuration = {
   read: () => bound(() => {
    const s = stores.settingsStore.readSettings();

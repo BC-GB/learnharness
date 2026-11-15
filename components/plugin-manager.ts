@@ -365,8 +365,12 @@ export class PluginFrontendManager {
 			manifest, signal: life.controller.signal,
 			cleanup: cleanup => { this.addCleanup(life, cleanup); },
 			registerWidget: widget => {
-                if (!["app", "session", "settings-general"].includes(widget?.location)) throw new Error("Invalid widget location");
-                return register(life.widgets, Object.freeze({ ...widget, mount: widget.mount.bind(widget) }), "mount");
+                if (!this.current(life)) return () => {};
+                if (!widget || typeof widget.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(widget.id) || !["app", "session", "settings-general"].includes(widget.location) || typeof widget.mount !== "function") throw new Error("Invalid plugin widget");
+                if (life.widgets.has(widget.id)) throw new Error("Duplicate plugin widget");
+                const owned = Object.freeze({ id: widget.id, location: widget.location, mount: widget.mount.bind(widget) });
+                life.widgets.set(owned.id, owned); this.publish();
+                return () => { if (life.widgets.get(owned.id) === owned) { life.widgets.delete(owned.id); this.publish(); } };
             },
 			registerView: view => register(life.views, view, "mount"),
 			registerAction: action => register(life.actions, action, "run"),

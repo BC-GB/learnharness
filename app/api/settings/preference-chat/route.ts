@@ -1,4 +1,4 @@
-import { courseRoute, optionalPluginCall } from "@/src/server";
+import { courseRoute, optionalPluginCall, preferenceView } from "@/src/server";
 export const dynamic = "force-dynamic";
 async function boundedBody(request: Request): Promise<string> {
  const reader = request.body?.getReader(); if (!reader) return "";
@@ -10,9 +10,14 @@ async function boundedBody(request: Request): Promise<string> {
 }
 export const GET = courseRoute(async () => {
  try { return Response.json(await optionalPluginCall("learning-preferences", "view"), { headers: { "Cache-Control": "no-store" } }); }
- catch { return Response.json({ error: "Learning preferences plugin is unavailable" }, { status: 409 }); }
+ catch { return Response.json({ error: "Learning preferences plugin is unavailable" }, { status: 400 }); }
 });
 export const POST = courseRoute(async (request: Request) => {
- try { const input = JSON.parse(await boundedBody(request)); return Response.json(await optionalPluginCall("learning-preferences", "edit", input)); }
- catch { return Response.json({ error: "Preference request could not finish. Reload to check saved text; Undo remains available." }, { status: 409 }); }
+ try {
+  const input = JSON.parse(await boundedBody(request));
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Invalid request");
+  if (typeof input.revision !== "string" || input.revision !== preferenceView().revision) return Response.json({ error: "Preferences changed. Reload first." }, { status: 409 });
+  return Response.json(await optionalPluginCall("learning-preferences", "edit", input));
+ }
+ catch { return Response.json({ error: "Preference request could not finish. Reload to check saved text; Undo remains available." }, { status: 400 }); }
 });

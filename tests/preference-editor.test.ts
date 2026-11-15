@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { draftPreferences, validatePreferenceDraft } from "../src/agent/preference-editor.ts";
+import { draftPreferences as draft, validatePreferenceDraft } from "../plugins/learning-preferences/src/draft.ts";
+import { inferenceFor } from "./plugin-inference-fixture.ts";
 const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "lh-preference-editor-")));
 process.env.LH_DATA_DIR = path.join(scratch, "data"); fs.mkdirSync(process.env.LH_DATA_DIR);
 after(() => fs.rmSync(scratch, { recursive: true, force: true }));
@@ -18,7 +19,7 @@ const { runInCourse } = await import("../src/runtime/course-context.ts");
 test("draft is bounded and accepts no tool/path fields", async () => {
  for (const v of [null, {}, {text:"x",summary:"y",path:"/etc/a"}, {text:"x".repeat(16001),summary:""}]) assert.throws(() => validatePreferenceDraft(v));
  const faux = createFauxCore({}); faux.setResponses([fauxAssistantMessage([fauxToolCall("submit_preferences", {text:"Use examples.",summary:"Added examples."})], {stopReason:"toolUse"})]);
- assert.deepEqual(await draftPreferences({model:faux.getModel(),streamFn:faux.streamSimple}, "", "Use examples", new AbortController().signal), {text:"Use examples.",summary:"Added examples."});
+ assert.deepEqual(await draft(inferenceFor({model:faux.getModel(),streamFn:faux.streamSimple}), {provider: "fixture", id: "fixture"}, "", "Use examples", new AbortController().signal), {text:"Use examples.",summary:"Added examples."});
 });
 test("global addition edits have concurrency guards and undo, without changing original guidance", () => {
  writeSettings({version:1,appearance:{readingWidth:960}}); initialiseGlobalPreferences("Connect concepts.");

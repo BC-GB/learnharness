@@ -58,5 +58,5 @@ function undoPreferenceConversation(expected: string, conversationRevision: stri
  return preferenceChatView();
 }
 
- return { preferenceChatView, sendPreferenceMessage, applyPreferenceConversation, undoPreferenceConversation };
+ return { preferenceChatView, sendPreferenceMessage, applyPreferenceConversation, undoPreferenceConversation, proposePreferences };
 }

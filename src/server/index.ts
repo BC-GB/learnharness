@@ -74,6 +74,5 @@ export * from "./custom-provider.ts";
 export { customProviderGet, customProviderMutation } from "./custom-provider-http.ts";
 
 export { providerCapabilities, providerSetupDenied } from "./provider-capabilities.ts";
-export { preferenceView, applyPreferences, undoPreferences, proposePreferences } from "./preference-editor.ts";
+export { preferenceView, applyPreferences, undoPreferences } from "./preference-editor.ts";
 
-export { preferenceChatView, sendPreferenceMessage, applyPreferenceConversation, undoPreferenceConversation, PreferenceConversationConflict } from "./preference-conversation.ts";
