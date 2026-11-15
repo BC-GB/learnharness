@@ -279,6 +279,7 @@ export function mountPathHub(
               { signal: contentSignal },
             )
           : null;
+      host.append(row);
       return () => {
         nodeBadge.dispose();
         progressionBadge.dispose();

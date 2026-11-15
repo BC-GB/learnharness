@@ -193,6 +193,11 @@
   overflow-x: auto;
 }
 
+/* Preserve label space beside the fixed state column; scroll inside this pane. */
+.lp-tree-host [data-plugin-tree] {
+  min-width: 28rem;
+}
+
 .lp-tree-node {
   display: flex;
   align-items: center;

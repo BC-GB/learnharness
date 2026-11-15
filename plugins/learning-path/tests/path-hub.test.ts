@@ -73,6 +73,7 @@ test("Path Hub mounts every surface and disposes widgets, tree content and liste
     const tree = fixture.find("mountTree");
     assert.equal(tree.props.label, "Path hierarchy");
     assert.equal(tree.props.header, "Path");
+    assert.ok([...container.querySelectorAll(".lp-tree-node-title")].some(element => element.textContent === "Node n-concept"), "node titles must be attached to the live tree, not just built in detached content");
     assert.deepEqual(tree.props.columns, [{ key: "state", header: "State", width: 136 }]);
     assert.equal(tree.signal, fixture.context.signal);
     assert.equal(fixture.all("mountStandardComposer").length, 1);
