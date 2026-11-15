@@ -12,10 +12,11 @@ const { PUT } = await import("../app/api/settings/[section]/route.ts");
 const save = (body: unknown) => PUT(new Request("http://test/api/settings/general", { method: "PUT", body: JSON.stringify(body) }), { params: Promise.resolve({ section: "general" }) });
 test("the native update switch preserves newer plugin choices while legacy General reset still replaces the section", async () => {
  const outlineModel = { model: { provider: "offline", id: "saved-background" }, thinkingLevel: "high" as const };
- const general = { lessonOutline: true, outlineModel, futureSibling: "keep" };
- writeSettings({ version: 1, general, appearance: { readingWidth: 960 } });
+ const general = { lessonOutline: true, outlineModel };
+ const original = { version: 1 as const, general, appearance: { readingWidth: 960 }, futureRoot: { preserved: true } };
+ writeSettings(original);
  const response = await save({ patch: { autoUpdate: false } }); assert.equal(response.status, 200);
- const stored = (await response.json()).settings; assert.equal(stored.general.lessonOutline, true); assert.deepEqual(stored.general.outlineModel, outlineModel); assert.equal(stored.appearance.readingWidth, 960); assert.equal(stored.general.futureSibling, "keep");
+ const stored = (await response.json()).settings; assert.equal(stored.general.lessonOutline, true); assert.deepEqual(stored.general.outlineModel, outlineModel); assert.equal(stored.appearance.readingWidth, 960); assert.deepEqual(stored.futureRoot, { preserved: true });
  writeSettings({ ...readSettings()!, general: { ...readSettings()!.general, lessonOutline: false } });
  assert.equal((await save({ patch: { autoUpdate: true } })).status, 200); assert.equal(readSettings()!.general!.lessonOutline, false);
  const before = JSON.stringify(readSettings());
