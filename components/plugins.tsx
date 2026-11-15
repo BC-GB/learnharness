@@ -106,7 +106,7 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
 	}, []);
 	useEffect(() => {
 		if (!manager) return;
-		const offs = SERVER_EVENT_TYPES.map(type => hub.subscribe(type, payload => {
+		const offs: (() => void)[] = SERVER_EVENT_TYPES.map(type => hub.subscribe(type, payload => {
 			if (type === "plugin-message") manager.notify(payload as Parameters<typeof manager.notify>[0]);
 			else if (type === "settings-changed") {
                 const section = (payload as { section?: string }).section;
