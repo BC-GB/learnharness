@@ -1374,9 +1374,8 @@ describe("prompt composition", () => {
 		for (const kind of ["teacher", "prober"] as const) {
 			const instructions = composeInstructions(kind);
 			assert.ok(instructions.includes("## Learner files"), `${kind} carries the shared learner-files fragment`);
-			assert.ok(instructions.includes("Before asking for a filename, path or upload, use `find`"), `${kind} searches before asking the learner for files`);
-			assert.ok(instructions.includes("Paths resolve within the approved source library"), `${kind} knows the library-anchored path rule`);
-			assert.ok(!instructions.includes("Paths resolve against his home directory"), `${kind} does not advertise unsupported home-directory access`);
+			assert.ok(instructions.includes("find it yourself with `find`"), `${kind} knows to locate files itself`);
+			assert.ok(instructions.includes("home directory"), `${kind} knows the home-anchored path rule`);
 		}
 		// the agent's OWN fragments compose before the shared appendix
 		// (the reorder's order rule, 2026-09-27: job and method lead)

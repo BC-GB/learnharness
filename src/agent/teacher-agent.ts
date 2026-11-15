@@ -30,7 +30,7 @@ import { toLlmMessages, nativeInputCause, PRACTICE_PROBLEM_TOOL } from "../core/
 import type { ChatGPTRequestCycle } from "./chatgpt-request-cycle.ts";
 import { usageWasAdmitted } from "./subscription-request-cycle.ts";
 import { PluginQuestionLedger, type NativePluginQuestionContribution } from "./plugin-question-tools.ts";
-import { courseLibraryInstructions } from "./course-library-context.ts";
+import { bindCourseLibrary } from "./course-library-context.ts";
 
 /**
  * The two teaching-side agents (docs/archive/probe-teach-split.md): the PROBER and
@@ -218,9 +218,7 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	const composedPrompt = opts.promptSwitches || globalPreferencesEnabled()
 		? composeInstructions(kind, opts.promptSwitches ?? globalPromptSwitches())
 		: composedInstructions[kind]!;
-	const library = courseLibraryInstructions();
-	const scopedPrompt = library ? `${composedPrompt}\n\n---\n\n${library}` : composedPrompt;
-	const builtinPrompt = narrationGuard ? `${scopedPrompt}\n\n---\n\n${SEND_TO_USER_DELIVERY_RULE}` : scopedPrompt;
+	const builtinPrompt = narrationGuard ? `${composedPrompt}\n\n---\n\n${SEND_TO_USER_DELIVERY_RULE}` : composedPrompt;
 	// Bind native read and preserve the kind/model-aware Claude output gate
 	// before resolving additive plugins. Explicit registries remain caller-owned.
 	const builtinTools = [
@@ -231,8 +229,9 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 			? [withArgumentHeal(sendToUserTool)]
 			: []),
 	];
+	const scopedTools = opts.tools === undefined ? bindCourseLibrary(builtinTools) : builtinTools;
 	const contributions = opts.tools === undefined && opts.chatId && opts.pluginContributions
-		? opts.pluginContributions({ chatId: opts.chatId, agent: kind }, [...CONVERSATION_TOOL_NAMES, ...builtinTools.map(tool => tool.name)])
+		? opts.pluginContributions({ chatId: opts.chatId, agent: kind }, [...CONVERSATION_TOOL_NAMES, ...scopedTools.map(tool => tool.name)])
 		: undefined;
 	const questionLedger = contributions?.questionTypes?.length && opts.chatId
 		? new PluginQuestionLedger(contributions.questionTypes, opts.chatId, nodeExists) : undefined;
@@ -254,7 +253,7 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 			systemPrompt,
 			model: engine.model,
 			thinkingLevel: engine.level,
-			tools: contributions ? [...builtinTools, ...contributions.tools, ...(questionLedger?.tools ?? []), ...problemTools] : builtinTools,
+			tools: contributions ? [...scopedTools, ...contributions.tools, ...(questionLedger?.tools ?? []), ...problemTools] : scopedTools,
 			messages: opts.messages ?? [],
 		},
 		streamFn: engine.streamFn,
