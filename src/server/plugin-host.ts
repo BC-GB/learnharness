@@ -47,6 +47,7 @@ export interface PluginHostDependencies {
 	appVersion: string;
 	createServices(info: { manifest: PluginManifest; directory: string; dataDirectory: string; signal: AbortSignal; cleanup: (fn: PluginCleanup) => void }): {
 		learning: PluginLearningData; inference: PluginInference; agents: PluginAgentService; workers: PluginWorkerService;
+		library?: PluginBackendContext["library"];
 		createBackgroundTool: PluginBackendContext["createBackgroundTool"];
 	};
 	/** One process-wide pure converter; no backend services are needed for uploads. */

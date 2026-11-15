@@ -75,6 +75,7 @@ export interface PluginHost {
 	pathname(): string;
 	navigate(path: string): void;
 	openSettings?(pluginId: string): void;
+	createSession?(input: { title: string; kind: "teaching" | "practice" }, signal: AbortSignal): Promise<import("@/src/core").PluginCreatedSession>;
 	createUi?(options: { signal: AbortSignal; pluginId?: string; onError: (error: unknown) => void }): import("@/src/core/plugin-ui").PluginUi;
 	style?(url: string, onError: () => void): PluginCleanup;
 }
@@ -463,6 +464,13 @@ export class PluginFrontendManager {
 			onAppEvent: listener => listen(life.events, listener),
 			onResync: listener => listen(life.resyncs, listener),
 			app: {
+				createSession: async input => {
+					if (!this.current(life) || !this.host.createSession) throw new Error("Native session creation is unavailable");
+					const created = await this.host.createSession(input, life.controller.signal);
+					if (!this.current(life)) { created.clearOpeningPrompt(); throw new Error("Plugin is no longer active"); }
+					this.addCleanup(life, () => created.clearOpeningPrompt());
+					return created;
+				},
 				pathname: () => this.host.pathname(),
 				openHome: () => { if (this.current(life)) this.host.navigate("/"); },
 				openSession: id => { if (this.current(life)) this.host.navigate(`/chat/${encodeURIComponent(id)}`); },

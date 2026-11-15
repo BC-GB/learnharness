@@ -1,0 +1,13 @@
+{
+  "name": "learnharness-learning-path",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "sdk": "node ../../scripts/build-plugin-types.mjs .sdk",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs tests/*.test.ts"
+  }
+}

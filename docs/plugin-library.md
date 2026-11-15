@@ -1,0 +1,9 @@
+# Selected-course library and native session handoff
+
+Backend `ctx.library`, when available, reads the host-selected course's existing text reading copies. It is read-only and remains bound to the activation's validated course across awaits and calls from other tabs. It exposes relative paths, never a host root or credentials. Optional file policy can narrow access; it cannot expand it to another course.
+
+`list({pattern?,limit?})` returns the library name, file metadata and a truncation flag. Native glob syntax applies. A walk is bounded to depth 7, 2,000 entries, 1,000 matches, 48 KiB of metadata and 10 seconds. Hidden entries, aliases and sensitive native source locations are excluded. `read({path,offset?,limit?})` returns UTF-8 text, character offsets, a next offset and the file hash. Paths must be relative and text-only; native source/policy guards apply again. Files and returned text are bounded to 512 KiB, with a 20,000-character default response. Callers should use smaller model-facing chunks. No OCR, PDF conversion, model call or write occurs.
+
+Frontend `ctx.app.createSession({title,kind})` creates an empty native teaching/practice chat using the host's selected-course route. It does not navigate or infer. Its returned handle contains `id`, `stageOpeningPrompt(text)` and `clearOpeningPrompt()`. Only that new chat can receive the staged draft, using the host's course-qualified one-time draft format. Stage returns false after cancellation or a course change. Cleanup can clear the original draft after expiry without touching another course. Call `ctx.app.openSession(id)` only after any feature-specific linking succeeds; clear the draft if linking fails. Do not use private sessionStorage keys or bare `/api/chats` requests.
+
+These are supported integration helpers, not a sandbox for trusted backend code. Existing container, credential and network controls remain authoritative.

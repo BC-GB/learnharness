@@ -1,6 +1,7 @@
 "use client";
 
 import { courseFetch as fetch, courseUrl } from "@/lib/course-client";
+import { createPluginSession } from "./plugin-session-creation";
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useRouter } from "@/components/course-navigation";
@@ -85,6 +86,7 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
 				fetch: (...args) => fetch(...args), importModule: url => importPluginModule(courseUrl(url)),
 				pathname: () => window.location.pathname, navigate: path => routerRef.current.push(path),
 				openSettings: pluginId => window.dispatchEvent(new CustomEvent("lh:open-plugin-settings", { detail: pluginId })),
+					createSession: createPluginSession,
 				style: (url, onError) => {
 					const link = document.createElement("link");
 					link.rel = "stylesheet"; link.href = courseUrl(url); link.onerror = onError;
