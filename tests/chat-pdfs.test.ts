@@ -104,7 +104,7 @@ test("upload waits for isolated validation, preserves bytes, and fails closed on
 			const chunked = new Request("http://localhost/api/chat-pdfs?filename=x.pdf", { method: "POST", body: new ReadableStream({ start(c) { c.enqueue(new Uint8Array(MAX_CHAT_PDF_BYTES + 1)); c.close(); } }), duplex: "half" } as RequestInit);
 			await assert.rejects(() => uploadChatPdf(chunked), error => error instanceof CourseError && error.status === 413);
 		});
-	} finally { stub.restore(); if (previous === undefined) delete process.env.LH_ISOLATED_RENDERER; else process.env.LH_ISOLATED_RENDERER = previous; }
+	} finally { stub.mock.restore(); if (previous === undefined) delete process.env.LH_ISOLATED_RENDERER; else process.env.LH_ISOLATED_RENDERER = previous; }
 });
 
 test("storage rejects invalid counts, oversize PDFs, symlinks and disguised metadata", () => {

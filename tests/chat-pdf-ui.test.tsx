@@ -17,7 +17,7 @@ async function fixture() {
 		setBaseAndExtent(anchorNode: Node, anchorOffset: number, focusNode: Node, focusOffset: number) { Object.assign(this, { anchorNode, anchorOffset, focusNode, focusOffset }); } };
 	Object.assign(doc, { getSelection: () => selection, oninput: null });
 	win.HTMLElement.prototype.focus = function () { active = this; };
-	Object.defineProperty(win, "location", { value: { href: "http://localhost/chats/one" }, configurable: true });
+	Object.defineProperty(win, "location", { value: { href: "http://localhost/chats/one", origin: "http://localhost" }, configurable: true });
 	const requests: { url: string; init?: RequestInit }[] = [];
 	let delayed = false; let release: (() => void) | undefined; let fail = false;
 	const name = "a".repeat(64) + ".pdf";
