@@ -480,7 +480,7 @@ export function SettingsDialogBody({
 									<UpdateSettings
 										autoUpdate={record.general?.autoUpdate ?? true}
 										onAutoUpdateChange={(on) =>
-											void write("general", { ...record.general, autoUpdate: on })
+											void write("general", { patch: { autoUpdate: on } })
 										}
 									/>
 									<PluginContributions location="settings-general" />

@@ -19,6 +19,7 @@ function hashes(root) {
 	}
 	walk(root); return result;
 }
+const DEFAULT_ACTIVE = new Set(["learning-path", "lesson-outline", "learning-preferences", "response-notifications"]);
 const CODING_UNAVAILABLE = "Native code execution is unavailable in this hardened deployment. An isolated execution service is required.";
 
 export async function verifyCorePlugins({ root, standalone, dataDirectory, url, headers = {} }) {
@@ -32,14 +33,15 @@ export async function verifyCorePlugins({ root, standalone, dataDirectory, url, 
 	assert.deepEqual(initial.plugins.filter(p => p.origin === "core").map(p => p.id).sort(), [...ids].sort());
 	for (const id of ids) {
 		const info = initial.plugins.find(p => p.id === id);
-		assert.equal(info.enabled, false, id);
+		assert.equal(info.enabled, DEFAULT_ACTIVE.has(id), id);
 		if (id === "coding-questions") {
 			assert.equal(info.status, "error", JSON.stringify(info));
 			assert.equal(info.error, `Plugin startup failed: ${CODING_UNAVAILABLE}`);
-		} else assert.equal(info.status, "disabled", JSON.stringify(info));
+		} else assert.equal(info.status, DEFAULT_ACTIVE.has(id) ? "active" : "disabled", JSON.stringify(info));
 		assert.equal(fs.existsSync(path.join(dataDirectory, "plugins", id)), false, "core code must not be installed into user data");
 	}
-	assert.equal(fs.existsSync(path.join(dataDirectory, "core-plugin-data")), false, "disabled fresh discovery creates no core records");
+	for (const id of ids.filter(id => !DEFAULT_ACTIVE.has(id))) assert.equal(fs.existsSync(path.join(dataDirectory, "core-plugin-data", id)), false, "disabled discovery creates no owned data: " + id);
+ if (!ids.some(id => DEFAULT_ACTIVE.has(id))) assert.equal(fs.existsSync(path.join(dataDirectory, "core-plugin-data")), false, "disabled fresh discovery creates no core records");
 	if (ids.includes("coding-questions")) {
 		const dataBefore = hashes(dataDirectory);
 		const denied = await request("/api/plugins/coding-questions", { enabled: true }, 409);

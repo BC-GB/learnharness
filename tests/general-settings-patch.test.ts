@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { after, test } from "node:test";
+const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "lh-general-patch-")));
+process.env.LH_DATA_DIR = path.join(root, "data"); fs.mkdirSync(process.env.LH_DATA_DIR);
+process.env.LH_AUTH_FILE = path.join(root, "auth.json"); fs.writeFileSync(process.env.LH_AUTH_FILE, "{}");
+after(() => fs.rmSync(root, { recursive: true, force: true }));
+const { writeSettings, readSettings } = await import("../src/store/settings.ts");
+const { PUT } = await import("../app/api/settings/[section]/route.ts");
+const save = (body: unknown) => PUT(new Request("http://test/api/settings/general", { method: "PUT", body: JSON.stringify(body) }), { params: Promise.resolve({ section: "general" }) });
+test("the native update switch preserves newer plugin choices while legacy General reset still replaces the section", async () => {
+ const outlineModel = { model: { provider: "offline", id: "saved-background" }, thinkingLevel: "high" as const };
+ writeSettings({ version: 1, general: { lessonOutline: true, outlineModel }, appearance: { readingWidth: 960 } });
+ const response = await save({ patch: { autoUpdate: false } }); assert.equal(response.status, 200);
+ const stored = (await response.json()).settings; assert.equal(stored.general.lessonOutline, true); assert.deepEqual(stored.general.outlineModel, outlineModel); assert.equal(stored.appearance.readingWidth, 960);
+ writeSettings({ ...readSettings()!, general: { ...readSettings()!.general, lessonOutline: false } });
+ assert.equal((await save({ patch: { autoUpdate: true } })).status, 200); assert.equal(readSettings()!.general!.lessonOutline, false);
+ const before = JSON.stringify(readSettings());
+ for (const body of [{ patch: { autoUpdate: "on" } }, { patch: { autoUpdate: false, lessonOutline: true } }, { patch: { autoUpdate: false }, extra: true }]) assert.equal((await save(body)).status, 400);
+ assert.equal(JSON.stringify(readSettings()), before);
+ assert.equal((await save({ autoUpdate: false })).status, 200); assert.deepEqual(readSettings()!.general, { autoUpdate: false });
+});
