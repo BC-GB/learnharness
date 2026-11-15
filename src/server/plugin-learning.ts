@@ -1,3 +1,4 @@
+import { AsyncResource } from "node:async_hooks";
 import { derivePlanStatusesLh } from "../core/contracts.ts";
 import { messageViewLines } from "../core/coverage.ts";
 import type { PluginGraphFileData, PluginLearningData } from "../core/plugins.ts";
@@ -27,7 +28,7 @@ export function createPluginLearningData(deps: PluginLearningDeps): PluginLearni
 		"render-settings.json": () => deps.readMetadata("render-settings.json"),
 		"format.json": () => deps.readMetadata("format.json"),
 	};
-	return {
+	const api: PluginLearningData = {
 		directory: deps.directory,
 		listSessions: () => deps.chatStore.listChats().map((s) => ({ ...s, busy: deps.isBusy(s.id), compacting: deps.isCompacting(s.id) })),
 		getSession: (id) => {
@@ -57,4 +58,7 @@ export function createPluginLearningData(deps: PluginLearningDeps): PluginLearni
 			return readers[name]();
 		},
 	};
+    // Captures even an unbound legacy activation; callers cannot lend another
+    // course to deferred reads through the shared store adapters.
+    return { ...api, listSessions: AsyncResource.bind(api.listSessions), getSession: AsyncResource.bind(api.getSession), getSessionSnapshot: AsyncResource.bind(api.getSessionSnapshot!), graph: AsyncResource.bind(api.graph), readGraphFile: AsyncResource.bind(api.readGraphFile) };
 }

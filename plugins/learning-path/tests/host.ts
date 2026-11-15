@@ -95,6 +95,7 @@ export interface TestHost {
 }
 
 export interface HostOptions {
+  readonly preferences?: PluginBackendContext["preferences"];
   readonly dataDirectory?: string;
   readonly catalog?: ModelCatalogResponse;
   readonly chats?: readonly ChatRecord[];
@@ -242,6 +243,7 @@ export function createHost(options: HostOptions = {}): TestHost {
     manifest: MANIFEST,
     directory: path.join(dataDirectory, "code"),
     dataDirectory,
+    preferences: options.preferences,
     signal: controller.signal,
     cleanup: (dispose: () => void | Promise<void>) => cleanups.push(dispose),
     learning,

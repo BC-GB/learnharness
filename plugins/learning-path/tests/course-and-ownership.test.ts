@@ -39,3 +39,16 @@ test("a symlinked sources parent is rejected before any source index or text is 
   fs.symlinkSync(other, path.join(own, "sources"), "dir");
   assert.throws(() => openLearningPathStore(own), /aliased/); assert.deepEqual(fs.readdirSync(other), []);
 });
+
+
+test("global model/artifact preferences do not share paths, source uploads or conversation records", async t => {
+ let saved: unknown; const listeners = new Set<() => void>();
+ const preferences = { read: () => structuredClone(saved), write: (value: unknown) => { saved = structuredClone(value); for (const listener of listeners) listener(); }, subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; } };
+ const a = createHost({ preferences }), b = createHost({ preferences }); t.after(() => { a.close(); b.close(); });
+ await a.call("settings.save", { artifactDefaults: { concept: "derivation_trace" } });
+ assert.deepEqual(await b.call("settings.get"), { settings: { artifactDefaults: { concept: "derivation_trace" } } });
+ const created = await a.call<{ conversation: { id: string } }>("architect.create", {}); assert.ok(created.conversation.id);
+ assert.equal(b.records.size, 0); assert.equal(b.chats.size, 0); assert.deepEqual(await b.call("paths.list"), { paths: [] });
+ assert.equal(fs.existsSync(path.join(a.dataDirectory, "settings.json")), false, "global choices do not rewrite a course preference file");
+ assert.equal(fs.existsSync(path.join(b.dataDirectory, "architect.json")), false, "following the host slot does not copy another course recovery record");
+});

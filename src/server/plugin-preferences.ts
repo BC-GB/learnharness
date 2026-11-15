@@ -9,7 +9,7 @@ type Preferences = NonNullable<PluginBackendContext["preferences"]>;
 interface Global { __lhCorePreferenceListeners?: Map<string, Set<() => void>> }
 /** Explicit reviewed core IDs only. No general filesystem or path capability. */
 export function createCorePluginPreferences(id: string, root = BASE_DATA_ROOT): Preferences | undefined {
- if (!["drawing-pad", "rich-code-blocks", "flashcards"].includes(id)) return undefined;
+ if (!["drawing-pad", "rich-code-blocks", "flashcards", "learning-path"].includes(id)) return undefined;
  const filename = () => sharedPreferencePath(root, `global-plugin-${id}.json`);
  const global = globalThis as typeof globalThis & Global;
  const registry = global.__lhCorePreferenceListeners ??= new Map();

@@ -105,7 +105,7 @@ export function mountSettingsPage(
       document,
       "p",
       "lp-muted",
-      "Defaults for generated artifacts, the Architect's model, and safe path deletion. Every change saves immediately.",
+      "Model and artifact defaults apply across courses. Paths, uploads and conversations stay in the selected course. Every change saves immediately.",
     ),
   );
   const status = element(document, "p", "lp-settings-status");

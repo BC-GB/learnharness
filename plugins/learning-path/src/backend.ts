@@ -7,7 +7,7 @@
  *   (create/send/abort), child-session links (prepare/link/unlink/status),
  *   Error Ledger entries, advisory pivots, settings and safe path deletion, with
  *   request IDs delegated to the host so a retried send is accepted once;
- * - the native bridge: conditional instructions plus per-turn learning_path_*
+ * - the native bridge: per-turn learning_path_*
  *   tools for linked prober/teacher/practice turns, and `[]` otherwise;
  * - `ctx.events.emit` notifications after every observable write, so any open
  *   window can refetch instead of polling.
@@ -238,7 +238,13 @@ function updateNodeInPath(
 }
 
 export function activate(ctx: PluginBackendContext): void {
-  const store: LearningPathStore = openLearningPathStore(ctx.dataDirectory);
+  const localStore = openLearningPathStore(ctx.dataDirectory);
+  // Only configuration crosses courses. Paths, uploads, conversations and the
+  // registered-definition recovery record stay in this activation's own data.
+  const store: LearningPathStore = ctx.preferences ? { ...localStore,
+    settings() { const saved = ctx.preferences!.read(); return saved === undefined ? localStore.settings() : parsePluginSettings(saved); },
+    saveSettings(value) { const parsed = parsePluginSettings(value); ctx.signal.throwIfAborted(); ctx.preferences!.write(parsed); return parsed; },
+  } : localStore;
   const disposers: (() => void)[] = [];
   const watchers = new Map<string, () => void>();
   const notificationKeys = new Map<string, string>();
@@ -277,7 +283,7 @@ export function activate(ctx: PluginBackendContext): void {
   };
   ctx.cleanup(cleanup);
 
-  // Native child-session tools and conditional instructions. Registered for
+  // Native child-session tools, without global instructions. Registered for
   // prober/teacher/practice; the per-turn factory returns [] for unlinked chats.
   disposers.push(
     registerNativeBridge(ctx, {
@@ -1015,6 +1021,14 @@ export function activate(ctx: PluginBackendContext): void {
     });
     return { conversation };
   });
+
+  if (ctx.preferences) disposers.push(ctx.preferences.subscribe(() => {
+    if (disposed || ctx.signal.aborted) return;
+    const settings = store.settings(), override = preferenceModel(settings.architect);
+    const modelPending = override ? applySettingsModel(override) : false;
+    if (!override) pendingModel = null;
+    emit(EVENT_SETTINGS_CHANGED, { settings, modelPending });
+  }));
 
   // Reconstruct the persistent definition from plugin data. An explicit settings
   // override wins; otherwise the saved model is registered and the first create
