@@ -5,6 +5,9 @@ import { FileSymlinkIcon, XIcon } from "lucide-react";
 import { directoryReferencePath, quoteFilePath } from "@/src/core";
 import { appendToPrimaryInput } from "@/components/dictation";
 import { INSERT_FILE_PATHS_EVENT } from "@/components/path-input";
+import { ATTACH_BROWSER_FILES_EVENT } from "@/lib/browser-file-attachments";
+import { useOptionalInteractionLayers } from "./interaction-layers";
+import { isInteractionScopeEligible } from "./plugin-input-focus";
 
 export const BROWSER_NOTICE = "Local file paths can only be attached in the desktop app. You can paste a full path instead.";
 
@@ -15,7 +18,15 @@ export function FilePathDropZone({ children, className, onContentRoot }: {
 	className?: string;
 	onContentRoot?: (element: HTMLElement | null) => void;
 }) {
+	const controller = useOptionalInteractionLayers();
 	const root = useRef<HTMLElement>(null);
+	const uploadTarget = (eventTarget?: EventTarget | null) => {
+		const accepts = (element: Element | null) => element?.closest<HTMLElement>("[data-browser-file-attachments]");
+		const direct = eventTarget instanceof Element ? accepts(eventTarget) : null;
+		const focused = accepts(document.activeElement);
+		const candidates = [direct, focused, ...Array.from(root.current?.querySelectorAll<HTMLElement>('[data-testid="practice-thinking-field"] [data-browser-file-attachments], [data-browser-file-attachments][data-file-path-default]') ?? [])];
+		return candidates.find(target => target && root.current?.contains(target) && isInteractionScopeEligible(target, controller));
+	};
 	useEffect(() => {
 		onContentRoot?.(root.current);
 		return () => { onContentRoot?.(null); };
@@ -68,7 +79,12 @@ export function FilePathDropZone({ children, className, onContentRoot }: {
 				event.stopPropagation();
 				clearDrag();
 				const resolve = window.lh?.getPathForFile;
-				if (!resolve) { setNotice(BROWSER_NOTICE); return; }
+				if (!resolve) {
+					const target = uploadTarget(event.target);
+					if (!target) { setNotice(BROWSER_NOTICE); return; }
+					target.dispatchEvent(new CustomEvent(ATTACH_BROWSER_FILES_EVENT, { detail: Array.from(event.dataTransfer.files) }));
+					setNotice(""); return;
+				}
 				// Inspect only the dropped item's type, never traverse its entries.
 				// Positively known directories get a durable trailing separator.
 				const entries = Array.from(event.dataTransfer.items).filter((item) => item.kind === "file");
@@ -104,7 +120,7 @@ export function FilePathDropZone({ children, className, onContentRoot }: {
 				<div data-testid="file-path-drop-indicator" className="pointer-events-none absolute inset-2 z-50 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-background/85 p-6 text-center backdrop-blur-sm">
 					<div className="flex max-w-md flex-col items-center gap-3">
 						<FileSymlinkIcon className="size-8 text-primary" aria-hidden />
-						<span className="font-ui text-sm">{window.lh?.getPathForFile ? "Drop to attach file paths" : BROWSER_NOTICE}</span>
+						<span className="font-ui text-sm">{window.lh?.getPathForFile ? "Drop to attach file paths" : uploadTarget() ? "Drop PDFs or images to attach" : BROWSER_NOTICE}</span>
 					</div>
 				</div>
 			)}

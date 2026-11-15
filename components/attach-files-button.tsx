@@ -146,7 +146,7 @@ export function AttachFilesButton({ editorRef, onImagesSelected }: { editorRef: 
 			<input
 				ref={pickerRef}
 				type="file"
-				accept={desktop ? undefined : "image/png,image/jpeg,image/gif,image/webp,image/bmp"}
+				accept={desktop ? undefined : ".pdf,application/pdf,image/png,image/jpeg,image/gif,image/webp,image/bmp"}
 				multiple
 				hidden
 				data-testid="attach-files-input"
@@ -160,7 +160,7 @@ export function AttachFilesButton({ editorRef, onImagesSelected }: { editorRef: 
 					e.currentTarget.value = ""; // allow re-picking the same file
 				}}
 			/>
-			<Hint label={desktop ? "Attach files or a folder" : onImagesSelected ? "Attach images (or paste with Ctrl+V)" : BROWSER_NOTICE}>
+			<Hint label={desktop ? "Attach files or a folder" : onImagesSelected ? "Attach PDFs or images (or paste images with Ctrl+V)" : BROWSER_NOTICE}>
 				<button
 					ref={buttonRef}
 					type="button"

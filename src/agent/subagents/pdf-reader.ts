@@ -5,7 +5,7 @@ import type { AssistantMessage, Message, ToolResultMessage, Usage, Tool } from "
 import { normalizeContext } from "@earendil-works/pi-ai";
 import { processImage, type ProcessImageResult } from "../image-processing/index.ts";
 import { Type } from "typebox";
-import { resolveSourcePath } from "../tools/fs-shared.ts";
+import { resolvePdfPath } from "../tools/pdf-path.ts";
 import { piEngineFor, type PiEngine, type ThinkingLevel } from "../models.ts";
 import { providerEventObserver, type ProviderEventObserver } from "../provider-events.ts";
 import { backgroundCaptureStream, createBackgroundCapture, type BackgroundCapture } from "../background-capture.ts";
@@ -45,10 +45,11 @@ Reading doctrine — always in this order:
 1. TRIAGE FIRST: call pdf_info. It returns page count plus per-page signals (text_length,
    image_count, math_density). Never read or render anything before this.
 2. Pick a strategy by document size:
-   - SHORT (≤ 10 pages): extract the full text; render every page that has meaningful
-     math_density or images (you read equations and diagrams visually, not as extracted text).
+   - SHORT (≤ 10 pages): extract the full text and render every page, in batches of at most
+     six. Learner working may be handwriting or vector annotations with no extracted text
+     or image count. Read equations, diagrams and working visually.
    - MEDIUM (11-40 pages): extract promising pages; render only flagged pages (math- or
-     image-heavy, or where extraction looks thin).
+     image-heavy, or where extraction looks thin, including handwritten working).
    - LONG (> 40 pages): pdf_search for the question's key terms first; extract and render only
      the pages that hit. Never read a long document front-to-back.
 3. When the extracted text of a page looks math- or diagram-heavy, or garbled, RENDER that
@@ -180,7 +181,7 @@ export async function runPdfReaderAgent(
  let pdfPath = input.path;
  let openError: string | null;
  try {
-  pdfPath = resolveSourcePath(input.path);
+  pdfPath = resolvePdfPath(input.path);
   if (!isolatedRendererEnabled()) return { path: pdfPath, question: input.question, brief: "PDF failed: PDF processing is disabled: an isolated parser is required.", pagesRead: [], pagesConsulted: [] };
   openError = await probeReadable(pdfPath);
  } catch (error) { openError = error instanceof Error ? error.message : String(error); }

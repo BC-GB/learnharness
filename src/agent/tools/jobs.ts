@@ -4,7 +4,7 @@ import { serverExecute } from "../tool-execute.ts";
 import type { JobRecord } from "../../core/contracts.ts";
 import type { JobStore } from "../../core/ports.ts";
 import { checkLearnerImage } from "./learner-image.ts";
-import { resolveSourcePath } from "./fs-shared.ts";
+import { resolvePdfPath } from "./pdf-path.ts";
 
 /**
  * Async sub-agent job tools (vision §2.5; W2/W6 kinds + the pi-model
@@ -179,7 +179,7 @@ export function jobTools(ctx: JobToolContext): Record<string, AgentTool<any>> {
 			execute: serverExecute("pdf", pdfInputSchema, (input, { toolCallId }) => {
 				// Admission uses the current boundary; the queued reader checks
 				// again at job start. Preserve raw args/history and replay IDs.
-				if (!ctx.jobStore.findJobByToolCallId(ctx.chatId, toolCallId)) resolveSourcePath(input.path);
+				if (!ctx.jobStore.findJobByToolCallId(ctx.chatId, toolCallId)) resolvePdfPath(input.path);
 				return dispatch(ctx, "pdf", toolCallId, PDF_ACK, input);
 			}),
 		},

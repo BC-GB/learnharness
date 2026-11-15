@@ -12,6 +12,7 @@ import { isInteractionScopeEligible } from "./plugin-input-focus";
 import { PathInput } from "@/components/path-input";
 import { AttachFilesButton } from "@/components/attach-files-button";
 import { usePastedImages } from "@/components/use-pasted-images";
+import { PdfAttachmentPreviews } from "@/components/pdf-attachment-previews";
 import type { PrepareThinkingSubmission } from "./plugin-submission-adapters";
 import { cn } from "@/lib/utils";
 
@@ -85,7 +86,7 @@ export function PracticeDock({ viewReader, problemCallId, input, expanded, onExp
 		thinkingRef.current = value; editRevision.current++;
 		setThinking(value);
 	};
-	const attachments = usePastedImages(editorRef, thinking, changeThinking);
+	const attachments = usePastedImages(editorRef, thinking, changeThinking, !customInput && !preparing);
 	useLayoutEffect(() => {
 		if (!viewReader) return;
 		const read = () => thinkingRef.current;
@@ -186,7 +187,8 @@ export function PracticeDock({ viewReader, problemCallId, input, expanded, onExp
 						<button type="button" aria-label="Remove attached image" onClick={() => attachments.remove(image.start, image.end)} className="absolute right-0 top-0 rounded bg-background px-1.5 text-sm">×</button>
 					</div>)}
 				</div>}
-				{attachments.uploading && <div role="status" className="px-2.5 pt-2 text-xs text-muted-foreground">Attaching image…</div>}
+				{!customInput && <PdfAttachmentPreviews pdfs={attachments.pdfs} remove={attachments.remove} />}
+				{attachments.uploading && <div role="status" className="px-2.5 pt-2 text-xs text-muted-foreground">Attaching file…</div>}
 				{attachments.error && <div role="alert" className="px-2.5 pt-2 text-xs text-destructive">{attachments.error}</div>}
 				<PathInput
 					ref={editorRef}
