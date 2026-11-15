@@ -21,7 +21,7 @@ function context(id: string): PluginBackendContext {
  return { signal, dataDirectory, ...services, configuration: { ...configuration, read: () => { const result = configuration.read(); return { ...result, models: { ...result.models, background: result.models.background ?? { provider: "fixture", id: "fixture" } } }; } },
   learning: createPluginLearningData({ directory: PATHS.data, chatStore: stores.chatStore, graphStore: stores.graphStore, isBusy: () => false, isCompacting: () => false, readMetadata: () => null }), library: createPluginLibrary(signal),
   inference: { complete: async () => { throw Error("Unexpected real inference in fixture"); } },
- } as PluginBackendContext;
+ } as unknown as PluginBackendContext;
 }
 const outline = () => courseLocal("outline-plugin-fixture", () => { const ctx = context("lesson-outline"); return { ctx, api: createOutlineService(ctx), store: createOutlineStore(ctx.dataDirectory, ctx.learning.directory) }; });
 export const lessonOutlineView = (id: string) => outline().api.lessonOutlineView(id);

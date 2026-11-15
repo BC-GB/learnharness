@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 function SettingsRow({ label, hint, children }: { label: string; hint: string; children: ReactNode }) { return <div className="flex items-center justify-between gap-4 py-3"><div><p className="text-sm">{label}</p><p className="mt-1 text-xs text-muted-foreground">{hint}</p></div>{children}</div>; }
-function Toggle({ checked, disabled, onChange, label }: { checked: boolean; disabled: boolean; onChange: (on: boolean) => void; label: string }) { return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)} className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40">{checked ? "On" : "Off"}</button>; }
+function Toggle({ checked, disabled, onChange, label }: { checked: boolean; disabled: boolean; onChange: (on: boolean) => void; label: string }) { return <button type="button" role="switch" data-testid="toggle-response-notifications" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)} className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40">{checked ? "On" : "Off"}</button>; }
 import { NOTIFICATION_CHANGE, notificationsEnabled, notificationsSupported, setNotificationsEnabled } from "./notifications.ts";
 
 export function NotificationSettings() {

@@ -36,7 +36,7 @@ async function fixture() {
  const ctx = { signal: controller.signal, ui: uiStore.createUi({ signal: controller.signal }), call: async (operation: string, input?: unknown) => {
   const response = operation === "view" ? await globalThis.fetch("/fixture", {}) : await globalThis.fetch("/fixture", { method: "POST", body: JSON.stringify(input) });
   const value = await response.json(); if (!response.ok) throw new Error(value.error); return value;
- } } as import("../src/core/plugins.ts").PluginFrontendContext;
+ } } as unknown as import("../plugins/learning-preferences/.sdk/index.d.ts").PluginFrontendContext;
  const render = async (key: string, courseId = "a") => { await act(async () => root.render(<InteractionLayersProvider><PluginUiHost store={uiStore} /><PreferenceChat key={key} ctx={ctx} signal={controller.signal} courseId={courseId} courseName="Test course" /></InteractionLayersProvider>)); };
  cleanup = async () => { await act(async () => root.unmount()); globalThis.fetch = originalFetch; for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); } };
  await render("a");

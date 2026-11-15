@@ -206,7 +206,7 @@ export class PluginFrontendManager {
 		if (this.lives.get(life.id) === life) this.lives.delete(life.id);
 		if (life.teardown) return life.teardown;
 		life.controller.abort();
-		life.views.clear(); life.actions.clear(); life.placements.clear(); life.actionBusy.clear(); life.settings = undefined;
+		life.views.clear(); life.widgets.clear(); life.actions.clear(); life.placements.clear(); life.actionBusy.clear(); life.settings = undefined;
 		life.codeBlocks.clear(); life.toolRenderers.clear(); life.questionRenderers.clear(); life.problemRenderers.clear(); life.submissionInterceptors.clear();
 		life.notifications.clear(); life.events.clear(); life.resyncs.clear();
 		const cleanups = [...life.cleanups].reverse();

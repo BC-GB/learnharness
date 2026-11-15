@@ -6,6 +6,7 @@ export function safePath(root: string, relative: string): string {
  if (path.isAbsolute(relative) || relative.split(/[\\/]/).some(p => !p || p === "." || p === ".." || p.startsWith("."))) throw new Error("Invalid plugin record path");
  const target = path.join(root, relative); let at = target;
  for (;;) {
+  if (fs.lstatSync(at, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error("Aliased plugin records");
   try { if (fs.realpathSync(at) !== path.resolve(at)) throw new Error("Aliased plugin records"); break; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const parent = path.dirname(at); if (parent === at) throw new Error("Record directory unavailable"); at = parent;

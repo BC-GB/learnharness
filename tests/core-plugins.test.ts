@@ -94,3 +94,20 @@ test("core data and package symlinks fail closed without writing their targets",
 		assert.deepEqual(fs.readdirSync(outside), [], kind);
 	}
 });
+
+
+test("reviewed Core defaults preserve explicit disables, never enable community code or rewrite existing state on startup", async t => {
+ const f = fixture(t); f.pkg("official", "core"); f.pkg("community", "community", "throw Error('community code evaluated')");
+ f.deps.defaultEnabledCoreIds = ["official", "community"]; f.deps.allowCommunity = false;
+ await f.host.initialize();
+ assert.equal(f.host.list().find(p => p.id === "official")!.status, "active");
+ assert.equal(f.host.list().find(p => p.id === "community")!.enabled, false);
+ const state = path.join(f.root, "data", "plugins-state.json"); assert.equal(fs.existsSync(state), false, "defaults do not rewrite choices");
+ await f.host.setEnabled("official", false); const bytes = fs.readFileSync(state);
+ await f.host.syncEnabled(); assert.equal(f.host.list().find(p => p.id === "official")!.enabled, false);
+ await f.host.dispose();
+ const restart = createPluginHost(f.deps); t.after(() => restart.dispose()); await restart.initialize();
+ assert.equal(restart.list().find(p => p.id === "official")!.enabled, false);
+ assert.deepEqual(fs.readFileSync(state), bytes);
+ await assert.rejects(restart.setEnabled("community", true), /Community executable plugins/);
+});
