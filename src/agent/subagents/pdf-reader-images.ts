@@ -12,7 +12,7 @@ export function pdfPageResizeOptions(
  const initialScale = Math.min(1, (resize?.maxWidth ?? 2000) / width, (resize?.maxHeight ?? 2000) / height);
  return {
   ...resize,
-  maxBytes: Math.min(resize?.maxBytes ?? Infinity, Math.floor(BROKER_REQUEST_MAX_BYTES * 0.75 / pageCount)),
+  maxBytes: Math.min(resize?.maxBytes ?? Infinity, Math.floor(BROKER_REQUEST_MAX_BYTES * 0.9 / pageCount)),
   minJpegQuality: Math.max(resize?.minJpegQuality ?? 0, 70),
   minScale: Math.max(resize?.minScale ?? 0, initialScale / 2),
  };
