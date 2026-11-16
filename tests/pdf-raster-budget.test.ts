@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { renderPdfRasters } from "../src/agent/subagents/pdf-raster.ts";
+import { pdfPageResizeOptions } from "../src/agent/subagents/pdf-reader-images.ts";
+
+test("five scan images reserve request space without weakening model or legibility floors", () => {
+ const png = Buffer.alloc(24); png.writeUInt32BE(2335, 16); png.writeUInt32BE(2928, 20);
+ const options = pdfPageResizeOptions(png, 5);
+ assert.ok(options.maxBytes! * 5 <= 768 * 1024);
+ assert.equal(options.minJpegQuality, 70);
+ assert.equal(options.minScale, (2000 / 2928) / 2);
+ const stricter = pdfPageResizeOptions(png, 5, { maxWidth: 1000, maxHeight: 1200, maxBytes: 50000, minJpegQuality: 85, minScale: 0.8 });
+ assert.equal(stricter.maxBytes, 50000); assert.equal(stricter.maxWidth, 1000); assert.equal(stricter.maxHeight, 1200);
+ assert.equal(stricter.minJpegQuality, 85); assert.equal(stricter.minScale, 0.8);
+});
 
 test("five scan pages keep separate IPC budgets, order and requested DPI when it fits", async () => {
  let active = 0;
