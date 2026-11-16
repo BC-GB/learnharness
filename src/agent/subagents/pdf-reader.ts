@@ -1,4 +1,6 @@
 import { isolatedRendererEnabled } from "./render-client.ts";
+import { brokerEnabled } from "../broker-fetch.ts";
+import { pdfPageResizeOptions } from "./pdf-reader-images.ts";
 import { untrustedSource } from "../tools/untrusted-source.ts";
 import { randomUUID } from "node:crypto";
 import type { AssistantMessage, Message, ToolResultMessage, Usage, Tool } from "@earendil-works/pi-ai";
@@ -304,10 +306,11 @@ export async function runPdfReaderAgent(
 						const dpi = numOr(args.dpi, 150);
 						const wanted = specNumbers(spec, totalPages).filter(p => p <= totalPages).slice(0, RENDER_BATCH_CAP);
 						opts.onActivity?.(`pdf_render: ${spec} @${dpi}dpi`);
-						const pages = await headless.renderPdfPages(pdfPath, wanted, { dpi });
+						const pages = await headless.renderPdfPages(pdfPath, wanted, { dpi, signal: opts.abortSignal });
 						const processed: { page: number; image: ProcessImageResult }[] = [];
 						for (const p of pages) {
-							const image = await processImage(p.png, "image/png", { resizeOptions: engine.model.inputLimits?.images?.resize });
+							const resize = engine.model.inputLimits?.images?.resize;
+							const image = await processImage(p.png, "image/png", { resizeOptions: brokerEnabled() ? pdfPageResizeOptions(p.png, pages.length, resize) : resize });
 							opts.abortSignal?.throwIfAborted();
 							processed.push({ page: p.page, image });
 							// Only images actually delivered to the model count as read.
@@ -324,7 +327,7 @@ export async function runPdfReaderAgent(
 								toolText(
 									call.id,
 									call.name,
-									`Rendered ${pages.length} page(s) at ${dpi} DPI — processed images or explicit omission notes follow below. Read the images carefully (equations, diagrams, layout).`,
+									`Rendered ${pages.length} page(s); resolution: ${pages.map(page => `p${page.page} ${page.dpi ?? dpi} DPI`).join(", ")} — processed images or explicit omission notes follow below. Read the images carefully (equations, diagrams, layout).`,
 								),
 							);
 						}
