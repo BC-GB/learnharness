@@ -15,7 +15,7 @@ export async function renderPdfRasters(
  if (!pages.length || pages.length > 8 || pages.some(page => !Number.isInteger(page) || page < 1 || page > 200)) throw new Error("Invalid PDF page selection.");
  if (!Number.isFinite(dpi) || dpi < 36 || dpi > 200) throw new Error("Invalid PDF render DPI.");
  const resolutions = [...new Set([dpi, Math.min(dpi, 72), 36])];
- const dispatch = request ?? (payload => isolatedRender<PdfRaster[]>(payload, { signal }));
+ const dispatch: RequestRaster = request ?? (payload => isolatedRender<PdfRaster[]>(payload, { signal }));
  const result: PdfRaster[] = [];
  for (const page of pages) {
   for (let attempt = 0; attempt < resolutions.length; attempt++) {
