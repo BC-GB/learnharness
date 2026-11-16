@@ -6,7 +6,9 @@ import { pdfPageResizeOptions } from "../src/agent/subagents/pdf-reader-images.t
 test("five scan images reserve request space without weakening model or legibility floors", () => {
  const png = Buffer.alloc(24); png.writeUInt32BE(2335, 16); png.writeUInt32BE(2928, 20);
  const options = pdfPageResizeOptions(png, 5);
- assert.ok(options.maxBytes! * 5 <= 768 * 1024);
+ assert.ok(options.maxBytes! >= 180 * 1024, "five scanned pages retain enough space for legible image copies");
+ assert.ok(options.maxBytes! * 5 <= 0.9 * 1024 * 1024);
+ assert.ok(1024 * 1024 - options.maxBytes! * 5 >= 100 * 1024, "instructions and tool results keep a text reserve");
  assert.equal(options.minJpegQuality, 70);
  assert.equal(options.minScale, (2000 / 2928) / 2);
  const stricter = pdfPageResizeOptions(png, 5, { maxWidth: 1000, maxHeight: 1200, maxBytes: 50000, minJpegQuality: 85, minScale: 0.8 });
