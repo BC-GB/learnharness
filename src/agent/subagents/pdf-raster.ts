@@ -24,7 +24,7 @@ export async function renderPdfRasters(
    try { rendered = await dispatch({ op: "render", pdf, pages: [page], dpi: resolutions[attempt]! }); }
    catch (error) {
     signal?.throwIfAborted();
-    const retryable = error instanceof Error && (error.message === "Isolated rendering failed." || error.message === "Isolated renderer timed out.");
+    const retryable = error instanceof Error && ["Isolated rendering failed.", "Isolated renderer timed out.", "Renderer output too large."].includes(error.message);
     if (!retryable || attempt === resolutions.length - 1) throw error;
     continue;
    }

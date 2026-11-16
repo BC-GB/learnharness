@@ -34,12 +34,14 @@ test("Stop prevents further pages and fallback after the current worker finishes
 });
 
 test("render deadlines can fall back, while queue, cancellation and transport failures do not retry", async () => {
- const seen: number[] = [];
- await renderPdfRasters("scan", [1], 100, async request => {
-  seen.push(request.dpi); if (request.dpi === 100) throw new Error("Isolated renderer timed out.");
-  return [{ page: 1, png: "readable" }];
- });
- assert.deepEqual(seen, [100, 72]);
+ for (const message of ["Isolated renderer timed out.", "Renderer output too large."]) {
+  const seen: number[] = [];
+  await renderPdfRasters("scan", [1], 100, async request => {
+   seen.push(request.dpi); if (request.dpi === 100) throw new Error(message);
+   return [{ page: 1, png: "readable" }];
+  });
+  assert.deepEqual(seen, [100, 72]);
+ }
  for (const error of [new Error("Renderer queue is full. Try again when current imports finish."), new DOMException("Stopped", "AbortError"), new Error("connect ENOENT"), new Error("Invalid renderer response.")]) {
   let calls = 0;
   await assert.rejects(renderPdfRasters("scan", [1], 150, async () => { calls++; throw error; }), error);
