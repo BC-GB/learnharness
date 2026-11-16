@@ -2,6 +2,7 @@ import { svgImageSource } from "../../../lib/svg-image-source.ts";
 import { validatedNativeSvg } from "./native-svg-resources.ts";
 import { isolatedRender, isolatedRendererEnabled } from "./render-client.ts";
 import { approvedPdfBytes } from "./pdf-ops.ts";
+import { renderPdfRasters } from "./pdf-raster.ts";
 import path from "node:path";
 import { ROOT } from "../../../config.ts";
 export interface DemoRunResult {
@@ -36,11 +37,14 @@ export interface RenderSvgOptions {
 export interface RenderPdfOptions {
 	/** Render DPI — 72 is 100% zoom; the skill's guidance is 100/150/200. */
 	dpi?: number;
+	signal?: AbortSignal;
 }
 
 export interface RenderedPdfPage {
 	page: number;
 	png: Buffer;
+	/** Actual bounded resolution, including any automatic fallback. */
+	dpi?: number;
 }
 
 export interface HeadlessApi {
@@ -229,7 +233,8 @@ async function runDemo(html: string, opts: RunDemoOptions = {}): Promise<DemoRun
 }
 async function renderPdfPages(file: string, pages: number[], opts: RenderPdfOptions = {}): Promise<RenderedPdfPage[]> {
  if(!isolatedRendererEnabled())throw new Error("PDF rasterization is disabled: an isolated parser is required.");
- const result=await isolatedRender<{page:number;png:string}[]>({op:"render",pdf:await approvedPdfBytes(file),pages,...opts});return result.map(x=>({page:x.page,png:providerSafePng(Buffer.from(x.png,"base64"))}));
+ opts.signal?.throwIfAborted();
+ const result=await renderPdfRasters(await approvedPdfBytes(file),pages,opts.dpi,undefined,opts.signal);return result.map(x=>({page:x.page,png:providerSafePng(Buffer.from(x.png,"base64")),dpi:x.dpi}));
 }
 async function renderSvg(svg: string, opts: RenderSvgOptions = {}): Promise<Buffer> {
  const renderSource = opts.nativeOnly ? svg : svgImageSource(svg);
