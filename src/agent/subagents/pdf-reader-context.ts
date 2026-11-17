@@ -33,6 +33,9 @@ export class PdfReaderPageMemory {
  }
 
  attach(messages: Message[], message: Message, page: number): Message[] {
+  if (this.current && page !== this.current.page && (!this.current.delivered || !this.observations.has(this.current.page))) {
+   throw new Error("A viewed page and its recorded observations are required before replacing its image.");
+  }
   const retained = messages.filter(item => item !== this.current?.message);
   this.current = { page, message, delivered: false };
   return [...retained, message];

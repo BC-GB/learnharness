@@ -6,7 +6,7 @@ import { PdfReaderPageMemory } from "../src/agent/subagents/pdf-reader-context.t
 const image = (page: number): Message => ({ role: "user", content: [{ type: "image", data: `page-${page}`, mimeType: "image/png" }], timestamp: page });
 
 test("eight sequential scanned pages retain all observations and only the current owned image", () => {
- const memory = new PdfReaderPageMemory(); const task: Message = { role: "user", content: "original task", timestamp: 0 }; let messages = [task];
+ const memory = new PdfReaderPageMemory(); const task: Message = { role: "user", content: "original task", timestamp: 0 }; let messages: Message[] = [task];
  for (let page = 1; page <= 8; page++) {
   const receipt = page > 1 ? { page: page - 1, notes: `Question ${page - 1}: selected B; handwritten uncertainty.` } : undefined;
   const recorded = memory.recordBefore(page, receipt);
@@ -23,6 +23,7 @@ test("eight sequential scanned pages retain all observations and only the curren
 test("missing, wrong-page and oversized observations cannot discard a viewed image", () => {
  const memory = new PdfReaderPageMemory(); const current = image(1); let messages = memory.attach([], current, 1);
  assert.throws(() => memory.recordBefore(2, { page: 1, notes: "not yet seen" }), /Read the current/);
+ assert.throws(() => memory.attach(messages, image(2), 2), /recorded observations/);
  memory.confirmDelivery();
  for (const receipt of [undefined, { page: 2, notes: "wrong page" }, { page: 1, notes: "" }, { page: 1, notes: "x".repeat(4097) }, { page: 1, notes: "界".repeat(1400) }]) assert.throws(() => memory.recordBefore(2, receipt));
  assert.ok(messages.includes(current)); assert.equal(memory.partialBrief("failed"), "PDF failed: failed");
