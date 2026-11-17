@@ -3,7 +3,7 @@ import type { Message } from "@earendil-works/pi-ai";
 /** One owned page image plus bounded, cited observations. Never discard an
  * image before a successful model response and explicit notes for that page. */
 export class PdfReaderPageMemory {
- private current?: { page: number; message: Message; delivered: boolean };
+ private current?: { page: number; message: Message; delivered: boolean; recorded: boolean };
  private observations = new Map<number, string>();
 
  confirmDelivery(): number | undefined {
@@ -20,7 +20,7 @@ export class PdfReaderPageMemory {
   }
   if (!previous.delivered) throw new Error("Read the current page image before rendering another page.");
   if (receipt === undefined) {
-   if (nextPage === previous.page || this.observations.has(previous.page)) return "";
+   if (nextPage === previous.page || previous.recorded) return "";
    throw new Error(`Record previous_page_notes for page ${previous.page} before moving to another page. Include question wording, selections, annotations and uncertainties needed for the final brief.`);
   }
   const value = receipt as { page?: unknown; notes?: unknown };
@@ -29,15 +29,16 @@ export class PdfReaderPageMemory {
    throw new Error(`previous_page_notes must identify page ${previous.page} and contain 1–4096 UTF-8 bytes of observations.`);
   }
   this.observations.set(previous.page, value.notes.trim());
+  previous.recorded = true;
   return `Recorded observations (p. ${previous.page}):\n${value.notes.trim()}\n\n`;
  }
 
  attach(messages: Message[], message: Message, page: number): Message[] {
-  if (this.current && page !== this.current.page && (!this.current.delivered || !this.observations.has(this.current.page))) {
+  if (this.current && page !== this.current.page && (!this.current.delivered || !this.current.recorded)) {
    throw new Error("A viewed page and its recorded observations are required before replacing its image.");
   }
   const retained = messages.filter(item => item !== this.current?.message);
-  this.current = { page, message, delivered: false };
+  this.current = { page, message, delivered: false, recorded: false };
   return [...retained, message];
  }
 

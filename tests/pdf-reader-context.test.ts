@@ -44,4 +44,7 @@ test("only the reader-owned image message is replaced; other messages remain byt
 test("revisiting the current page does not require fabricated notes", () => {
  const memory = new PdfReaderPageMemory(); memory.attach([], image(3), 3); memory.confirmDelivery();
  assert.equal(memory.recordBefore(3, undefined), ""); assert.throws(() => memory.recordBefore(4, undefined), /previous_page_notes/);
+ memory.recordBefore(4, { page: 3, notes: "Original view notes." });
+ memory.attach([], image(3), 3); memory.confirmDelivery();
+ assert.throws(() => memory.recordBefore(4, undefined), /previous_page_notes/, "a revisited page needs observations for its new view");
 });
