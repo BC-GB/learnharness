@@ -494,12 +494,12 @@ function saveLearningPathTool(
             return errorResult("Append between one and three new modules at a time.");
           }
           const titles = new Set(existing.modules.map((module) => module.title.trim().toLowerCase()));
-          for (const module of modules) {
-            if (!isRecord(module) || typeof module.title !== "string" || module.id !== undefined ||
-                !Array.isArray(module.nodes) || module.nodes.some((node) => !isRecord(node) || node.id !== undefined)) {
+          for (const draftModule of modules) {
+            if (!isRecord(draftModule) || typeof draftModule.title !== "string" || draftModule.id !== undefined ||
+                !Array.isArray(draftModule.nodes) || draftModule.nodes.some((node) => !isRecord(node) || node.id !== undefined)) {
               return errorResult("Appended modules and nodes must be new and omit IDs.");
             }
-            const title = module.title.trim().toLowerCase();
+            const title = draftModule.title.trim().toLowerCase();
             if (titles.has(title)) return errorResult("That module title is already present. Read the saved path before appending again.");
             titles.add(title);
           }
