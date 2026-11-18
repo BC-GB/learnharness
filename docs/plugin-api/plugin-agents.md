@@ -433,6 +433,7 @@ export type PluginAgentTool = {
     prepareArguments?: AgentTool<any>["prepareArguments"];
     resultSchema?: TSchema;
     formatResult?: (value: unknown) => AgentToolResult<unknown>;
+    recentResultLimit?: number;
 } & ({
     kind: "input";
     execute?: never;
@@ -452,6 +453,7 @@ export type PluginAgentTool = {
 - [prepareArguments](#pluginagenttool-preparearguments)
 - [resultSchema](#pluginagenttool-resultschema)
 - [formatResult](#pluginagenttool-formatresult)
+- [recentResultLimit](#pluginagenttool-recentresultlimit)
 - [kind](#pluginagenttool-kind) — 2 signatures/variants
 - [execute](#pluginagenttool-execute) — 2 signatures/variants
 - [endRun](#pluginagenttool-endrun) — 2 signatures/variants
@@ -497,6 +499,14 @@ formatResult?: (value: unknown) => AgentToolResult<unknown>;
 | `value` | `unknown` |
 
 **Returns:** `AgentToolResult<unknown>`.
+
+### PluginAgentTool recentResultLimit
+
+Keep this many recent successful results in model context. The saved transcript is retained.
+
+```ts
+recentResultLimit?: number;
+```
 
 ### PluginAgentTool kind
 
