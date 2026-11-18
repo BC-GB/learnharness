@@ -153,6 +153,8 @@ export function createPluginAgentService(deps: PluginAgentServiceDeps): PluginAg
 				let endedByTool = false;
 				let batchStart = s.record.messages.length;
 				const inputs = new Map<string, unknown>();
+				const resultLimits = new Map((d.tools ?? []).flatMap((tool) =>
+					tool.recentResultLimit === undefined ? [] : [[tool.name, tool.recentResultLimit] as const]));
 				const tools: AgentTool[] = (d.tools ?? []).map((tool) => ({
 					name: tool.name, label: tool.name, description: tool.description,
 					parameters: tool.parameters, prepareArguments: tool.prepareArguments,
@@ -173,7 +175,23 @@ export function createPluginAgentService(deps: PluginAgentServiceDeps): PluginAg
 						thinkingLevel: engine.level ?? d.model.thinkingLevel,
 						messages: clone(modelHistory(s.record.messages)), tools,
 					},
-					streamFn: engine.streamFn,
+					streamFn: resultLimits.size ? (model, context, options) => {
+						const remaining = new Map(resultLimits);
+						const messages = context.messages.slice();
+						for (let i = messages.length - 1; i >= 0; i--) {
+							const message = messages[i]!;
+							if (message.role !== "toolResult" || message.isError) continue;
+							const count = remaining.get(message.toolName);
+							if (count === undefined) continue;
+							if (count > 0) remaining.set(message.toolName, count - 1);
+							else messages[i] = {
+								...message,
+								content: [{ type: "text", text: "Earlier tool result omitted from model context. Read the source again if needed." }],
+								details: undefined,
+							};
+						}
+						return engine.streamFn(model, { ...context, messages }, options);
+					} : engine.streamFn,
 					prepareRequest: () => {
 						active();
 						if (s.record.pending.length) throw new Error("Cannot request model while external input is unresolved");
@@ -284,6 +302,8 @@ export function createPluginAgentService(deps: PluginAgentServiceDeps): PluginAg
 				if (names.has(tool.name)) throw new Error(`Duplicate tool: ${tool.name}`);
 				names.add(tool.name);
 				if (tool.kind !== undefined && tool.kind !== "server" && tool.kind !== "input") throw new Error("Invalid tool kind");
+				if (tool.recentResultLimit !== undefined &&
+					(!Number.isSafeInteger(tool.recentResultLimit) || tool.recentResultLimit < 1)) throw new Error("Invalid recent tool result limit");
 				const toolName = tool.name;
 				if (tool.kind === "input") {
 					if (tool.execute !== undefined) throw new Error(`Input tools are declarative; execute is not allowed: ${toolName}`);

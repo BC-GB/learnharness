@@ -251,6 +251,8 @@ export function activate(ctx: PluginBackendContext): void {
   const progressTimers = new Map<string, ReturnType<typeof setTimeout>>();
   // Latest snapshot per watched conversation, so progress reads need no history copy.
   const latestSnapshots = new Map<string, PluginAgentSnapshot>();
+  // Only a live learner-initiated request can continue automatically, once.
+  const recoverableArchitectRuns = new Set<string>();
   // Opt-in, metadata-only diagnostics; never log prompts, source text or reasoning.
   const debug = (event: string, detail: Record<string, unknown>): void => {
     if (process.env.LEARNING_PATH_DEBUG === "1") console.debug("[learning-path]", event, detail);
@@ -277,6 +279,7 @@ export function activate(ctx: PluginBackendContext): void {
     for (const unsubscribe of watchers.values()) unsubscribe();
     watchers.clear();
     latestSnapshots.clear();
+    recoverableArchitectRuns.clear();
     architect?.unregister();
     architect = null;
     for (const dispose of disposers.reverse()) dispose();
@@ -412,6 +415,19 @@ export function activate(ctx: PluginBackendContext): void {
         const timer = progressTimers.get(id);
         if (timer) clearTimeout(timer);
         notify();
+        if (snapshot.status !== "running" && recoverableArchitectRuns.delete(id) &&
+            snapshot.status === "error" && !snapshot.pending.length &&
+            /Model response exceeded the relay time limit|Model connection stopped sending data/.test(snapshot.error ?? "") &&
+            store.paths().some((path) => path.architectChatId === id)) {
+          void ownedChange(id, async () => {
+            await ctx.agents.send(
+              id,
+              "The previous response timed out. Continue my original request. Inspect the saved path first, skip finished modules, and use smaller read and save batches to finish the remaining scope.",
+              { requestId: randomUUID(), purpose: "user" },
+            );
+          }).catch(() => applyPendingModel());
+          return;
+        }
         if (snapshot.status !== "running") applyPendingModel();
         debug("architect.state", { id, status: snapshot.status, messages: snapshot.messages.length, partial: Boolean(snapshot.partial) });
       } else if (snapshot.partial && !progressTimers.has(id)) {
@@ -994,7 +1010,17 @@ export function activate(ctx: PluginBackendContext): void {
     activeChatId = id;
     watch(id);
     debug("architect.send.request", { id, requestId, characters: text.length });
-    const conversation = await ctx.agents.send(id, text, { requestId, purpose: "user" });
+    const before = ctx.agents.get(id);
+    const newRequest = before.status !== "running" && !before.acceptedInputs.includes(requestId);
+    if (newRequest) recoverableArchitectRuns.add(id);
+    let conversation: PluginAgentSnapshot;
+    try {
+      conversation = await ctx.agents.send(id, text, { requestId, purpose: "user" });
+      if (newRequest && conversation.status !== "running") recoverableArchitectRuns.delete(id);
+    } catch (error) {
+      if (newRequest) recoverableArchitectRuns.delete(id);
+      throw error;
+    }
     debug("architect.send.accepted", { id, status: conversation.status });
     emit(EVENT_ARCHITECT_CHANGED, {
       id: conversation.id,
@@ -1011,6 +1037,7 @@ export function activate(ctx: PluginBackendContext): void {
     const id = readText(value.id, "id", { max: 128 });
     // Aborting an idle/interrupted run is already a no-op; a retried request ID is accepted.
     if (value.requestId !== undefined) readRequestId(value.requestId);
+    recoverableArchitectRuns.delete(id);
     ctx.agents.abort(id);
     const conversation = ctx.agents.get(id);
     watch(id);

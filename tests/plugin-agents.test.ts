@@ -71,6 +71,30 @@ function waitFor(service: PluginAgentService, id: string, predicate: (s: PluginA
 const settled = (service: PluginAgentService, id: string) => waitFor(service, id, (s) => s.status !== "running");
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
+test("bounded tool results keep their call IDs and remain complete in the saved transcript", async (t) => {
+	const f = fixture(t, [
+		output([call("first", "read")], "toolUse"),
+		output([call("second", "read")], "toolUse"),
+		output(),
+	]);
+	f.service.register({
+		...f.definition,
+		tools: [{ name: "read", description: "Read excerpt", parameters: Type.Object({}),
+			recentResultLimit: 1, execute: async (id) => ({
+				content: [{ type: "text", text: `Excerpt ${id}` }], details: { text: id },
+			}) }],
+	});
+	const { id } = f.service.create("helper");
+	await f.service.send(id, "Read both sections", { requestId: "read" });
+	const saved = await settled(f.service, id);
+	const sent = f.contexts.at(-1)!.messages.filter((message) => message.role === "toolResult");
+	assert.deepEqual(sent.map((message) => message.toolCallId), ["first", "second"]);
+	assert.match(JSON.stringify(sent[0]?.content), /omitted from model context/);
+	assert.equal(sent[0]?.details, undefined);
+	assert.match(JSON.stringify(sent[1]?.content), /Excerpt second/);
+	assert.match(JSON.stringify(saved.messages), /Excerpt first/);
+});
+
 test("send launches server-owned work promptly, preserves native content, deduplicates and detaches views", async (t) => {
 	const gate = deferred();
 	const native = output([{ type: "thinking", thinking: "private", thinkingSignature: "provider-signature" }, { type: "text", text: "Done", textSignature: "native-text" }]);

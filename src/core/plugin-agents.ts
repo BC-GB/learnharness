@@ -13,6 +13,8 @@ export type PluginAgentTool = {
 	prepareArguments?: AgentTool<any>["prepareArguments"];
 	resultSchema?: TSchema;
 	formatResult?: (value: unknown) => AgentToolResult<unknown>;
+	/** Keep this many recent successful results in model context. The saved transcript is retained. */
+	recentResultLimit?: number;
 } & (
 	| {
 		/** Declarative external input is persisted, never a suspended Promise. */
