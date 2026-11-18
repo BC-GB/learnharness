@@ -324,6 +324,21 @@ test("a minimal Architect draft becomes a complete validated path without mechan
   assert.match(truncated.details.error, /every existing module and node id/);
   assert.equal((await h.call<{ path: any }>("paths.get", { id: path.id })).path.title, "Retitled shaders");
 
+  const nextModule = { title: "Noise", nodes: [{ ...draft.modules[0]!.nodes[1]!, title: "Noise fields" }] };
+  const append = { draftJson: JSON.stringify({ id: path.id, appendModules: true, modules: [nextModule] }) };
+  assert.equal((await h.runTool<ToolResult>("save_learning_path_json", append)).isError, undefined);
+  assert.equal((await h.runTool<ToolResult>("save_learning_path_json", append)).isError, true);
+  const checkpoint = (await h.call<{ path: any }>("paths.get", { id: path.id })).path;
+  assert.deepEqual(checkpoint.modules[0], after.modules[0]);
+  assert.equal(checkpoint.modules[1].title, "Noise");
+  await h.call("architect.send", { id: chatId, text: "Finish the full course", requestId: "full-course" });
+  h.failRun(chatId, "Model response exceeded the relay time limit.");
+  assert.equal(h.records.get(chatId)?.status, "running");
+  assert.equal(h.records.get(chatId)?.acceptedInputs.length, 2);
+  h.failRun(chatId, "Model connection stopped sending data.");
+  assert.equal(h.records.get(chatId)?.status, "error");
+  assert.equal(h.records.get(chatId)?.acceptedInputs.length, 2);
+
   const invalid = await h.runTool<ToolResult>("save_learning_path", {
     ...draft, modules: [{ title: "Bad", nodes: [{ type: "concept", title: "Bad", goal: "Explain hashing",
       sourceAnchor: "The Book of Shaders, Random" }] }],

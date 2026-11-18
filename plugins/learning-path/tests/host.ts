@@ -87,6 +87,7 @@ export interface TestHost {
   call<T = unknown>(name: string, input?: unknown): Promise<T>;
   tool(name: string): NonNullable<PluginAgentDefinition["tools"]>[number];
   runTool<T = unknown>(name: string, args: unknown): Promise<T>;
+  failRun(id: string, error: string): void;
   nativeTools(chatId: string, agent: PluginToolContext["agent"]): ReturnType<PluginTools["create"]>;
   addChat(record: ChatRecord): void;
   removeChat(chatId: string): boolean;
@@ -328,6 +329,12 @@ export function createHost(options: HostOptions = {}): TestHost {
         throw new Error(`Tool ${name} has no server executor.`);
       }
       return (await tool.execute("call-1", args as never, controller.signal)) as T;
+    },
+    failRun(id, error) {
+      const record = requireRecord(id);
+      record.status = "error";
+      record.error = error;
+      publish(record);
     },
     nativeTools(chatId, agent) {
       const contribution = toolContributions.find((candidate) =>

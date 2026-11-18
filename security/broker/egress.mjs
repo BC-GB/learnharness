@@ -14,7 +14,8 @@ export async function startEgress({socketPath='/egress/tunnel.sock',lookup=async
   const clients=new Set();
   const server=net.createServer(client=>{
     if(clients.size>=8){client.destroy();return}clients.add(client);let text='',upstream;
-    const timer=setTimeout(()=>client.destroy(),180000);
+    // Allow the broker's five-minute response deadline to report before tearing down TLS.
+    const timer=setTimeout(()=>client.destroy(),330000);
     client.on('error',()=>client.destroy());client.on('close',()=>{clearTimeout(timer);clients.delete(client);upstream?.destroy()});client.setTimeout(10000,()=>client.destroy());
     const hello=async b=>{
       text+=b.toString('ascii');if(text.length>64){client.destroy();return}

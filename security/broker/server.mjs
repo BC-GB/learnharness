@@ -34,7 +34,7 @@ function persist(dir, id, record) {
 }
 
 /** The caller supplies trusted deployment settings, never HTTP input. */
-export async function startBroker({ requestSocket, controlSocket, stateDir, mode = 'mock', mockPort = 8090, mockHost = 'mock', keyFile, approvalMs = 600000, responseMs = 120000, subscription, transport, requireReview = true, serviceTier = 'default' }) {
+export async function startBroker({ requestSocket, controlSocket, stateDir, mode = 'mock', mockPort = 8090, mockHost = 'mock', keyFile, approvalMs = 600000, responseMs = 300000, idleMs = 150000, subscription, transport, requireReview = true, serviceTier = 'default' }) {
   if (!['default','fast'].includes(serviceTier) || (serviceTier !== 'default' && mode !== 'subscription')) throw Error('Unsupported subscription speed');
   if(typeof requireReview!=='boolean'||(!requireReview&&mode==='live'))throw Error('Invalid review policy');
   if (!['mock', 'live', 'subscription'].includes(mode)) throw Error('Unknown broker mode');
@@ -124,6 +124,7 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
     const requestOptions={ ...options, method: 'POST', headers: {
       'accept': 'text/event-stream', 'content-type': 'application/json', 'content-length': job.bytes.length, authorization: `Bearer ${credential}`
     } };
+    let streamingReply;
     const receive=reply => {
       const declaredType=reply.headers['content-type'];
       const streamType=/^text\/event-stream(?:;|$)/i.test(declaredType??'');
@@ -144,15 +145,31 @@ export async function startBroker({ requestSocket, controlSocket, stateDir, mode
         });return;
       }
       job.res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
+      streamingReply = reply;
       let size = 0;
-      reply.on('data', chunk => { size += chunk.length; if (size > 16 * MAX) { reply.destroy(); job.res.destroy(); } });
-      reply.on('error', () => job.res.destroy());
+      reply.on('data', chunk => {
+        idle.refresh();
+        size += chunk.length;
+        if (size > 16 * MAX) { reply.destroy(); job.res.destroy(); }
+      });
+      reply.on('error', () => { if (!job.res.writableEnded) job.res.destroy(); });
       reply.pipe(job.res);
     };
     const upstream=mode==='subscription'?transport.open('https://api.openai.com/v1/responses',{method:'POST',headers:requestOptions.headers},receive):(mode==='live'?https:http).request(requestOptions,receive);
     inflight.add(upstream);
-    const deadline = setTimeout(() => upstream.destroy(Error('deadline')), responseMs);
-    upstream.on('close', () => {clearTimeout(deadline);inflight.delete(upstream)});
+    const expire = (code, message) => {
+      if (streamingReply && !job.res.destroyed && !job.res.writableEnded) {
+        streamingReply.unpipe(job.res);
+        const event = JSON.stringify({ type: 'error', code, message, param: null, sequence_number: 0 });
+        job.res.end(`\n\nevent: error\ndata: ${event}\n\n`);
+      } else {
+        json(job.res, 422, { error: { code, message } });
+      }
+      upstream.destroy();
+    };
+    const deadline = setTimeout(() => expire('broker_response_timeout', 'Model response exceeded the relay time limit.'), responseMs);
+    const idle = setTimeout(() => expire('broker_idle_timeout', 'Model connection stopped sending data.'), idleMs);
+    upstream.on('close', () => {clearTimeout(deadline);clearTimeout(idle);inflight.delete(upstream)});
     upstream.on('error', () => json(job.res, 502, { error: 'Provider transport failed' }));
     job.res.on('close', () => upstream.destroy());
     upstream.end(job.bytes);
