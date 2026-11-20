@@ -25,6 +25,7 @@ export interface ModuleSessionTarget {
 export interface LinkedModuleParent extends ModuleSessionTarget {
   readonly pathTitle: string;
   readonly moduleTitle: string;
+  readonly currentNodeTitle?: string;
 }
 
 export type PreparedModuleSession =

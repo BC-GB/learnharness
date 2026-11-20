@@ -172,6 +172,10 @@ export interface ChildSessionLink {
   readonly label: string;
 }
 
+export interface ModuleSessionLink extends ChildSessionLink {
+  readonly currentNodeId?: string;
+}
+
 export interface ErrorEntry {
   readonly id: string;
   readonly category: ErrorCategory;
@@ -223,7 +227,7 @@ export interface PathModule {
   readonly goal?: string;
   readonly nodes: readonly PathNode[];
   /** Host-owned native chats, at most one per session kind. */
-  readonly sessions?: readonly ChildSessionLink[];
+  readonly sessions?: readonly ModuleSessionLink[];
 }
 
 export interface LearningPath {
@@ -610,9 +614,14 @@ function readPathModule(value: unknown, path: string): PathModule {
   const nodes = readArray(record.nodes, `${path}.nodes`);
   if (nodes.length === 0) fail(`${path}.nodes`, "a module needs at least one node");
   const sessions = record.sessions === undefined ? undefined :
-    readArray(record.sessions, `${path}.sessions`).map((entry, index) =>
-      readChildSessionLink(entry, `${path}.sessions[${index}]`),
-    );
+    readArray(record.sessions, `${path}.sessions`).map((entry, index): ModuleSessionLink => {
+      const location = `${path}.sessions[${index}]`;
+      const link = readChildSessionLink(entry, location);
+      const currentNodeId = readObject(entry, location).currentNodeId;
+      return link.kind === "teaching" && currentNodeId !== undefined
+        ? { ...link, currentNodeId: readId(currentNodeId, `${location}.currentNodeId`) }
+        : link;
+    });
   if (sessions && new Set(sessions.map((link) => link.kind)).size !== sessions.length) {
     fail(`${path}.sessions`, "only one session of each kind is allowed");
   }

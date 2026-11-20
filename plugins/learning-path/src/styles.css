@@ -7,6 +7,80 @@
   box-sizing: border-box;
 }
 
+/* Show one navigation card in the session that owns this position widget. */
+:has(> [aria-label="learning-path-position"] .lp-session-position) > [aria-label="lesson-outline"] {
+  display: none !important;
+}
+
+.lp-session-position {
+  position: fixed;
+  z-index: 40;
+  top: 5.5rem;
+  right: 1.25rem;
+  width: min(18rem, calc(100vw - 2.5rem));
+  max-height: max(4rem, calc(100dvh - 10rem));
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+}
+
+.lp-session-position-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+}
+
+.lp-session-position-header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.lp-session-position-header button {
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.lp-session-position-header button:hover {
+  background: var(--muted);
+}
+
+.lp-session-position-header button:first-child {
+  cursor: grab;
+  touch-action: none;
+}
+
+.lp-session-position dl {
+  border-top: 1px solid var(--border);
+  margin: 0;
+  padding: 9px 14px 12px;
+}
+
+.lp-session-position dt {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.lp-session-position dt:not(:first-child) {
+  margin-top: 7px;
+}
+
+.lp-session-position dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
 .lp-hub {
   display: flex;
   flex-direction: column;

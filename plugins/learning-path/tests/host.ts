@@ -90,10 +90,13 @@ export interface TestHost {
   failRun(id: string, error: string): void;
   nativeTools(chatId: string, agent: PluginToolContext["agent"]): ReturnType<PluginTools["create"]>;
   addChat(record: ChatRecord): void;
+  appEvent(event: AppEvent): void;
   removeChat(chatId: string): boolean;
   cleanup(): Promise<void>;
   close(): void;
 }
+
+type AppEvent = Parameters<Parameters<PluginBackendContext["events"]["on"]>[0]>[0];
 
 export interface HostOptions {
   readonly preferences?: PluginBackendContext["preferences"];
@@ -121,6 +124,7 @@ export function createHost(options: HostOptions = {}): TestHost {
   const unregistered: string[] = [];
   const abortedCalls: string[] = [];
   const events: EmittedEvent[] = [];
+  const appListeners = new Set<(event: AppEvent) => void>();
   let sequence = 0;
 
   const now = (): string => new Date().toISOString();
@@ -287,7 +291,10 @@ export function createHost(options: HostOptions = {}): TestHost {
       return () => handlers.delete(name);
     },
     events: {
-      on: () => () => {},
+      on(listener: (event: AppEvent) => void) {
+        appListeners.add(listener);
+        return () => { appListeners.delete(listener); };
+      },
       emit(topic: string, data?: unknown) {
         if (controller.signal.aborted) throw new Error("Activation cancelled.");
         events.push({ topic, data });
@@ -345,6 +352,9 @@ export function createHost(options: HostOptions = {}): TestHost {
     },
     addChat(record: ChatRecord) {
       chats.set(record.id, structuredClone(record));
+    },
+    appEvent(event: AppEvent) {
+      for (const listener of appListeners) listener(event);
     },
     removeChat(chatId: string) {
       return chats.delete(chatId);

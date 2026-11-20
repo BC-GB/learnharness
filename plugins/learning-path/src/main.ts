@@ -5,6 +5,7 @@ import type { PluginFrontendContext } from "../.sdk/index.d.ts";
 import { registerSessionActions } from "./session-actions.ts";
 import { mountSettingsPage } from "./settings.ts";
 import { mountPathHub } from "./view/path-hub.ts";
+import { mountSessionPosition } from "./view/session-position.ts";
 import { registerLearningPathToolRenderers } from "./view/tool-renderers.ts";
 
 export function activate(ctx: PluginFrontendContext): () => void {
@@ -38,6 +39,16 @@ export function activate(ctx: PluginFrontendContext): () => void {
   // Session top-bar actions and compact learning_path_* result cards.
   disposers.push(registerSessionActions(ctx));
   disposers.push(registerLearningPathToolRenderers(ctx));
+
+  if (ctx.registerWidget) {
+    disposers.push(ctx.registerWidget({
+      id: "learning-path-position",
+      location: "session",
+      mount(container, signal, session) {
+        if (session?.kind === "teaching") return mountSessionPosition(ctx, container, signal, session.id);
+      },
+    }));
+  }
 
   disposers.push(
     ctx.registerSettings((settingsContainer, settingsSignal) => {

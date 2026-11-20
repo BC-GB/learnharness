@@ -67,6 +67,7 @@ import type {
 import {
   EVENT_ARCHITECT_CHANGED,
   EVENT_PATHS_CHANGED,
+  EVENT_SESSION_POSITION_CHANGED,
   EVENT_SETTINGS_CHANGED,
   EVENT_SOURCES_CHANGED,
 } from "./topics.ts";
@@ -298,6 +299,7 @@ export function activate(ctx: PluginBackendContext): void {
       store,
       onPathChanged: (path, detail) =>
         emit(EVENT_PATHS_CHANGED, { id: path.id, ...detail, updatedAt: path.updatedAt }),
+      onPositionChanged: (chatId) => emit(EVENT_SESSION_POSITION_CHANGED, { chatId }),
     }),
   );
 
@@ -974,13 +976,16 @@ export function activate(ctx: PluginBackendContext): void {
 
   function linkedModuleParent(chatId: string): LinkedModuleParent | null {
     const located = findModuleChatLink(store.paths(), chatId);
-    return located ? {
+    if (!located) return null;
+    const currentNode = located.pathModule.nodes.find((node) => node.id === located.link.currentNodeId);
+    return {
       pathId: located.path.id,
       pathTitle: located.path.title,
       moduleId: located.pathModule.id,
       moduleTitle: located.pathModule.title,
       kind: located.link.kind,
-    } : null;
+      ...(currentNode ? { currentNodeTitle: currentNode.title } : {}),
+    };
   }
 
   /** Native sessions that can be attached; `linked` makes duplicates obvious. */
