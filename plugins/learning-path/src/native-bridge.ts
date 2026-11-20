@@ -49,6 +49,15 @@ export interface NativeBridgeOptions {
     path: LearningPath,
     detail: { readonly nodeId: string; readonly chatId: string; readonly change: string },
   ) => void;
+  readonly onPositionChanged?: (chatId: string) => void;
+}
+
+interface NodeStart {
+  readonly chatId: string;
+  readonly pathId: string;
+  readonly moduleId: string;
+  readonly nodeId: string;
+  readonly toolCallId: string;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -131,6 +140,7 @@ function locateChat(store: LearningPathStore, chatId: string, nodeId?: unknown):
 }
 
 const activityId = { type: "string", maxLength: 128, description: "ID of an activity in this module." };
+const BRIEF_TOOL = "learning_path_get_brief";
 
 /** Deleted chats stop tools mid-turn instead of writing against a vanished session. */
 function missingNativeResult(
@@ -160,9 +170,10 @@ function briefTool(
   store: LearningPathStore,
   chatId: string,
   moduleSession: boolean,
+  recordStart?: (start: NodeStart) => void,
 ): AgentTool {
   return {
-    name: "learning_path_get_brief",
+    name: BRIEF_TOOL,
     label: "Learning Path brief",
     description: moduleSession
       ? "Read this module's typed activities. Use nodeId for the selected activity's teaching guidance and source anchor. " +
@@ -174,12 +185,20 @@ function briefTool(
     parameters: objectSchema(moduleSession ? {
       nodeId: activityId,
       offset: { type: "integer", minimum: 0, description: "The next offset from a module outline with more activities." },
+      ...(recordStart ? { begin: {
+        type: "boolean",
+        description: "Set true with nodeId when starting or returning to this activity in the next teaching reply. Leave unset when previewing an activity or continuing the same one.",
+      } } : {}),
     } : {}),
-    execute: async (_toolCallId, rawParams, signal) => {
+    execute: async (toolCallId, rawParams, signal) => {
       assertLive(ctx, signal);
       const missing = missingNativeResult(ctx, chatId);
       if (missing) return missing;
       const params = moduleSession ? readObject(rawParams ?? {}) : {};
+      if (params.begin !== undefined &&
+          (!recordStart || typeof params.begin !== "boolean" || params.nodeId === undefined)) {
+        return errorResult("Starting an activity requires a teaching chat and a nodeId.");
+      }
       const scope = moduleSession ? findModuleChatLink(store.paths(), chatId) : null;
       if (scope && params.nodeId === undefined) {
         const offset = params.offset ?? 0;
@@ -241,6 +260,9 @@ function briefTool(
         })),
         unresolvedErrors: node.errors.filter((entry) => !entry.resolved).length,
       };
+      if (params.begin === true && located.pathModule && kind === "teaching") {
+        recordStart?.({ chatId, pathId: path.id, moduleId: located.pathModule.id, nodeId: node.id, toolCallId });
+      }
       return textResult(details, brief.text);
     },
   };
@@ -515,6 +537,7 @@ export function createNativeTools(
   ctx: PluginBackendContext,
   options: NativeBridgeOptions,
   context: PluginToolContext,
+  recordStart?: (start: NodeStart) => void,
 ): AgentTool[] {
   const paths = options.store.paths();
   const moduleSession = findModuleChatLink(paths, context.chatId);
@@ -522,11 +545,41 @@ export function createNativeTools(
   if (!kind || !kindMatchesAgent(kind, context.agent)) return [];
   if (!nativeChatExists(ctx, context.chatId)) return [];
   return [
-    briefTool(ctx, options.store, context.chatId, moduleSession !== null),
+    briefTool(ctx, options.store, context.chatId, moduleSession !== null,
+      moduleSession?.link.kind === "teaching" ? recordStart : undefined),
     progressTool(ctx, options, context.chatId, moduleSession !== null),
     logErrorTool(ctx, options, context.chatId, moduleSession !== null),
     suggestPivotTool(ctx, options, context.chatId, moduleSession !== null),
   ];
+}
+
+function saveTeachingPosition(
+  ctx: PluginBackendContext,
+  options: NativeBridgeOptions,
+  start: NodeStart,
+  messageId: string,
+): void {
+  const scope = findModuleChatLink(options.store.paths(), start.chatId);
+  if (!scope || scope.link.kind !== "teaching" || scope.link.currentNodeId === start.nodeId ||
+      scope.path.id !== start.pathId || scope.pathModule.id !== start.moduleId ||
+      !scope.pathModule.nodes.some((node) => node.id === start.nodeId)) return;
+  const record = ctx.learning.getSession(start.chatId);
+  if (!record || record.kind === "practice") return;
+  const reply = record.messages.findIndex((message) => message.role === "assistant" && message.id === messageId);
+  const brief = record.messages.findLastIndex((message) => message.role === "toolResult" &&
+    message.toolCallId === start.toolCallId && message.toolName === BRIEF_TOOL && !message.isError);
+  if (brief < 0 || reply <= brief) return;
+
+  options.store.savePath({
+    ...scope.path,
+    modules: scope.path.modules.map((entry) => entry.id === scope.pathModule.id ? {
+      ...entry,
+      sessions: entry.sessions?.map((link) => link.chatId === start.chatId ? {
+        ...link, currentNodeId: start.nodeId,
+      } : link),
+    } : entry),
+  });
+  options.onPositionChanged?.(start.chatId);
 }
 
 /** Register linked-session tools without changing any native system prompt. */
@@ -534,15 +587,37 @@ export function registerNativeBridge(
   ctx: PluginBackendContext,
   options: NativeBridgeOptions,
 ): () => void {
+  const pending = new Map<string, NodeStart>();
+  const unsubscribe = ctx.events.on((event) => {
+    if (ctx.signal.aborted) return;
+    if (event.type === "turn-started") pending.delete(event.chatId);
+    if (event.type === "turn-settled") {
+      const start = pending.get(event.chatId);
+      if (!start) return;
+      // The host emits response-ready synchronously after turn-settled on a
+      // successful reply. Drop starts from all other settlements.
+      queueMicrotask(() => {
+        if (pending.get(event.chatId) === start) pending.delete(event.chatId);
+      });
+    }
+    if (event.type === "response-ready") {
+      const start = pending.get(event.chatId);
+      if (!start) return;
+      pending.delete(event.chatId);
+      saveTeachingPosition(ctx, options, start, event.messageId);
+    }
+  });
   const contribution: PluginTools = {
     agents: [...NATIVE_AGENTS],
-    create: (context) => createNativeTools(ctx, options, context),
+    create: (context) => createNativeTools(ctx, options, context, (start) => pending.set(start.chatId, start)),
   };
   const unregisterTools = ctx.registerTools(contribution);
   let active = true;
   return () => {
     if (!active) return;
     active = false;
+    unsubscribe();
+    pending.clear();
     unregisterTools();
   };
 }

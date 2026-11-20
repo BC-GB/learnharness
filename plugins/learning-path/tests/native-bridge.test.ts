@@ -17,6 +17,7 @@ import { makePath, AT } from "./fixtures.ts";
 import { createHost } from "./host.ts";
 import type { TestHost } from "./host.ts";
 import { LEARNING_PATH_TOOL_NAMES } from "../src/tool-names.ts";
+import type { SessionParentResult } from "../src/session-types.ts";
 
 function chat(id: string, kind: "teach" | "practice" = "teach", title = id): ChatRecord {
   return {
@@ -102,6 +103,63 @@ test("a native module chat can switch typed activities while reads and writes st
   } finally {
     close(host, directory);
   }
+});
+
+test("module teaching position follows an explicit start after a saved teaching reply", async (t) => {
+  const chatId = "chat-module-position";
+  const { host, directory } = hostWithPath([chat(chatId), chat("ordinary-lesson")]);
+  t.after(() => close(host, directory));
+  const target = { pathId: "path-linear-algebra", moduleId: "module-synthesis", kind: "teaching" };
+  const prepared = await host.call<{ claim: string }>("sessions.prepareModule", target);
+  await host.call("sessions.linkModule", { ...target, claim: prepared.claim, chatId });
+  const position = async (instance = host) =>
+    (await instance.call<SessionParentResult>("sessions.forChat", { chatId })).moduleLink;
+  const brief = toolByName(host.nativeTools(chatId, "teacher"), "learning_path_get_brief");
+  const signal = new AbortController().signal;
+  assert.equal((await position())?.moduleId, "module-synthesis");
+  assert.equal((await position())?.currentNodeTitle, undefined);
+  assert.equal((await host.call<SessionParentResult>("sessions.forChat", { chatId: "ordinary-lesson" })).moduleLink, undefined);
+  assert.equal((await brief.execute("foreign", { nodeId: "n-skill", begin: true }, signal)).isError, true);
+  assert.equal((await brief.execute("missing-id", { begin: true }, signal)).isError, true);
+
+  async function run(nodeId: string, callId: string, begin: boolean, showReply: boolean) {
+    host.appEvent({ type: "turn-started", chatId });
+    const result = await brief.execute(callId, { nodeId, ...(begin ? { begin } : {}) }, signal);
+    assert.notEqual(result.isError, true);
+    type Message = ChatRecord["messages"][number];
+    const messageId = callId + "-reply";
+    const record = host.chats.get(chatId)!;
+    const resultMessage = {
+      role: "toolResult", id: callId + "-result", toolName: "learning_path_get_brief", toolCallId: callId,
+      timestamp: Date.now(), isError: false, content: result.content, details: result.details,
+    } satisfies Message;
+    const reply = { role: "assistant", id: messageId, stopReason: "stop",
+      content: [{ type: "text", text: "Here is the teaching reply." }], timestamp: Date.now(),
+    } as Message;
+    host.addChat({ ...record, messages: [...record.messages, resultMessage, ...(showReply ? [reply] : [])] });
+    host.appEvent({ type: "turn-settled", chatId });
+    if (showReply) host.appEvent({ type: "response-ready", chatId, messageId });
+    await Promise.resolve();
+  }
+
+  await run("n-contrast", "preview", false, true);
+  await run("n-bridge", "interrupted", true, false);
+  assert.equal((await position())?.currentNodeTitle, undefined);
+  await run("n-contrast", "contrast", true, true);
+  const expectedContrast = makePath().modules[1]?.nodes.find((node) => node.id === "n-contrast")?.title;
+  assert.equal((await position())?.currentNodeTitle, expectedContrast);
+  await run("n-checkpoint", "peek", false, true);
+  await run("n-bridge", "cancelled-switch", true, false);
+  assert.equal((await position())?.currentNodeTitle, expectedContrast);
+  await run("n-checkpoint", "checkpoint", true, true);
+  const expectedCheckpoint = makePath().modules[1]?.nodes.find((node) => node.id === "n-checkpoint")?.title;
+  assert.equal((await position())?.currentNodeTitle, expectedCheckpoint);
+  assert.equal(savedPath(directory).modules[1]?.sessions?.[0]?.currentNodeId, "n-checkpoint");
+  assert.deepEqual(savedPath(directory).modules[1]?.nodes, makePath().modules[1]?.nodes);
+  assert.equal(host.events.filter((event) => event.topic === "session-position-changed").length, 2);
+  const reopened = createHost({ dataDirectory: directory, chats: [host.chats.get(chatId)!] });
+  t.after(() => reopened.close());
+  assert.equal((await position(reopened))?.currentNodeTitle, expectedCheckpoint);
 });
 
 test("native prompts stay original, and tools are injected only for linked chats of the matching kind", async () => {

@@ -13,6 +13,7 @@ import type {
   ErrorCategory,
   ErrorEntry,
   LearningPath,
+  ModuleSessionLink,
   PathModule,
   PathNode,
   PivotProposalType,
@@ -29,7 +30,7 @@ export interface ChatLinkLocation {
 export interface ModuleChatLocation {
   readonly path: LearningPath;
   readonly pathModule: PathModule;
-  readonly link: ChildSessionLink;
+  readonly link: ModuleSessionLink;
 }
 
 export function findModuleChatLink(paths: readonly LearningPath[], chatId: string): ModuleChatLocation | null {

@@ -8,6 +8,7 @@
 import type { PluginAgentSnapshot } from "../.sdk/index.d.ts";
 
 export const EVENT_PATHS_CHANGED = "paths-changed";
+export const EVENT_SESSION_POSITION_CHANGED = "session-position-changed";
 export const EVENT_SOURCES_CHANGED = "sources-changed";
 export const EVENT_ARCHITECT_CHANGED = "architect-changed";
 export const EVENT_SETTINGS_CHANGED = "settings-changed";
