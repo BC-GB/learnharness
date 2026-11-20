@@ -13,6 +13,7 @@ import type {
   ErrorCategory,
   ErrorEntry,
   LearningPath,
+  PathModule,
   PathNode,
   PivotProposalType,
   PivotSuggestion,
@@ -23,6 +24,22 @@ export interface ChatLinkLocation {
   readonly path: LearningPath;
   readonly node: PathNode;
   readonly link: ChildSessionLink;
+}
+
+export interface ModuleChatLocation {
+  readonly path: LearningPath;
+  readonly pathModule: PathModule;
+  readonly link: ChildSessionLink;
+}
+
+export function findModuleChatLink(paths: readonly LearningPath[], chatId: string): ModuleChatLocation | null {
+  for (const path of paths) {
+    for (const pathModule of path.modules) {
+      const link = pathModule.sessions?.find((candidate) => candidate.chatId === chatId);
+      if (link) return { path, pathModule, link };
+    }
+  }
+  return null;
 }
 
 export function orderedNodes(path: LearningPath): readonly PathNode[] {

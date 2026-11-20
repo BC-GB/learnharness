@@ -35,17 +35,17 @@ export function registerSessionActions(
       name: "Open Parent Learning Path",
       run: async (context: PluginActionContext) => {
         if (context.surface !== "session") return;
-        let parent: SessionParentResult["link"] = null;
         try {
           const result = await ctx.call<SessionParentResult>("sessions.forChat", {
             chatId: context.sessionId,
           });
-          parent = result.link;
+          if (result.link) {
+            requestPathHubTarget({ pathId: result.link.pathId, nodeId: result.link.nodeId });
+          } else if (result.moduleLink) {
+            requestPathHubTarget({ pathId: result.moduleLink.pathId, moduleId: result.moduleLink.moduleId });
+          }
         } catch {
           // A missing/unlinked chat still opens the hub, where the learner can attach it.
-        }
-        if (parent) {
-          requestPathHubTarget({ pathId: parent.pathId, nodeId: parent.nodeId });
         }
         ctx.app.openView("paths");
       },

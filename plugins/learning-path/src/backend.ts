@@ -42,15 +42,17 @@ import type {
   PathNode,
   PluginSettings,
 } from "./domain.ts";
-import { buildChildSessionBrief } from "./framework.ts";
+import { buildChildSessionBrief, buildModuleSessionBrief } from "./framework.ts";
 import { registerNativeBridge } from "./native-bridge.ts";
 import {
   addChildLink,
   findChatLink,
+  findModuleChatLink,
   removeChildLink,
   resolvePivotSuggestion,
   updateErrorEntry,
 } from "./session-links.ts";
+import type { LinkedModuleParent, ModuleSessionTarget, PreparedModuleSession } from "./session-types.ts";
 import type { PivotAction } from "./session-links.ts";
 import {
   MAX_SOURCE_BYTES,
@@ -82,6 +84,7 @@ const MAX_REQUEST_ID = 200;
 const MAX_MESSAGE_CHARS = 100_000;
 /** Bounded in-memory dedupe for a retried create within one activation. */
 const MAX_CREATE_REQUESTS = 50;
+const MODULE_LAUNCH_WINDOW_MS = 120_000;
 
 interface PathSummary {
   readonly id: string;
@@ -253,6 +256,7 @@ export function activate(ctx: PluginBackendContext): void {
   const latestSnapshots = new Map<string, PluginAgentSnapshot>();
   // Only a live learner-initiated request can continue automatically, once.
   const recoverableArchitectRuns = new Set<string>();
+  const moduleLaunchClaims = new Map<string, { token: string; expires: number }>();
   // Opt-in, metadata-only diagnostics; never log prompts, source text or reasoning.
   const debug = (event: string, detail: Record<string, unknown>): void => {
     if (process.env.LEARNING_PATH_DEBUG === "1") console.debug("[learning-path]", event, detail);
@@ -280,6 +284,7 @@ export function activate(ctx: PluginBackendContext): void {
     watchers.clear();
     latestSnapshots.clear();
     recoverableArchitectRuns.clear();
+    moduleLaunchClaims.clear();
     architect?.unregister();
     architect = null;
     for (const dispose of disposers.reverse()) dispose();
@@ -757,6 +762,94 @@ export function activate(ctx: PluginBackendContext): void {
 
   // ---- Child sessions -----------------------------------------------------
 
+  function readModuleTarget(input: unknown, operation: string): ModuleSessionTarget {
+    ctx.signal.throwIfAborted();
+    const value = object(input, operation);
+    return {
+      pathId: readText(value.pathId, "pathId", { max: 128 }),
+      moduleId: readText(value.moduleId, "moduleId", { max: 128 }),
+      kind: readKind(value.kind),
+    };
+  }
+
+  function moduleForTarget(target: ModuleSessionTarget) {
+    const path = store.path(target.pathId);
+    if (!path) throw new Error("This learning path is no longer available.");
+    const pathModule = path.modules.find((entry) => entry.id === target.moduleId);
+    if (!pathModule) throw new Error("This module is no longer available.");
+    return { path, pathModule };
+  }
+
+  const moduleLaunchKey = (target: ModuleSessionTarget) =>
+    JSON.stringify([target.pathId, target.moduleId, target.kind]);
+
+  handle("sessions.prepareModule", (input): PreparedModuleSession => {
+    const target = readModuleTarget(input, "sessions.prepareModule");
+    const { path, pathModule } = moduleForTarget(target);
+    const existing = pathModule.sessions?.find((link) => link.kind === target.kind);
+    if (existing && ctx.learning.getSession(existing.chatId)) return { chatId: existing.chatId };
+
+    const now = Date.now();
+    for (const [key, claim] of moduleLaunchClaims) {
+      if (claim.expires <= now) moduleLaunchClaims.delete(key);
+    }
+    const key = moduleLaunchKey(target);
+    if (moduleLaunchClaims.has(key)) throw new Error("This module chat is opening. Try again in a moment.");
+    if (moduleLaunchClaims.size >= MAX_CREATE_REQUESTS) throw new Error("Too many chats are opening. Try again in a moment.");
+
+    const { text } = buildModuleSessionBrief(path, pathModule, target.kind);
+    const title = `${target.kind === "teaching" ? "Teaching" : "Practice"}: ${pathModule.title}`;
+    const claim = randomUUID();
+    moduleLaunchClaims.set(key, { token: claim, expires: now + MODULE_LAUNCH_WINDOW_MS });
+    return { claim, title, prompt: text };
+  });
+
+  handle("sessions.linkModule", (input) => {
+    const target = readModuleTarget(input, "sessions.linkModule");
+    const value = object(input, "sessions.linkModule");
+    const chatId = readText(value.chatId, "chatId", { max: 128 });
+    const token = readText(value.claim, "claim", { max: 128 });
+    const { path, pathModule } = moduleForTarget(target);
+    const existing = pathModule.sessions?.find((link) => link.kind === target.kind);
+    if (existing?.chatId === chatId) return { chatId };
+    const key = moduleLaunchKey(target);
+    const claim = moduleLaunchClaims.get(key);
+    if (claim?.token !== token || claim.expires <= Date.now()) {
+      throw new Error("This module chat launch expired. Open the module again.");
+    }
+    if (existing && ctx.learning.getSession(existing.chatId)) {
+      throw new Error("This module already has a chat of that kind. Reopen it from Learning Paths.");
+    }
+    const record = ctx.learning.getSession(chatId);
+    if (!record || nativeKind(record) !== target.kind || record.messages.length > 0) {
+      throw new Error("Expected a new native chat of the selected kind.");
+    }
+    if (findChatLink(store.paths(), chatId) || findModuleChatLink(store.paths(), chatId)) {
+      throw new Error("This chat is already linked in Learning Paths.");
+    }
+    const now = new Date().toISOString();
+    const link = { chatId, kind: target.kind, label: record.title.slice(0, 200), createdAt: now };
+    const saved = store.savePath({
+      ...path,
+      updatedAt: now,
+      modules: path.modules.map((entry) => entry.id !== pathModule.id ? entry : {
+        ...entry,
+        sessions: [...(entry.sessions ?? []).filter((session) => session.kind !== target.kind), link],
+      }),
+    });
+    moduleLaunchClaims.delete(key);
+    emit(EVENT_PATHS_CHANGED, { id: saved.id, moduleId: pathModule.id, chatId, updatedAt: saved.updatedAt });
+    return { chatId };
+  });
+
+  handle("sessions.releaseModule", (input) => {
+    const target = readModuleTarget(input, "sessions.releaseModule");
+    const key = moduleLaunchKey(target);
+    const token = readText(object(input, "sessions.releaseModule").claim, "claim", { max: 128 });
+    if (moduleLaunchClaims.get(key)?.token === token) moduleLaunchClaims.delete(key);
+    return {};
+  });
+
   /** Build the opening prompt and title before a native chat is created. */
   handle("sessions.prepare", (input) => {
     if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
@@ -815,6 +908,9 @@ export function activate(ctx: PluginBackendContext): void {
         `Native chat "${chatId}" is already linked to "${existing.node.title}" in "${existing.path.title}".`,
       );
     }
+    if (findModuleChatLink(store.paths(), chatId)) {
+      throw new Error("This chat is already linked to a Learning Path module.");
+    }
 
     const path = store.path(pathId);
     if (!path) throw new Error(`Unknown path: ${pathId}`);
@@ -857,6 +953,8 @@ export function activate(ctx: PluginBackendContext): void {
   /** The parent node for a native session's top-bar action, or null. */
   handle("sessions.forChat", (input) => {
     const chatId = readText(object(input, "sessions.forChat").chatId, "chatId", { max: 128 });
+    const moduleParent = linkedModuleParent(chatId);
+    if (moduleParent) return { link: null, moduleLink: moduleParent, exists: nativeSession(ctx, chatId) !== null };
     const located = findChatLink(store.paths(), chatId);
     if (!located) return { link: null, exists: nativeSession(ctx, chatId) !== null };
     return {
@@ -874,6 +972,17 @@ export function activate(ctx: PluginBackendContext): void {
     };
   });
 
+  function linkedModuleParent(chatId: string): LinkedModuleParent | null {
+    const located = findModuleChatLink(store.paths(), chatId);
+    return located ? {
+      pathId: located.path.id,
+      pathTitle: located.path.title,
+      moduleId: located.pathModule.id,
+      moduleTitle: located.pathModule.title,
+      kind: located.link.kind,
+    } : null;
+  }
+
   /** Native sessions that can be attached; `linked` makes duplicates obvious. */
   handle("sessions.available", () => {
     const sessions = ctx.learning.listSessions().map((chat) => {
@@ -887,7 +996,7 @@ export function activate(ctx: PluginBackendContext): void {
         busy: chat.busy,
         linked:
           located === null
-            ? null
+            ? linkedModuleParent(chat.id)
             : {
                 pathId: located.path.id,
                 pathTitle: located.path.title,
@@ -916,8 +1025,8 @@ export function activate(ctx: PluginBackendContext): void {
         updatedAt: string | null;
       }
     >();
-    for (const node of path.modules.flatMap((module) => module.nodes)) {
-      for (const link of node.childSessions) {
+    for (const pathModule of path.modules) {
+      for (const link of [...(pathModule.sessions ?? []), ...pathModule.nodes.flatMap((node) => node.childSessions)]) {
         if (seen.has(link.chatId)) continue;
         const record = nativeSession(ctx, link.chatId);
         seen.set(link.chatId, {

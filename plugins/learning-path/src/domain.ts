@@ -222,6 +222,8 @@ export interface PathModule {
   readonly title: string;
   readonly goal?: string;
   readonly nodes: readonly PathNode[];
+  /** Host-owned native chats, at most one per session kind. */
+  readonly sessions?: readonly ChildSessionLink[];
 }
 
 export interface LearningPath {
@@ -607,6 +609,13 @@ function readPathModule(value: unknown, path: string): PathModule {
   const record = readObject(value, path);
   const nodes = readArray(record.nodes, `${path}.nodes`);
   if (nodes.length === 0) fail(`${path}.nodes`, "a module needs at least one node");
+  const sessions = record.sessions === undefined ? undefined :
+    readArray(record.sessions, `${path}.sessions`).map((entry, index) =>
+      readChildSessionLink(entry, `${path}.sessions[${index}]`),
+    );
+  if (sessions && new Set(sessions.map((link) => link.kind)).size !== sessions.length) {
+    fail(`${path}.sessions`, "only one session of each kind is allowed");
+  }
   return {
     id: readId(record.id, `${path}.id`),
     title: readString(record.title, `${path}.title`, { max: 300 }),
@@ -614,6 +623,7 @@ function readPathModule(value: unknown, path: string): PathModule {
       ? {}
       : { goal: readString(record.goal, `${path}.goal`, { max: 4000 }) }),
     nodes: nodes.map((entry, index) => readPathNode(entry, `${path}.nodes[${index}]`)),
+    ...(sessions === undefined ? {} : { sessions }),
   };
 }
 
@@ -653,10 +663,15 @@ function readLearningPathValue(value: unknown): LearningPath {
 /** Ids are unique and every cross-reference resolves; a path is one graph, not a tree of typos. */
 function assertPathGraph(path: LearningPath): void {
   const moduleIds = new Set<string>();
+  const moduleChatIds = new Set<string>();
   const nodes = new Map<string, PathNode>();
   for (const pathModule of path.modules) {
     if (moduleIds.has(pathModule.id)) fail("path.modules", `duplicate module id "${pathModule.id}"`);
     moduleIds.add(pathModule.id);
+    for (const link of pathModule.sessions ?? []) {
+      if (moduleChatIds.has(link.chatId)) fail("path.modules", `duplicate module chat "${link.chatId}"`);
+      moduleChatIds.add(link.chatId);
+    }
     for (const node of pathModule.nodes) {
       if (nodes.has(node.id)) fail("path.modules", `duplicate node id "${node.id}"`);
       nodes.set(node.id, node);
@@ -664,6 +679,9 @@ function assertPathGraph(path: LearningPath): void {
   }
   for (const pathModule of path.modules) {
     for (const node of pathModule.nodes) {
+      if (node.childSessions.some((link) => moduleChatIds.has(link.chatId))) {
+        fail("path.modules", "a module chat cannot also be linked to a node");
+      }
       if (node.interleavesNodeIds.includes(node.id)) {
         fail(`node "${node.id}".interleavesNodeIds`, "must not reference the node itself");
       }

@@ -24,12 +24,13 @@ import {
   artifactCatalogEntry,
   formatSourceAnchor,
 } from "./domain.ts";
-import type { ChildSessionKind, LearningPath, PathNode } from "./domain.ts";
-import { buildChildSessionBrief } from "./framework.ts";
+import type { ChildSessionKind, LearningPath, PathModule, PathNode } from "./domain.ts";
+import { buildChildSessionBrief, buildModuleSessionBrief } from "./framework.ts";
 import {
   appendError,
   appendPivot,
   findChatLink,
+  findModuleChatLink,
   findNode,
   kindMatchesAgent,
   newErrorEntry,
@@ -114,14 +115,22 @@ interface LocatedChat {
   readonly path: LearningPath;
   readonly node: PathNode;
   readonly kind: ChildSessionKind;
+  readonly pathModule?: PathModule;
 }
 
 /** Fresh lookup: links can be removed or chats deleted while a turn is running. */
-function locateChat(store: LearningPathStore, chatId: string): LocatedChat | null {
+function locateChat(store: LearningPathStore, chatId: string, nodeId?: unknown): LocatedChat | null {
   const located = findChatLink(store.paths(), chatId);
-  if (!located) return null;
-  return { path: located.path, node: located.node, kind: located.link.kind };
+  if (located) return { path: located.path, node: located.node, kind: located.link.kind };
+  const scope = findModuleChatLink(store.paths(), chatId);
+  if (!scope) return null;
+  const id = readTrimmedText(nodeId, "nodeId", 128);
+  const node = scope.pathModule.nodes.find((candidate) => candidate.id === id);
+  if (!node) throw new Error("Select an activity in this session's module.");
+  return { path: scope.path, pathModule: scope.pathModule, node, kind: scope.link.kind };
 }
+
+const activityId = { type: "string", maxLength: 128, description: "ID of an activity in this module." };
 
 /** Deleted chats stop tools mid-turn instead of writing against a vanished session. */
 function missingNativeResult(
@@ -150,20 +159,49 @@ function briefTool(
   ctx: PluginBackendContext,
   store: LearningPathStore,
   chatId: string,
+  moduleSession: boolean,
 ): AgentTool {
   return {
     name: "learning_path_get_brief",
     label: "Learning Path brief",
-    description:
+    description: moduleSession
+      ? "Read this module's typed activities. Use nodeId for the selected activity's teaching guidance and source anchor. " +
+        "Use the learner's recent answers to choose the next activity, and continue in this same chat."
+      :
       "Read the current Learning Path node brief: node goal, canonical source anchor, loose micro-priming hook, " +
       "meso-interleaving callbacks, active error watchpoints and the generative artifact configuration. " +
       "Call this before teaching or posing practice in a linked child session.",
-    parameters: objectSchema({}),
-    execute: async (_toolCallId, _params, signal) => {
+    parameters: objectSchema(moduleSession ? {
+      nodeId: activityId,
+      offset: { type: "integer", minimum: 0, description: "The next offset from a module outline with more activities." },
+    } : {}),
+    execute: async (_toolCallId, rawParams, signal) => {
       assertLive(ctx, signal);
       const missing = missingNativeResult(ctx, chatId);
       if (missing) return missing;
-      const located = locateChat(store, chatId);
+      const params = moduleSession ? readObject(rawParams ?? {}) : {};
+      const scope = moduleSession ? findModuleChatLink(store.paths(), chatId) : null;
+      if (scope && params.nodeId === undefined) {
+        const offset = params.offset ?? 0;
+        if (typeof offset !== "number" || !Number.isSafeInteger(offset) ||
+            offset < 0 || offset >= scope.pathModule.nodes.length) {
+          return errorResult("Select an offset in this module's outline.");
+        }
+        const brief = buildModuleSessionBrief(scope.path, scope.pathModule, scope.link.kind, offset);
+        return textResult({
+          moduleId: scope.pathModule.id,
+          moduleTitle: scope.pathModule.title,
+          nodes: brief.nodes,
+          nextOffset: brief.nextOffset,
+        }, brief.text);
+      }
+      let located: LocatedChat | null;
+      try {
+        located = locateChat(store, chatId, params.nodeId);
+      } catch (error) {
+        if (error instanceof Error) return errorResult(error.message);
+        throw error;
+      }
       if (!located) {
         return errorResult("This session is no longer linked to a Learning Path node.");
       }
@@ -173,6 +211,7 @@ function briefTool(
         nodeId: node.id,
         kind,
         settings: store.settings(),
+        moduleTitle: located.pathModule?.title,
       });
       const catalog = artifactCatalogEntry(brief.artifact.type);
       const anchor = formatSourceAnchor(node.sourceAnchor);
@@ -211,16 +250,19 @@ function progressTool(
   ctx: PluginBackendContext,
   options: NativeBridgeOptions,
   chatId: string,
+  moduleSession: boolean,
 ): AgentTool {
   return {
     name: "learning_path_update_progress",
     label: "Update node progress",
     description:
-      "Record the learner's progression on this session's node: in_progress or consolidated. " +
+      (moduleSession ? "Record progress on the supplied activity in this module: " : "Record progress on this session's node: ") +
+      "in_progress or consolidated. " +
       "Optionally include a short artifactNote when the node's generative artifact was actually produced. " +
       "This is learner-controlled and ungated; do not mark consolidated without evidence of independent reconstruction.",
     parameters: objectSchema(
       {
+        ...(moduleSession ? { nodeId: activityId } : {}),
         progression: {
           type: "string",
           enum: ["in_progress", "consolidated"],
@@ -232,18 +274,16 @@ function progressTool(
           description: "Optional short note about the produced artifact.",
         },
       },
-      ["progression"],
+      moduleSession ? ["nodeId", "progression"] : ["progression"],
     ),
     execute: async (_toolCallId, rawParams, signal) => {
       assertLive(ctx, signal);
       const missing = missingNativeResult(ctx, chatId);
       if (missing) return missing;
-      const located = locateChat(options.store, chatId);
-      if (!located) {
-        return errorResult("This session is no longer linked to a Learning Path node.");
-      }
       try {
         const params = readObject(rawParams);
+        const located = locateChat(options.store, chatId, params.nodeId);
+        if (!located) return errorResult("This session is no longer linked to Learning Paths.");
         const progression = readEnum(
           params.progression,
           ["in_progress", "consolidated"] as const,
@@ -290,16 +330,19 @@ function logErrorTool(
   ctx: PluginBackendContext,
   options: NativeBridgeOptions,
   chatId: string,
+  moduleSession: boolean,
 ): AgentTool {
   return {
     name: "learning_path_log_error",
     label: "Log a cognitive error",
     description:
       "Record one diagnosed cognitive error in this node's Error Ledger by root-cause category. " +
-      "Defaults to this session's node; pass upstreamNodeId only for an interleaved earlier node when " +
+      (moduleSession ? "Pass the activity's nodeId. " : "Defaults to this session's node. ") +
+      "Pass upstreamNodeId only for an interleaved earlier node when " +
       "recall or transfer of that earlier idea failed. Entries stay unresolved until the learner resolves them.",
     parameters: objectSchema(
       {
+        ...(moduleSession ? { nodeId: activityId } : {}),
         category: {
           type: "string",
           enum: [...ERROR_CATEGORIES],
@@ -315,23 +358,24 @@ function logErrorTool(
           description: "An interleaved earlier node id when the failure belongs there.",
         },
       },
-      ["category", "summary"],
+      moduleSession ? ["nodeId", "category", "summary"] : ["category", "summary"],
     ),
     execute: async (_toolCallId, rawParams, signal) => {
       assertLive(ctx, signal);
       const missing = missingNativeResult(ctx, chatId);
       if (missing) return missing;
-      const located = locateChat(options.store, chatId);
-      if (!located) {
-        return errorResult("This session is no longer linked to a Learning Path node.");
-      }
       try {
         const params = readObject(rawParams);
+        const located = locateChat(options.store, chatId, params.nodeId);
+        if (!located) return errorResult("This session is no longer linked to Learning Paths.");
         const category = readEnum(params.category, ERROR_CATEGORIES, "category");
         const summary = readTrimmedText(params.summary, "summary", 2000);
         let target = located.node;
         if (params.upstreamNodeId !== undefined) {
           const upstreamId = readTrimmedText(params.upstreamNodeId, "upstreamNodeId", 128);
+          if (located.pathModule && !located.pathModule.nodes.some((node) => node.id === upstreamId)) {
+            return errorResult("Record errors only against an activity in this module.");
+          }
           if (!located.node.interleavesNodeIds.includes(upstreamId)) {
             return errorResult(
               `"${upstreamId}" is not an interleaved earlier node of "${located.node.title}". ` +
@@ -381,16 +425,19 @@ function suggestPivotTool(
   ctx: PluginBackendContext,
   options: NativeBridgeOptions,
   chatId: string,
+  moduleSession: boolean,
 ): AgentTool {
   return {
     name: "learning_path_suggest_pivot",
     label: "Suggest an advisory pivot",
     description:
       "Record an advisory pivot suggestion when a topic is not sticking for a specific diagnosed reason. " +
+      (moduleSession ? "Pass the current activity's nodeId. Use short repairs within this chat directly. " : "") +
       "Proposal types are bridge (missing prerequisite), contrast (boundary confusion) or skill (mechanical bottleneck). " +
       "The suggestion starts pending; this tool never inserts, reorders or deletes anything. The learner decides.",
     parameters: objectSchema(
       {
+        ...(moduleSession ? { nodeId: activityId } : {}),
         proposalType: {
           type: "string",
           enum: [...CHILD_PIVOT_TYPES],
@@ -403,18 +450,16 @@ function suggestPivotTool(
           description: "Why this diagnosis calls for the proposed detour.",
         },
       },
-      ["proposalType", "title", "rationale"],
+      moduleSession ? ["nodeId", "proposalType", "title", "rationale"] : ["proposalType", "title", "rationale"],
     ),
     execute: async (_toolCallId, rawParams, signal) => {
       assertLive(ctx, signal);
       const missing = missingNativeResult(ctx, chatId);
       if (missing) return missing;
-      const located = locateChat(options.store, chatId);
-      if (!located) {
-        return errorResult("This session is no longer linked to a Learning Path node.");
-      }
       try {
         const params = readObject(rawParams);
+        const located = locateChat(options.store, chatId, params.nodeId);
+        if (!located) return errorResult("This session is no longer linked to Learning Paths.");
         const proposalType = readEnum(params.proposalType, CHILD_PIVOT_TYPES, "proposalType");
         const title = readTrimmedText(params.title, "title", 300);
         const rationale = readTrimmedText(params.rationale, "rationale", 2000);
@@ -471,15 +516,16 @@ export function createNativeTools(
   options: NativeBridgeOptions,
   context: PluginToolContext,
 ): AgentTool[] {
-  const located = locateChat(options.store, context.chatId);
-  if (!located) return [];
-  if (!kindMatchesAgent(located.kind, context.agent)) return [];
+  const paths = options.store.paths();
+  const moduleSession = findModuleChatLink(paths, context.chatId);
+  const kind = moduleSession?.link.kind ?? findChatLink(paths, context.chatId)?.link.kind;
+  if (!kind || !kindMatchesAgent(kind, context.agent)) return [];
   if (!nativeChatExists(ctx, context.chatId)) return [];
   return [
-    briefTool(ctx, options.store, context.chatId),
-    progressTool(ctx, options, context.chatId),
-    logErrorTool(ctx, options, context.chatId),
-    suggestPivotTool(ctx, options, context.chatId),
+    briefTool(ctx, options.store, context.chatId, moduleSession !== null),
+    progressTool(ctx, options, context.chatId, moduleSession !== null),
+    logErrorTool(ctx, options, context.chatId, moduleSession !== null),
+    suggestPivotTool(ctx, options, context.chatId, moduleSession !== null),
   ];
 }
 

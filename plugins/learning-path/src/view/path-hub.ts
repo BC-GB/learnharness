@@ -18,10 +18,11 @@ import type {
   PluginUiContent,
   PluginWidgetHandle,
 } from "../../.sdk/index.d.ts";
-import type { ArtifactType, ChildSessionKind, LearningPath, PathNode, PivotSuggestion, ProgressionState } from "../domain.ts";
+import type { ArtifactType, ChildSessionKind, LearningPath, PathModule, PathNode, PivotSuggestion, ProgressionState } from "../domain.ts";
 import { createSessionLauncher } from "../session-launcher.ts";
 import type { NativeSessionHost } from "../native-session-host.ts";
 import { consumePathHubTarget, subscribePathHubTarget } from "../session-navigation.ts";
+import type { PathHubTarget } from "../session-navigation.ts";
 import type { SessionStatus } from "../session-types.ts";
 import {
   ARTIFACT_TYPES,
@@ -191,9 +192,6 @@ export function mountPathHub(
   const inspector = createNodeInspector(ctx, inspectorContainer, signal, {
     openSession(chatId) {
       if (!signal.aborted && !disposed) ctx.app.openSession(chatId);
-    },
-    startSession(kind) {
-      return startChildSession(kind);
     },
     linkExistingSession() {
       openLinkExisting();
@@ -377,12 +375,13 @@ export function mountPathHub(
 
   function treeRows(): PluginTreeRow[] {
     if (!path) return [];
+    const pathId = path.id;
     return path.modules.map((module) => {
       const key = `module:${module.id}`;
       const consolidated = module.nodes.filter((node) => node.progression === "consolidated").length;
       return {
         key,
-        content: module.title,
+        content: moduleContent(pathId, module),
         cells: { state: `${consolidated}/${module.nodes.length} consolidated` },
         disclosure: {
           label: `Toggle ${module.title}`,
@@ -390,6 +389,41 @@ export function mountPathHub(
           onChange: (value: boolean) => setExpanded(key, value),
         },
         children: module.nodes.map(nodeRow),
+      };
+    });
+  }
+
+  function moduleContent(pathId: string, pathModule: PathModule): PluginUiContent {
+    const sessions = pathModule.sessions?.filter((link) => chatStatuses.get(link.chatId)?.exists !== false) ?? [];
+    const signature = JSON.stringify([pathModule.title, sessions.map((link) => link.kind)]);
+    return cachedContent(`module:${pathId}:${pathModule.id}`, signature, () => (host, contentSignal) => {
+      const row = element(document, "div", "lp-module-entry");
+      row.append(element(document, "span", "lp-module-title", pathModule.title));
+      const actions = element(document, "div", "lp-chat-actions");
+      actions.setAttribute("role", "group");
+      actions.setAttribute("aria-label", `Chats for ${pathModule.title}`);
+      row.append(actions);
+      const buttons = (["teaching", "practice"] as const).map((kind) => {
+        const resumes = sessions.some((link) => link.kind === kind);
+        const label = kind === "teaching"
+          ? resumes ? "Resume Teaching" : "Teach"
+          : resumes ? "Resume Practice" : "Practice";
+        const buttonHost = element(document, "span", "lp-button-host");
+        actions.append(buttonHost);
+        return ctx.ui.mountButton(buttonHost, {
+          label,
+          title: `${label}: ${pathModule.title}`,
+          size: "xs",
+          variant: kind === "teaching" ? "default" : "outline",
+          onClick: () => {
+            if (!contentSignal.aborted) return startModuleSession(pathId, pathModule.id, kind);
+          },
+        }, { signal: contentSignal });
+      });
+      host.append(row);
+      return () => {
+        for (const button of buttons) button.dispose();
+        row.remove();
       };
     });
   }
@@ -486,14 +520,14 @@ export function mountPathHub(
     }
   }
 
-  async function refreshAll(): Promise<void> {
+  async function refreshAll(navigationTarget?: PathHubTarget): Promise<void> {
     if (disposed || signal.aborted) return;
     const token = ++loadToken;
     // A top-bar navigation may have arrived before this mount finished loading.
-    const target = consumePathHubTarget();
+    const target = navigationTarget ?? consumePathHubTarget();
     if (target) {
       selectedPathId = target.pathId;
-      selectedNodeId = target.nodeId;
+      selectedNodeId = target.nodeId ?? null;
     }
     try {
       const listed = await ctx.call<PathsListResult>("paths.list");
@@ -518,6 +552,10 @@ export function mountPathHub(
         loaded = result.path;
       }
       path = loaded;
+      if (target?.moduleId && path?.id === target.pathId) {
+        selectedNodeId = path.modules.find((entry) => entry.id === target.moduleId)?.nodes[0]?.id ?? null;
+        expanded.set(`module:${target.moduleId}`, true);
+      }
       if (path) {
         await refreshChatStatuses(token, path.id);
         if (!live(token)) return;
@@ -636,11 +674,11 @@ export function mountPathHub(
     await pane.discuss(pivotDiscussionPrompt(pivot, node));
   }
 
-  async function startChildSession(kind: ChildSessionKind): Promise<void> {
-    if (disposed || signal.aborted || startingSession || !path || !selectedNodeId) return;
+  async function startModuleSession(pathId: string, moduleId: string, kind: ChildSessionKind): Promise<void> {
+    if (disposed || signal.aborted || startingSession || path?.id !== pathId) return;
     startingSession = true;
     try {
-      await launcher.start({ pathId: path.id, nodeId: selectedNodeId, kind });
+      await launcher.startModule({ pathId, moduleId, kind });
       if (disposed || signal.aborted) return;
       await refreshAll();
     } catch (problem) {
@@ -757,13 +795,14 @@ export function mountPathHub(
     consumePathHubTarget();
     if (path?.id === target.pathId) {
       selectedPathId = target.pathId;
-      selectedNodeId = target.nodeId;
+      selectedNodeId = target.nodeId ?? path.modules.find((entry) => entry.id === target.moduleId)?.nodes[0]?.id ?? null;
+      if (target.moduleId) expanded.set(`module:${target.moduleId}`, true);
       renderAll();
       return;
     }
     selectedPathId = target.pathId;
-    selectedNodeId = target.nodeId;
-    void refreshAll();
+    selectedNodeId = target.nodeId ?? null;
+    void refreshAll(target);
   });
 
   const offResync = ctx.onResync(() => {

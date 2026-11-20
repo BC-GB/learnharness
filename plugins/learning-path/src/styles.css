@@ -215,6 +215,16 @@
   font-weight: 550;
 }
 
+.lp-module-entry {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lp-module-title {
+  overflow-wrap: anywhere;
+}
+
 .lp-badge-row {
   display: inline-flex;
   flex-wrap: wrap;
