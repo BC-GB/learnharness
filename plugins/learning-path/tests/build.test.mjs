@@ -91,6 +91,7 @@ test("built backend activates and answers its operation", () => {
       },
       registerInstructions: () => () => {},
       registerTools: () => () => {},
+      events: { on: () => () => {}, emit: () => {} },
     });
     assert.deepEqual(handlers.get("paths.status")(), {
       id: "learning-path",

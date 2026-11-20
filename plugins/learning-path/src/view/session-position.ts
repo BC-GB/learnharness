@@ -20,7 +20,7 @@ export function mountSessionPosition(
   grip.type = "button";
   grip.textContent = "⠿";
   grip.setAttribute("aria-label", "Move Now panel");
-  grip.title = "Drag or use arrow keys to move";
+  grip.title = "Drag or press Enter to move to the other side";
   const title = document.createElement("h2");
   title.textContent = "Now";
   const toggle = document.createElement("button");
@@ -64,17 +64,13 @@ export function mountSessionPosition(
     if (drag?.pointer === event.pointerId) positionAt(event.clientX - drag.xOffset, event.clientY - drag.yOffset);
   });
   grip.addEventListener("lostpointercapture", () => { drag = undefined; });
-  const moveKeys = new Map([
-    ["ArrowLeft", [-20, 0]], ["ArrowRight", [20, 0]],
-    ["ArrowUp", [0, -20]], ["ArrowDown", [0, 20]],
-  ]);
-  grip.addEventListener("keydown", (event) => {
-    const delta = moveKeys.get(event.key);
-    if (!delta) return;
-    event.preventDefault();
-    event.stopPropagation();
+  grip.addEventListener("click", (event) => {
+    // Native keyboard and assistive activations generate a click without a
+    // pointer click count. Pointer interactions already use the drag handle.
+    if (event.detail !== 0) return;
     const box = card.getBoundingClientRect();
-    positionAt(box.left + delta[0]!, box.top + delta[1]!);
+    const rightEdge = win.innerWidth - box.width - 20;
+    positionAt(box.left > rightEdge / 2 ? 20 : rightEdge, box.top);
   });
   const clamp = () => {
     if (!card.style.left || !card.isConnected) return;
