@@ -1,6 +1,6 @@
 /** Path Hub child-session UI tests.
  *
- * Covers the node-level launch actions, missing/deleted native chat handling and
+ * Covers the module launch actions, missing/deleted native chat handling and
  * top-bar navigation targets landing on the right node. The native host is
  * injected, so no chat is created and no storage is touched.
  */
@@ -28,12 +28,13 @@ function fakeHost(fixture: ViewFixture): NativeSessionHost & {
     staged,
     async create(input) {
       created.push({ title: input.title, kind: input.kind });
-      fixture.nativeChats.set("chat-new", {
-        id: "chat-new",
+      const chatId = `chat-new-${created.length}`;
+      fixture.nativeChats.set(chatId, {
+        id: chatId,
         title: input.title,
         kind: input.kind === "practice" ? "practice" : "teach",
       });
-      return { chatId: "chat-new" };
+      return { chatId };
     },
     stageOpeningPrompt(_chatId, text) {
       staged.push(text);
@@ -79,7 +80,7 @@ function inspector(fixture: ViewFixture): HTMLElement {
   return element;
 }
 
-test("Start Teaching Chat creates, links, stages and opens a native session", async () => {
+test("module actions open one resumable teaching chat and a separate practice chat", async () => {
   const path = makePath();
   const fixture = createViewFixture({ paths: [path] });
   try {
@@ -89,21 +90,29 @@ test("Start Teaching Chat creates, links, stages and opens a native session", as
     await fixture.flush();
     assert.equal(inspector(fixture).dataset.nodeId, "n-skill");
 
-    await button(fixture, "Start Teaching Chat").props.onClick();
+    const teach = fixture.all("mountButton").find((entry) => entry.props.title === "Teach: Structure first");
+    assert.ok(teach);
+    await teach.props.onClick();
     await fixture.flush();
     await fixture.flush();
 
-    assert.deepEqual(host.created, [{ title: "Teaching: Node n-skill", kind: "teaching" }]);
-    assert.equal(host.staged.length, 1);
-    assert.match(host.staged[0]!, /Node n-skill/);
-    assert.deepEqual(fixture.openedSessions, ["chat-new"]);
-    const linked = fixture.paths
-      .get(path.id)!
-      .modules.flatMap((module) => module.nodes)
-      .find((node) => node.id === "n-skill")!
-      .childSessions.find((entry) => entry.chatId === "chat-new");
-    assert.ok(linked);
-    assert.match(inspector(fixture).textContent ?? "", /Teaching — Teaching: Node n-skill/);
+    await button(fixture, "Resume Teaching").props.onClick();
+    const practice = fixture.all("mountButton").find((entry) => entry.props.title === "Practice: Structure first");
+    assert.ok(practice);
+    await practice.props.onClick();
+    await fixture.flush();
+    await button(fixture, "Resume Practice").props.onClick();
+
+    assert.deepEqual(host.created, [
+      { title: "Teaching: Structure first", kind: "teaching" },
+      { title: "Practice: Structure first", kind: "practice" },
+    ]);
+    assert.equal(host.staged.length, 2);
+    assert.match(host.staged[0]!, /Module: Structure first/);
+    assert.deepEqual(fixture.openedSessions, ["chat-new-1", "chat-new-1", "chat-new-2", "chat-new-2"]);
+    const savedModule = fixture.paths.get(path.id)!.modules[0]!;
+    assert.deepEqual(savedModule.sessions?.map((link) => link.chatId), ["chat-new-1", "chat-new-2"]);
+    assert.deepEqual(savedModule.nodes, path.modules[0]!.nodes);
   } finally {
     clearPathHubTarget();
     fixture.restore();

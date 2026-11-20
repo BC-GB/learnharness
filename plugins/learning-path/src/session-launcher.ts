@@ -18,7 +18,9 @@ import { LAUNCH_FAILURE, createBrowserSessionHost } from "./native-session-host.
 import type { NativeSessionHost } from "./native-session-host.ts";
 import type {
   AvailableSession,
+  ModuleSessionTarget,
   PreparedLaunch,
+  PreparedModuleSession,
   SessionLinkResult,
 } from "./session-types.ts";
 
@@ -50,6 +52,7 @@ export interface SessionLauncherOptions {
 
 export interface SessionLauncher {
   start(input: StartChildSessionInput): Promise<StartedChildSession>;
+  startModule(input: ModuleSessionTarget): Promise<void>;
   attach(input: AttachChildSessionInput): Promise<SessionLinkResult>;
   available(): Promise<readonly AvailableSession[]>;
   /** Open an already-linked native chat; navigation only, no model work. */
@@ -95,6 +98,35 @@ export function createSessionLauncher(
       }
       ctx.app.openSession(created.chatId);
       return { chatId: created.chatId, link: linked.link, path: linked.path, prepared };
+    },
+
+    async startModule(input) {
+      ctx.signal.throwIfAborted();
+      const prepared = await ctx.call<PreparedModuleSession>("sessions.prepareModule", input);
+      ctx.signal.throwIfAborted();
+      if ("chatId" in prepared) {
+        ctx.app.openSession(prepared.chatId);
+        return;
+      }
+
+      let chatId: string | undefined;
+      try {
+        const created = await host.create({ title: prepared.title, kind: input.kind });
+        chatId = created.chatId;
+        ctx.signal.throwIfAborted();
+        if (!host.stageOpeningPrompt(chatId, prepared.prompt)) {
+          throw new Error("The module's opening brief could not be staged.");
+        }
+        await ctx.call<{ chatId: string }>("sessions.linkModule", { ...input, chatId, claim: prepared.claim });
+      } catch (problem) {
+        if (chatId) host.clearOpeningPrompt(chatId);
+        if (!ctx.signal.aborted) {
+          await ctx.call("sessions.releaseModule", { ...input, claim: prepared.claim }).catch(() => {});
+        }
+        throw problem;
+      }
+      ctx.signal.throwIfAborted();
+      ctx.app.openSession(chatId);
     },
 
     async attach(input) {

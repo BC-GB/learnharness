@@ -363,6 +363,7 @@ function completeDraft(args: Record<string, unknown>, existing: LearningPath | n
       const old = typeof pathModule.id === "string" ? previousModules.get(pathModule.id) : undefined;
       return {
         ...old, ...pathModule, id: pathModule.id ?? randomUUID(),
+        sessions: old?.sessions,
         nodes: Array.isArray(pathModule.nodes) ? pathModule.nodes.map((rawNode) => {
           if (!isRecord(rawNode)) return rawNode;
           const node = rawNode;

@@ -620,6 +620,33 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
         if (!saved) return Promise.reject(new Error(`Unknown node: ${String(value.nodeId)}`));
         return Promise.resolve({ path: structuredClone(saved.path), link: saved.link } as T);
       }
+      case "sessions.prepareModule": {
+        const pathModule = paths.get(value.pathId)?.modules.find((entry) => entry.id === value.moduleId);
+        if (!pathModule) return Promise.reject(new Error("Unknown module"));
+        const existing = pathModule.sessions?.find((link) => link.kind === value.kind && nativeChats.has(link.chatId));
+        const title = `${value.kind === "teaching" ? "Teaching" : "Practice"}: ${pathModule.title}`;
+        return Promise.resolve((existing ? { chatId: existing.chatId } : {
+          claim: "fixture-claim", title, prompt: `Module: ${pathModule.title}`,
+        }) as T);
+      }
+      case "sessions.linkModule": {
+        const path = paths.get(value.pathId);
+        const native = nativeChats.get(value.chatId);
+        if (!path || !native) return Promise.reject(new Error("Unknown path or chat"));
+        paths.set(path.id, {
+          ...path,
+          modules: path.modules.map((entry) => entry.id !== value.moduleId ? entry : {
+            ...entry,
+            sessions: [
+              ...(entry.sessions ?? []).filter((link) => link.kind !== value.kind),
+              { chatId: native.id, kind: sessionKind(native), label: native.title, createdAt: "2026-02-01T00:00:00.000Z" },
+            ],
+          }),
+        });
+        return Promise.resolve({ chatId: native.id } as T);
+      }
+      case "sessions.releaseModule":
+        return Promise.resolve({} as T);
       case "sessions.unlink": {
         const located = findPathNode(value.pathId, value.nodeId);
         if (!located) return Promise.reject(new Error(`Unknown node: ${String(value.nodeId)}`));
@@ -692,8 +719,8 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
         const found = paths.get(value.pathId);
         if (!found) return Promise.reject(new Error(`Unknown path: ${String(value.pathId)}`));
         const seen = new Map<string, AnyProps>();
-        for (const node of found.modules.flatMap((module) => module.nodes)) {
-          for (const link of node.childSessions) {
+        for (const pathModule of found.modules) {
+          for (const link of [...(pathModule.sessions ?? []), ...pathModule.nodes.flatMap((node) => node.childSessions)]) {
             if (seen.has(link.chatId)) continue;
             const chat = nativeChats.get(link.chatId);
             seen.set(link.chatId, {

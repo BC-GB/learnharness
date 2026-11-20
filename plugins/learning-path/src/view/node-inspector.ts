@@ -24,7 +24,6 @@ import type {
   PivotSuggestion,
   ProgressionState,
 } from "../domain.ts";
-import type { ChildSessionKind } from "../domain.ts";
 import type { SessionStatus } from "../session-types.ts";
 import { createErrorLedger } from "./error-ledger.ts";
 import type { ErrorLedgerChange } from "./error-ledger.ts";
@@ -49,7 +48,6 @@ export interface NodeInspectorOptions {
   /** Link a native session that already exists. */
   linkExistingSession(): void | Promise<void>;
   /** Create + link + open a new native teaching/practice chat. */
-  startSession(kind: ChildSessionKind): void | Promise<void>;
   /** Remove a stale link; the native chat is untouched. */
   unlinkSession(chatId: string): void | Promise<void>;
   /** Existence of each linked chat, refreshed with the path. */
@@ -312,12 +310,6 @@ export function createNodeInspector(
 
     const chats = section("Child chats");
     const chatActions = element(document, "div", "lp-chat-actions");
-    button(chatActions, "Start Teaching Chat", () => {
-      void options.startSession("teaching");
-    }, { variant: "default" });
-    button(chatActions, "Start Practice Chat", () => {
-      void options.startSession("practice");
-    }, { variant: "outline" });
     button(chatActions, "Link Existing Session…", () => {
       void options.linkExistingSession();
     }, { variant: "ghost" });
@@ -329,7 +321,7 @@ export function createNodeInspector(
           document,
           "p",
           "lp-muted",
-          "No child chats yet. Start one, or link an existing native session.",
+          "No chats linked to this node.",
         ),
       );
     } else {

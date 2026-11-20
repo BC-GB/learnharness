@@ -16,6 +16,21 @@ export interface LinkedParent {
   readonly createdAt: string;
 }
 
+export interface ModuleSessionTarget {
+  readonly pathId: string;
+  readonly moduleId: string;
+  readonly kind: ChildSessionKind;
+}
+
+export interface LinkedModuleParent extends ModuleSessionTarget {
+  readonly pathTitle: string;
+  readonly moduleTitle: string;
+}
+
+export type PreparedModuleSession =
+  | { readonly chatId: string }
+  | { readonly claim: string; readonly title: string; readonly prompt: string };
+
 export interface SessionStatus {
   readonly chatId: string;
   readonly kind: ChildSessionKind;
@@ -39,7 +54,7 @@ export interface AvailableSession {
     readonly nodeId: string;
     readonly nodeTitle: string;
     readonly kind: ChildSessionKind;
-  } | null;
+  } | LinkedModuleParent | null;
 }
 
 export interface PreparedLaunch {
@@ -61,5 +76,6 @@ export interface SessionLinkResult {
 
 export interface SessionParentResult {
   readonly link: LinkedParent | null;
+  readonly moduleLink?: LinkedModuleParent;
   readonly exists: boolean;
 }

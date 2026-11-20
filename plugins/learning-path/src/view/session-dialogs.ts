@@ -123,13 +123,14 @@ export function openAttachSessionDialog(
           if (contentSignal.aborted || options.signal.aborted) return cleanup;
           loading.remove();
 
-          if (parent.link) {
+          const linkedParent = parent.link ?? parent.moduleLink;
+          if (linkedParent) {
             root.append(
               element(
                 document,
                 "p",
                 "lp-muted",
-                `This session is already linked to "${parent.link.nodeTitle}" in "${parent.link.pathTitle}".`,
+                `This session is already linked to "${"nodeTitle" in linkedParent ? linkedParent.nodeTitle : linkedParent.moduleTitle}" in "${linkedParent.pathTitle}".`,
               ),
             );
             return cleanup;

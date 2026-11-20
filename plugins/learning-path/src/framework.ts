@@ -20,6 +20,7 @@ import type {
   ErrorEntry,
   LearningPath,
   NodeType,
+  PathModule,
   PathNode,
   PluginSettings,
   SourceSpine,
@@ -260,6 +261,7 @@ export interface ChildSessionBriefInput {
   readonly path: LearningPath;
   readonly nodeId: string;
   readonly kind: ChildSessionKind;
+  readonly moduleTitle?: string;
   readonly settings?: PluginSettings | null;
   /** Optional override for the loose priming hook; a loose suggestion either way. */
   readonly primingHook?: string;
@@ -360,7 +362,9 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
 
   const text = [
     "# Learning Path child session brief",
-    `You are opening a ${kind} session for one node of the learner's learning path "${path.title}".`,
+    input.moduleTitle === undefined
+      ? `You are opening a ${kind} session for one node of the learner's learning path "${path.title}".`
+      : `This activity belongs to "${input.moduleTitle}" in "${path.title}". Continue in the same ${kind} chat.`,
     `Path goal: ${path.goal}`,
     "",
     "## Node",
@@ -371,7 +375,9 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
     "## Source anchor",
     `Spine: ${formatSourceSpine(path.sourceSpine)}`,
     `Anchor: ${anchor}`,
-    "Stay inside this anchor and this spine's notation; do not substitute a different curriculum.",
+    input.moduleTitle === undefined
+      ? "Stay inside this anchor and this spine's notation; do not substitute a different curriculum."
+      : "Use this anchor for this activity and preserve the course's notation.",
     "",
     "## Light pre-reading (self-directed, optional)",
     node.lightPreReading ??
@@ -397,4 +403,34 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
   ].join("\n");
 
   return { text, node, artifact, interleavedNodes, watchpoints };
+}
+
+/** Keep the opening and follow-up outlines small even on heavily subdivided paths. */
+export function buildModuleSessionBrief(
+  path: LearningPath,
+  pathModule: PathModule,
+  kind: ChildSessionKind,
+  offset = 0,
+) {
+  const nodes = pathModule.nodes.slice(offset, offset + 20).map((node) => ({
+    id: node.id,
+    type: node.type,
+    title: node.title,
+    progression: node.progression,
+  }));
+  const nextOffset = offset + nodes.length < pathModule.nodes.length ? offset + nodes.length : null;
+  const text = [
+    `# ${kind === "teaching" ? "Teaching" : "Practice"} module: ${pathModule.title}`,
+    `Course path: ${path.title}`,
+    ...(pathModule.goal ? [`Module goal: ${pathModule.goal}`] : []),
+    `Source spine: ${formatSourceSpine(path.sourceSpine).slice(0, 1200)}`,
+    "Use the existing LearnHarness lesson or practice workflow in this conversation. On resume, use the learner's recent answer and lesson history to pick up the thread. When beginning, establish today's goal and probe only as needed.",
+    "Use recent answers and demonstrated understanding to choose the next activity yourself. Stay with an idea if the learner is still reasoning it through. Switch to a contrast for boundary confusion, a skill example for a procedural slip, a brief bridge for a missing prerequisite, or a checkpoint once the learner can explain the reasoning. Return from a bridge to the task that exposed the gap. Follow explicit learner requests to skip, review or practise.",
+    "The activities below are an outline. Use a holistic map for orientation, a concept explanation for a mechanism, a contrast between near-miss cases, a skill exercise for a worked step, and an unlabelled checkpoint for transfer. Consult the selected activity's source anchor before using course-specific claims.",
+    "Call learning_path_get_brief with a nodeId from this module for its goal, source anchor and optional activity guidance. Use that same nodeId when reporting progress or a diagnosed error. Consolidate only when the learner demonstrates independent understanding.",
+    "",
+    ...nodes.map((node) => `- ${node.id} [${node.type}, ${node.progression}] ${node.title}`),
+    ...(nextOffset === null ? [] : [`More activities are available through learning_path_get_brief with offset ${nextOffset}.`]),
+  ].join("\n");
+  return { text, nodes, nextOffset };
 }

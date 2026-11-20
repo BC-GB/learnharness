@@ -75,6 +75,35 @@ function savedPath(directory: string, pathId = "path-linear-algebra") {
   return found;
 }
 
+test("a native module chat can switch typed activities while reads and writes stay in that module", async () => {
+  const { host, directory } = hostWithPath([chat("chat-module-teach")]);
+  try {
+    const target = { pathId: "path-linear-algebra", moduleId: "module-synthesis", kind: "teaching" };
+    const prepared = await host.call<{ claim: string }>("sessions.prepareModule", target);
+    await host.call("sessions.linkModule", { ...target, claim: prepared.claim, chatId: "chat-module-teach" });
+    assert.deepEqual(host.nativeTools("chat-module-teach", "practice"), []);
+    const tools = host.nativeTools("chat-module-teach", "teacher");
+    const brief = await runTool(tools, "learning_path_get_brief", {});
+    assert.match(brief.text, /n-contrast \[contrast/);
+    assert.match(brief.text, /n-checkpoint \[checkpoint/);
+    assert.match(brief.text, /n-bridge \[bridge/);
+    assert.doesNotMatch(brief.text, /n-skill/);
+    const activity = await runTool(tools, "learning_path_get_brief", { nodeId: "n-contrast" });
+    assert.match(activity.text, /two near-identical scenarios/);
+    const checkpoint = await runTool(tools, "learning_path_get_brief", { nodeId: "n-checkpoint" });
+    assert.match(checkpoint.text, /unlabelled mixed problem/);
+    const recorded = await runTool(tools, "learning_path_update_progress", { nodeId: "n-checkpoint", progression: "consolidated" });
+    assert.equal(recorded.isError, false);
+    assert.equal((await runTool(tools, "learning_path_get_brief", { nodeId: "n-skill" })).isError, true);
+    assert.equal((await runTool(tools, "learning_path_update_progress", { nodeId: "n-skill", progression: "consolidated" })).isError, true);
+    const saved = savedPath(directory);
+    assert.equal(saved.modules[1]?.nodes.find((node) => node.id === "n-checkpoint")?.progression, "consolidated");
+    assert.deepEqual(saved.modules[0]?.nodes, makePath().modules[0]?.nodes);
+  } finally {
+    close(host, directory);
+  }
+});
+
 test("native prompts stay original, and tools are injected only for linked chats of the matching kind", async () => {
   const { host, directory } = hostWithPath([
     chat("chat-1", "teach"),

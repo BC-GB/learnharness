@@ -8,7 +8,8 @@
  */
 export interface PathHubTarget {
   readonly pathId: string;
-  readonly nodeId: string;
+  readonly nodeId?: string;
+  readonly moduleId?: string;
 }
 
 let pending: PathHubTarget | null = null;

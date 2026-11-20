@@ -31,6 +31,53 @@ function close(host: TestHost, directory: string): void {
   fs.rmSync(directory, { recursive: true, force: true });
 }
 
+test("module launches are exclusive and the native chats survive backend reactivation", async () => {
+  const chats = [chat("chat-1"), chat("chat-module-teach"), chat("chat-module-practice", "practice")];
+  const { host, directory } = hostWithPath(chats);
+  const teaching = { pathId: "path-linear-algebra", moduleId: "module-structure", kind: "teaching" };
+  const practice = { ...teaching, kind: "practice" };
+  try {
+    const prepared = await host.call<{ prompt: string; claim: string }>("sessions.prepareModule", teaching);
+    assert.match(prepared.prompt, /n-concept \[concept/);
+    assert.match(prepared.prompt, /choose the next activity yourself/);
+    await assert.rejects(host.call("sessions.prepareModule", teaching), /already has|is opening/);
+    const practiceClaim = await host.call<{ claim: string }>("sessions.prepareModule", practice);
+    await assert.rejects(host.call("sessions.linkModule", {
+      ...teaching, claim: prepared.claim, chatId: "chat-1",
+    }), /already linked/);
+    await assert.rejects(host.call("sessions.linkModule", {
+      ...teaching, claim: prepared.claim, chatId: "chat-module-practice",
+    }), /selected kind/);
+
+    const teachLink = { ...teaching, claim: prepared.claim, chatId: "chat-module-teach" };
+    assert.deepEqual(await host.call("sessions.linkModule", teachLink), { chatId: "chat-module-teach" });
+    assert.deepEqual(await host.call("sessions.linkModule", teachLink), { chatId: "chat-module-teach" });
+    await host.call("sessions.linkModule", { ...practice, claim: practiceClaim.claim, chatId: "chat-module-practice" });
+
+    const saved = openLearningPathStore(directory).path(teaching.pathId)!;
+    assert.deepEqual(saved.modules[0]?.nodes, makePath().modules[0]?.nodes);
+    const resumed = createHost({ dataDirectory: directory, chats });
+    try {
+      assert.deepEqual(await resumed.call("sessions.prepareModule", teaching), { chatId: "chat-module-teach" });
+      assert.deepEqual(await resumed.call("sessions.prepareModule", practice), { chatId: "chat-module-practice" });
+      const parent = await resumed.call<{ moduleLink: { moduleId: string } }>("sessions.forChat", { chatId: "chat-module-teach" });
+      assert.equal(parent.moduleLink.moduleId, teaching.moduleId);
+      await assert.rejects(resumed.call("sessions.link", {
+        pathId: teaching.pathId, nodeId: "n-skill", kind: "teaching", chatId: "chat-module-teach",
+      }), /linked to a Learning Path module/);
+      resumed.removeChat("chat-module-practice");
+      const replacement = await resumed.call<{ claim: string }>("sessions.prepareModule", practice);
+      await resumed.call("sessions.releaseModule", { ...practice, claim: replacement.claim });
+      const retry = await resumed.call<{ claim: string }>("sessions.prepareModule", practice);
+      assert.notEqual(retry.claim, replacement.claim);
+    } finally {
+      resumed.close();
+    }
+  } finally {
+    close(host, directory);
+  }
+});
+
 test("sessions.prepare builds the node title and tailored opening prompt", async () => {
   const { host, directory } = hostWithPath([chat("chat-new")]);
   try {

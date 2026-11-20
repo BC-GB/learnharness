@@ -127,7 +127,8 @@ test("tree renders modules, nodes and child chats with badges and preserves sele
         "node:n-bridge",
       ],
     );
-    assert.equal(row(tree, "module:module-structure").content, "Structure first");
+    assert.ok(row(tree, "module:module-structure").content);
+    assert.ok([...fixture.root.querySelectorAll(".lp-module-title")].some((entry) => entry.textContent === "Structure first"));
     assert.equal(row(tree, "module:module-structure").cells?.state, "1/3 consolidated");
     assert.deepEqual(
       fixture.all("mountBadge").slice(0, 6).map((badge) => badge.props.text),
