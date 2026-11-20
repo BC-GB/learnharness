@@ -10,6 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ChatRecord } from "../.sdk/index.d.ts";
+import type { LearningPath } from "../src/domain.ts";
 import { openLearningPathStore } from "../src/store.ts";
 import { AT, makePath } from "./fixtures.ts";
 import { createHost } from "./host.ts";
@@ -56,6 +57,19 @@ test("module launches are exclusive and the native chats survive backend reactiv
 
     const saved = openLearningPathStore(directory).path(teaching.pathId)!;
     assert.deepEqual(saved.modules[0]?.nodes, makePath().modules[0]?.nodes);
+    await host.call("architect.create", {});
+    const refinement = await host.runTool<{ isError?: boolean }>("save_learning_path_json", {
+      draftJson: JSON.stringify({
+        id: saved.id,
+        title: saved.title,
+        goal: saved.goal,
+        sourceSpine: saved.sourceSpine,
+        modules: saved.modules.map((entry) => ({ id: entry.id, title: entry.title, nodes: entry.nodes, sessions: [] })),
+      }),
+    });
+    assert.equal(refinement.isError, undefined);
+    const refined = await host.call<{ path: LearningPath }>("paths.get", { id: saved.id });
+    assert.deepEqual(refined.path.modules[0]?.sessions, saved.modules[0]?.sessions);
     const resumed = createHost({ dataDirectory: directory, chats });
     try {
       assert.deepEqual(await resumed.call("sessions.prepareModule", teaching), { chatId: "chat-module-teach" });

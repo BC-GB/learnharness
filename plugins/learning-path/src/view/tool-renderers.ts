@@ -36,6 +36,8 @@ function summary(tool: PluginToolRenderProps): { headline: string; detail?: stri
   const nodeTitle = text(output.nodeTitle) ?? "this node";
   switch (tool.toolName) {
     case "learning_path_get_brief": {
+      const moduleTitle = text(output.moduleTitle);
+      if (moduleTitle) return { headline: `Module outline for ${moduleTitle}` };
       const watchpoints = Array.isArray(output.watchpoints) ? output.watchpoints.length : 0;
       const artifact = record(output.artifact);
       const artifactLabel = text(artifact.label);
