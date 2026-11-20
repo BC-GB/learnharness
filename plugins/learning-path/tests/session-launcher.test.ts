@@ -161,7 +161,7 @@ test("available lists native chats with their link state; attach only writes a l
     const sessions = await launcher.available();
     assert.deepEqual(
       sessions
-        .map((entry) => [entry.chatId, entry.kind, entry.linked?.nodeId ?? null] as const)
+        .map((entry) => [entry.chatId, entry.kind, entry.linked && "nodeId" in entry.linked ? entry.linked.nodeId : null] as const)
         .sort((a, b) => a[0].localeCompare(b[0])),
       [
         ["chat-1", "teaching", "n-concept"],
