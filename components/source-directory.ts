@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OrganizationAction, SourceDirectory } from "@/src/core";
 import { useServerEvent, useServerResync } from "@/components/server-events";
+import { courseFetch } from "@/lib/course-client";
 
 /**
  * The shared source organization (folders + placements), read and changed
@@ -26,7 +27,7 @@ export function useSourceDirectory(enabled: boolean) {
 		const controller = new AbortController();
 		request.current = controller;
 		try {
-			const response = await fetch("/api/graph/sources", { cache: "no-store", signal: controller.signal });
+			const response = await courseFetch("/api/graph/sources", { cache: "no-store", signal: controller.signal });
 			if (!response.ok) throw new Error("Could not read folders.");
 			const body = await response.json() as SourceDirectory;
 			if (!controller.signal.aborted && current === version.current) setDirectory(body);
@@ -48,7 +49,7 @@ export function useSourceDirectory(enabled: boolean) {
 	const change = useCallback((action: OrganizationAction): Promise<string | undefined> => {
 		const operation = tail.current.catch(() => {}).then(async () => {
 			try {
-				const response = await fetch("/api/graph/sources", {
+				const response = await courseFetch("/api/graph/sources", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify(action),
