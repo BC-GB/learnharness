@@ -1,10 +1,10 @@
 /** Real-browser proof that plan map labels fit their boxes (#671) in any
  * reading font, label size or script.
  *
- * Run: npm run build && node scripts/smoke-plan-labels.mjs [--out <dir>]
+ * Run: npm run build && node scripts/build-server.mjs && node scripts/smoke-plan-labels.mjs [--out <dir>]
  * Focused font invalidation regressions: add --invalidation-only.
  *
- * - Starts `next start` on the existing production build (it never builds)
+ * - Starts the packaged standalone server with a disposable loopback capability
  *   with disposable copies of tests/fixtures/golden-data, plus one seeded chat
  *   whose 14-node plan carries hard titles (CJK, Korean, Arabic, emoji, long
  *   words, wide capitals). Stops only the server it started.
@@ -24,6 +24,7 @@
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import fs from "node:fs";
 import net from "node:net";
@@ -32,6 +33,8 @@ import path from "node:path";
 import puppeteer from "puppeteer-core";
 
 const root = path.resolve(import.meta.dirname, "..");
+const capability = randomBytes(32).toString("hex");
+const capabilityHeaders = { "x-learnharness-desktop": capability };
 const outArg = process.argv.indexOf("--out");
 const out = outArg > 0 ? path.resolve(process.argv[outArg + 1]) : fs.mkdtempSync(path.join(os.tmpdir(), "lh-plan-labels-"));
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "lh-plan-labels-home-"));
@@ -134,19 +137,27 @@ function seedData() {
 }
 
 async function startServer(data) {
-	if (!fs.existsSync(path.join(root, ".next", "BUILD_ID"))) throw new Error("No production build: run `npm run build` first.");
+	const standalone = path.join(root, ".next", "standalone");
+	const entry = path.join(standalone, "server.js");
+	if (!fs.existsSync(entry) || !fs.existsSync(path.join(standalone, ".next", "static"))) {
+		throw new Error("Package the production build with `npm run build && node scripts/build-server.mjs` first.");
+	}
 	const port = await freePort();
-	const env = { ...process.env, NODE_ENV: "production", LH_DATA_DIR: data, LH_AUTH_FILE: path.join(home, "auth.json"), LH_IGNORE_ENV_KEYS: "1", NEXT_TELEMETRY_DISABLED: "1" };
-	server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", String(port)], { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] });
+	const env = {
+		...process.env, NODE_ENV: "production", HOSTNAME: "127.0.0.1", PORT: String(port),
+		LH_DATA_DIR: data, LH_AUTH_FILE: path.join(home, "auth.json"), LH_DESKTOP_API_SECRET: capability,
+		LH_IGNORE_ENV_KEYS: "1", LH_DISABLE_SUBSCRIPTION_AUTH: "1", NEXT_TELEMETRY_DISABLED: "1",
+	};
+	server = spawn(process.execPath, [entry], { cwd: standalone, env, stdio: ["ignore", "pipe", "pipe"] });
 	server.stdout.on("data", (d) => (serverLogs += d));
 	server.stderr.on("data", (d) => (serverLogs += d));
 	const origin = `http://127.0.0.1:${port}`;
 	const deadline = Date.now() + 90_000;
 	for (;;) {
 		if (server.exitCode !== null) throw new Error(`Server exited: ${serverLogs}`);
-		try {
-			if ((await fetch(`${origin}/api/chats`)).ok) return origin;
-		} catch {}
+		const response = await fetch(`${origin}/api/chats`, { headers: capabilityHeaders }).catch(() => null);
+		if (response?.ok) return origin;
+		if (response?.status === 403) throw new Error("Packaged server rejected the smoke test capability.");
 		if (Date.now() > deadline) throw new Error(`Server never answered: ${serverLogs}`);
 		await new Promise((r) => setTimeout(r, 500));
 	}
@@ -335,7 +346,7 @@ function expectLayout(label, actual, expected) {
 	}
 }
 
-async function checkFontInvalidation(page, origin) {
+async function checkFontInvalidation(page, origin, fontRequest) {
 	await openChat(page, origin, HARD_CHAT);
 	const delayedUrl = await installRegressionFonts(page);
 	await pickReadingFont(page, "PlanRegressionMono");
@@ -354,14 +365,9 @@ async function checkFontInvalidation(page, origin) {
 	await settle(page);
 	// Hold just this local font request so fallback is measured before the
 	// real W glyph loads. No further setting, resize or reload may rescue it.
-	let release;
-	const gate = new Promise((resolve) => { release = resolve; });
-	const requests = (request) => { void (async () => {
-		if (request.url() === delayedUrl) await gate;
-		if (!request.isInterceptResolutionHandled()) await request.continue();
-	})(); };
-	await page.setRequestInterception(true);
-	page.on("request", requests);
+	const { promise: gate, resolve: release } = Promise.withResolvers();
+	fontRequest.url = delayedUrl;
+	fontRequest.gate = gate;
 	try {
 		await pickReadingFont(page, "PlanRegressionDelayed");
 		await settle(page); // the hook's initial document.fonts.ready has resolved
@@ -384,8 +390,7 @@ async function checkFontInvalidation(page, origin) {
 		check("unchanged sentinel · delayed font load", await measureLabels(page, "[data-testid=plan-block-full]"));
 	} finally {
 		release();
-		await page.setRequestInterception(false);
-		page.off("request", requests);
+		fontRequest.url = null;
 	}
 }
 
@@ -434,11 +439,20 @@ async function main() {
 	});
 	try {
 		const page = await browser.newPage();
+		const fontRequest = { url: null, gate: null };
+		await page.setRequestInterception(true);
+		page.on("request", async (request) => {
+			const url = new URL(request.url());
+			if (url.protocol === "data:" || url.protocol === "blob:") return request.continue();
+			if (url.origin !== origin) return request.abort();
+			if (request.url() === fontRequest.url) await fontRequest.gate;
+			return request.continue({ headers: { ...request.headers(), ...capabilityHeaders } });
+		});
 		page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text()));
 		page.on("pageerror", (e) => consoleErrors.push(e.message));
 		page.on("response", (r) => { if (r.status() >= 400) consoleErrors.push(`${r.status()} ${r.url()}`); });
 		if (process.argv.includes("--invalidation-only")) {
-			await checkFontInvalidation(page, origin);
+			await checkFontInvalidation(page, origin, fontRequest);
 			process.exitCode = failures.length ? 1 : 0;
 			return;
 		}
@@ -502,7 +516,7 @@ async function main() {
 		if (hydration.length) failures.push({ label: "hydration", bad: hydration });
 
 		// 5. Font settings and completed loads cannot rely on sample widths.
-		await checkFontInvalidation(page, origin);
+		await checkFontInvalidation(page, origin, fontRequest);
 	} finally {
 		await browser.close();
 		await stopServer();
