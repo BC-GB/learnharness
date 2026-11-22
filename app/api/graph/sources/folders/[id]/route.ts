@@ -1,4 +1,4 @@
-import { deleteFolderWithSessions, readOrganizationAction, SourceDeletionError, SourceOrganizationInputError } from "@/src/server";
+import { courseRoute, deleteFolderWithSessions, readOrganizationAction, SourceDeletionError, SourceOrganizationInputError } from "@/src/server";
 import { emit, type ChatDeleteMode } from "@/src/core";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * required, as is the scope the user reviewed (JSON body). A stale scope
  * returns 409 and requires a fresh confirmation; no records are deleted.
  */
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleCourseDELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
 	const { id } = await params;
 	const mode = new URL(request.url).searchParams.get("mode") as ChatDeleteMode;
 	try { return Response.json({ ok: true, ...(await deleteFolderWithSessions(id, mode, await readOrganizationAction(request))) }); }
@@ -22,3 +22,5 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 		emit("sources-changed", {}); emit("chats-changed", {}); emit("activity-changed", {});
 	}
 }
+
+export const DELETE = courseRoute(handleCourseDELETE);

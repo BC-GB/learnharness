@@ -16,13 +16,15 @@ const { stores } = await import("../src/server/stores.ts");
 const { sourceDirectory } = await import("../src/server/source-organization.ts");
 const { deleteFolderWithSessions } = await import("../src/server/source-deletion.ts");
 const { beginTurn, endTurn } = await import("../src/server/turn-liveness.ts");
+const { addCourse, resolveCourse } = await import("../src/store/courses.ts");
+const { runInCourse } = await import("../src/runtime/course-context.ts");
 beforeEach(() => { fs.rmSync(root, { recursive: true, force: true }); fs.mkdirSync(root); fs.writeFileSync(process.env.LH_AUTH_FILE!, "{}\n"); });
 after(() => fs.rmSync(root, { recursive: true, force: true }));
 
 const scopeOf = (id: string) => folderDeletionScope(sourceDirectory.read(), id);
-const remove = (id: string, mode: string | null, scope: unknown = scopeOf(id)) => DELETE(
+const remove = (id: string, mode: string | null, scope: unknown = scopeOf(id), course = "legacy") => DELETE(
 	new Request(`http://localhost/api/graph/sources/folders/${id}${mode ? `?mode=${mode}` : ""}`, {
-		method: "DELETE", body: JSON.stringify(scope), headers: { "Content-Type": "application/json" },
+		method: "DELETE", body: JSON.stringify(scope), headers: { "Content-Type": "application/json", "x-learnharness-course": course },
 	}),
 	{ params: Promise.resolve({ id }) },
 );
@@ -50,6 +52,21 @@ function setup() {
 	} });
 	return { teach, practice, kept };
 }
+
+it("deletes a same-ID folder only in the selected course", async () => {
+	const legacy = setup();
+	const course = resolveCourse(addCourse("Other course").id);
+	const selected = runInCourse(course, () => ({ ...setup(), scope: scopeOf("outer") }));
+	const reply = await remove("outer", "delete-nodes", selected.scope, course.id);
+	assert.equal(reply.status, 200);
+	assert.deepEqual(new Set((await reply.json()).deletedChatIds), new Set([selected.teach.id, selected.practice.id]));
+	runInCourse(course, () => {
+		assert.equal(scopeOf("outer"), null);
+		assert.equal(stores.chatStore.getChat(selected.teach.id), null);
+	});
+	assert.ok(scopeOf("outer"));
+	assert.ok(stores.chatStore.getChat(legacy.teach.id));
+});
 
 it("deletes the folder, its subfolders and every session inside; notes move to the parent; graph kept by default", async () => {
 	const { teach, practice, kept } = setup();
