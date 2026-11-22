@@ -1,3 +1,4 @@
+import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import { resolvePdfPath } from "../tools/pdf-path.ts";
 import { isolatedRender, isolatedRendererEnabled } from "./render-client.ts";
@@ -64,12 +65,42 @@ export function renderDir(filePath: string): string {
 	return path.join("/tmp", `lh-pdf-${h.toString(16).padStart(8, "0")}`);
 }
 const DISABLED = "PDF processing is disabled by deployment policy: an isolated parser is required.";
-export async function approvedPdfBytes(file:string):Promise<string>{
- if(!isolatedRendererEnabled())throw Error(DISABLED);
- const safe=resolvePdfPath(file),stat=await fs.stat(safe);
- if(!stat.isFile()||stat.size>20*1024*1024)throw Error('PDF file limit');
- const bytes=await fs.readFile(safe);if(bytes.length>20*1024*1024||bytes.subarray(0,5).toString()!=='%PDF-')throw Error('Invalid PDF');return bytes.toString('base64');
+/** Read one approved, bounded snapshot for the isolated parser. */
+export async function approvedPdfBytes(file: string, signal?: AbortSignal): Promise<string> {
+	signal?.throwIfAborted();
+	if (!isolatedRendererEnabled()) throw new Error(DISABLED);
+	const safe = resolvePdfPath(file);
+	const limit = 20 * 1024 * 1024;
+	const initial = await fs.stat(safe);
+	if (!initial.isFile() || initial.size > limit) throw new Error("PDF file limit");
+	signal?.throwIfAborted();
+	const handle = await fs.open(safe, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+	try {
+		const before = await handle.stat();
+		if (!before.isFile() || before.size > limit) throw new Error("PDF file limit");
+		if (before.dev !== initial.dev || before.ino !== initial.ino) throw new Error("The PDF changed before it could be opened");
+		signal?.throwIfAborted();
+		const bytes = Buffer.alloc(before.size);
+		for (let offset = 0; offset < bytes.length;) {
+			const { bytesRead } = await handle.read(bytes, offset, Math.min(64 * 1024, bytes.length - offset), null);
+			signal?.throwIfAborted();
+			if (!bytesRead) throw new Error("The PDF changed while being read");
+			offset += bytesRead;
+		}
+		const { bytesRead: extra } = await handle.read(Buffer.alloc(1), 0, 1, null);
+		const after = await handle.stat();
+		signal?.throwIfAborted();
+		if (after.size > limit) throw new Error("PDF file limit");
+		if (extra || after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
+			throw new Error("The PDF changed while being read");
+		}
+		if (bytes.subarray(0, 5).toString() !== "%PDF-") throw new Error("Invalid PDF");
+		return bytes.toString("base64");
+	} finally {
+		await handle.close();
+	}
 }
+
 export async function pdfProbe(file:string):Promise<void>{await pdfInfo(file)}
 export async function pdfInfo(file:string):Promise<PdfInfo>{const x=await isolatedRender<Omit<PdfInfo,'path'>>({op:'info',pdf:await approvedPdfBytes(file)});return {...x,path:file}}
 export async function pdfExtract(file:string,pages:string):Promise<string>{return isolatedRender({op:'extract',pdf:await approvedPdfBytes(file),pages})}

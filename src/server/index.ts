@@ -61,6 +61,8 @@ export { runPiTurn, piTurnResponse, type PiTurnHandle, type PiTurnSpec } from ".
 export * from "./observability.ts";
 export { abortPluginWorkerActivity } from "./plugin-worker-activity.ts";
 export * from "./model-catalog.ts";
+export { refreshModelCatalog } from "./remote-model-catalog.ts";
+export { brokerEnabled } from "../agent/broker-fetch.ts";
 export { subscriptionControlsResponse, subscriptionBrowserResponse } from "./web-subscription-http.ts";
 export { sessionCost } from "./pricing.ts";
 export { initializePlugins, getPluginHost, getPluginAgentContributions, getPluginQuestionTypeResolver, pluginTransport } from "./plugins.ts";

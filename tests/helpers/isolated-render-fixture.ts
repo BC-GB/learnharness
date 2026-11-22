@@ -3,7 +3,7 @@ import http from "node:http";
 import { EventEmitter } from "node:events";
 import type { TestContext } from "node:test";
 export const tick = () => new Promise<void>(resolve => setImmediate(resolve));
-export function isolatedRenderFixture(t: TestContext) {
+export function isolatedRenderFixture(t: TestContext, respond?: (payload: Record<string, unknown>) => unknown) {
  const previous = process.env.LH_ISOLATED_RENDERER;
  process.env.LH_ISOLATED_RENDERER = "1";
  t.after(() => { if (previous === undefined) delete process.env.LH_ISOLATED_RENDERER; else process.env.LH_ISOLATED_RENDERER = previous; });
@@ -15,6 +15,8 @@ export function isolatedRenderFixture(t: TestContext) {
     const response = Object.assign(new EventEmitter(), { statusCode: status }); callback(response);
     response.emit("data", Buffer.from(JSON.stringify(value))); response.emit("end");
    }, fail() { req.emit("error", new Error("synthetic isolated worker failure")); } });
+   const call = calls.at(-1)!;
+   if (respond) queueMicrotask(() => call.complete(respond(call.payload)));
   } });
   return req;
  }) as typeof http.request);
