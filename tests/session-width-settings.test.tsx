@@ -69,11 +69,12 @@ it("the appearance mapping sets the transcript variable only when capped", () =>
 	assert.deepEqual(appearanceVars(resolveAppearance({ adaptiveQuestions: false }), DEFAULT_THEME), full);
 });
 
-it("the transcript column reads the variable; unset leaves today's full-bleed column", () => {
+it("the optional transcript cap narrows the existing reading frame", () => {
 	const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
-	assert.match(css, /\.lh-transcript-column \{\s*max-width: calc\(var\(--lh-transcript-max\) \+ 1rem\);\s*\}/);
+	const frame = /\.lh-reading-transcript\s*\{([^}]+)\}/.exec(css)?.[1] ?? "";
+	assert.match(frame, /max-width: min\(calc\(var\(--lh-transcript-max, 100vw\) \+ 1rem\), max\(72rem, calc\(var\(--lh-reading-width, 864px\) \+ 3rem\)\)\);/);
 	const chat = readFileSync(new URL("../components/chat.tsx", import.meta.url), "utf8");
-	assert.match(chat, /const COLUMN = "lh-transcript-column mx-auto w-full px-6";/);
+	assert.match(chat, /const COLUMN = "lh-reading-transcript w-full px-4 sm:px-6";/);
 	assert.match(chat, /const DOCK = "mx-auto w-full max-w-\[46rem\] px-4";/);
 });
 

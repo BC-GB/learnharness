@@ -11,6 +11,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ChatStore, JobStore } from "../src/core/ports.ts";
 import type { FileAccessPolicy } from "../src/agent/tools/file-access.ts";
 import { SOURCE_NOTICE } from "../src/agent/tools/untrusted-source.ts";
+import { isolatedRenderFixture } from "./helpers/isolated-render-fixture.ts";
 
 (globalThis as Record<string, unknown>).React = React;
 const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "lh-folder-access-")));
@@ -241,7 +242,7 @@ describe("live policy and all learner-source surfaces", () => {
 		assert.equal(jobs, 0);
 		assert.equal((await readTool.execute!("x", { path: path.join(a, "image.png") })).content[1]?.type, "image");
 	});
-	it("queued PDF/annotation starts use fresh permissions, preserving raw inputs and replay IDs", async () => {
+it("queued PDF/annotation starts use fresh permissions, preserving raw inputs and replay IDs", async (t) => {
 		const { chatStore } = await import("../src/store/chats.ts");
 		const { jobStore } = await import("../src/store/jobs.ts");
 		const { jobTools } = await import("../src/agent/tools/jobs.ts");
@@ -249,6 +250,10 @@ describe("live policy and all learner-source surfaces", () => {
 		// Importing the composition root installs its production provider.
 		// Reinstall this test's live provider before admission and queue execution.
 		setFileAccessPolicy(() => policy);
+		const renderer = isolatedRenderFixture(t, (payload) => {
+			assert.equal(payload.op, "info");
+			return { page_count: 3 };
+		});
 		const faux = createFauxCore({ tokenSize: { min: 64, max: 64 } });
 		let calls = 0;
 		const engine = { model: faux.getModel(), streamFn: (() => { calls++; throw new Error("must not call model"); }) as typeof faux.streamSimple };
@@ -271,17 +276,13 @@ describe("live policy and all learner-source surfaces", () => {
 			await tools[kind]!.execute!("queued-call", input);
 			assert.equal(spawned, 1);
 			const runner = createJobRunner({ chatStore, jobStore, engineFor: () => engine, deliver: async () => {} });
-			// Exercise the configured-parser path. Source denial must happen
-			// before any IPC or inference; disabled-parser admission is a separate gate.
-			const previousRenderer = process.env.LH_ISOLATED_RENDERER;
-			process.env.LH_ISOLATED_RENDERER = "1";
-			try { await runner.runJob(id); }
-			finally { if (previousRenderer === undefined) delete process.env.LH_ISOLATED_RENDERER; else process.env.LH_ISOLATED_RENDERER = previousRenderer; }
+			await runner.runJob(id);
 			const job = jobStore.getJob(id)!;
 			assert.match(JSON.stringify(job.result), /Access denied:.*allowed folders/);
 			assert.deepEqual(job.input, input);
 			assert.equal(chatStore.getChat(chat.id)?.imageSnapshots, undefined);
 		}
+		assert.deepEqual(renderer.map(({ payload }) => payload.op), ["info"], "only the initially allowed PDF annotation reaches the renderer");
 		assert.equal(calls, 0);
 	});
 	it("the researcher's job-scoped PDF tools retain their own independent boundary", async () => {
