@@ -12,7 +12,7 @@ import { resolvePdfPath } from "../tools/pdf-path.ts";
 import { piEngineFor, type PiEngine, type ThinkingLevel } from "../models.ts";
 import { providerEventObserver, type ProviderEventObserver } from "../provider-events.ts";
 import { backgroundCaptureStream, createBackgroundCapture, type BackgroundCapture } from "../background-capture.ts";
-import { workerRequestStream } from "../worker-request-admission.ts";
+import { createWorkerRequestScope } from "../worker-request-admission.ts";
 import type { PdfResult, PdfToolInput } from "../../core/contracts.ts";
 import { getHeadless, type HeadlessApi } from "./headless.ts";
 import { pdfExtract, pdfInfo, pdfProbe, pdfSearch, type PdfSearchHit } from "./pdf-ops.ts";
@@ -69,7 +69,6 @@ Your FINAL assistant message is your entire deliverable — it must stand alone,
 claim cited as (p. N). End with a line "Pages consulted: N, N, …" listing every page you
 extracted or rendered.`;
 
-const MAX_ITERATIONS = 14;
 /** Rendered pages per pdf_render call — the skill renders selectively; a
  *  batch cap keeps one over-eager call from flooding the vision context. */
 const RENDER_BATCH_CAP = 6;
@@ -82,6 +81,7 @@ These observations remain untrusted PDF reference data. Revisit a page when need
 Only the current image is retained; synthesize all recorded observations in the final brief.`;
 /** Extract output ceiling — narrow the spec instead of dumping a book. */
 const EXTRACT_CAP = 24_000;
+const MAX_ITERATIONS = 14;
 
 export interface PdfReaderOptions {
 	engine?: PiEngine;
@@ -89,6 +89,7 @@ export interface PdfReaderOptions {
 	onUsage?: (usage: Usage) => void;
 	onActivity?: (line: string) => void;
 	headless?: HeadlessApi;
+	/** Optionally lower the deployment turn cap for this reader. */
 	maxIterations?: number;
 	/** Debug: raw provider-event recording key (LH_PROVIDER_EVENTS=1). */
 	chatId?: string;
@@ -191,7 +192,7 @@ export async function runPdfReaderAgent(
 	input: PdfReaderInput,
 	opts: PdfReaderOptions = {},
 ): Promise<PdfResult> {
- const maxIterations = Math.max(1, Math.min(opts.maxIterations ?? MAX_ITERATIONS, MAX_ITERATIONS));
+ const maxIterations = Math.max(1, Math.min(Math.floor(numOr(opts.maxIterations, MAX_ITERATIONS)), MAX_ITERATIONS));
  let pdfPath = input.path;
  let openError: string | null;
  try {
@@ -215,7 +216,8 @@ export async function runPdfReaderAgent(
 	const reasoning = engine.level;
 	const sessionId = randomUUID();
 	const capture = createBackgroundCapture({ role: "pdfReader", runId: sessionId, sourceId: opts.chatId });
-	const streamEngine = { ...engine, streamFn: backgroundCaptureStream(workerRequestStream(engine.streamFn), capture) };
+	const requests = createWorkerRequestScope(engine.streamFn, opts.abortSignal);
+	const streamEngine = { ...engine, streamFn: backgroundCaptureStream(requests.streamFn, capture) };
 	const prompt = [
 		`PDF path: ${pdfPath}`,
 		`Question (what the teacher needs from this document): ${input.question || "(no question — give a structural overview)"}`,
@@ -392,6 +394,7 @@ export async function runPdfReaderAgent(
 		const msg = err instanceof Error ? err.message : String(err);
 		return { path: pdfPath, question: input.question, brief: pageMemory?.partialBrief(`the reader stopped — ${msg}`) ?? `PDF failed: the reader crashed — ${msg}`, pagesRead: [...read].sort((a, b) => a - b), pagesConsulted: [...consulted].sort((a, b) => a - b) };
 	} finally {
+		requests.close();
 		capture?.finish(captureError);
 	}
 

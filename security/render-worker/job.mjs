@@ -25,8 +25,32 @@ if(q.op==='demo'){
  const pages=q.pages;if(!Array.isArray(pages)||!pages.length||pages.length>8||pages.some(n=>!Number.isInteger(n)||n<1||n>info.page_count))throw Error('Page selection');
  const dpi=q.dpi??120;if(!Number.isFinite(dpi)||dpi<36||dpi>200)throw Error('DPI limit');
  const {createCanvas}=await import('@napi-rs/canvas');const {getDocument}=await import('pdfjs-dist/legacy/build/pdf.mjs');
+ const crop = q.crop ?? { x: 0, y: 0, width: 1, height: 1 };
+ const { x, y, width, height } = crop;
+ if (![x, y, width, height].every(Number.isFinite) || x < 0 || y < 0 ||
+     width <= 0 || height <= 0 || x + width > 1 + 1e-9 || y + height > 1 + 1e-9) throw Error('PDF crop limit');
+ const fit = q.fitLongSide;
+ if (fit !== undefined && (!Number.isFinite(fit) || fit < 1 || fit > 4096)) throw Error('PDF fit limit');
  const task=getDocument({data:new Uint8Array(bytes),standardFontDataUrl:'/app/node_modules/pdfjs-dist/standard_fonts/',verbosity:0});
- try{const doc=await task.promise;result=[];for(const n of pages){const page=await doc.getPage(n),viewport=page.getViewport({scale:dpi/72});const w=Math.ceil(viewport.width),h=Math.ceil(viewport.height);if(w>4096||h>4096||w*h>16000000)throw Error('Canvas limit');const canvas=createCanvas(w,h);await page.render({canvasContext:canvas.getContext('2d'),viewport,canvas}).promise;result.push({page:n,png:canvas.toBuffer('image/png').toString('base64')});page.cleanup()}}finally{await task.destroy()}
+ try {
+  const doc = await task.promise;
+  result = [];
+  for (const n of pages) {
+   const page = await doc.getPage(n);
+   const base = page.getViewport({ scale: 1 });
+   const regionWidth = base.width * width;
+   const regionHeight = base.height * height;
+   const scale = fit === undefined ? dpi / 72 : Math.min(dpi / 72, fit / Math.max(regionWidth, regionHeight));
+   const w = Math.ceil(regionWidth * scale);
+   const h = Math.ceil(regionHeight * scale);
+   if (![w, h].every(side => Number.isFinite(side) && side > 0 && side <= 4096) || w*h > 16000000) throw Error('Canvas limit');
+   const viewport = page.getViewport({ scale, offsetX: -x * base.width * scale, offsetY: -y * base.height * scale });
+   const canvas = createCanvas(w, h);
+   await page.render({ canvasContext: canvas.getContext('2d'), viewport, canvas }).promise;
+   result.push({ page: n, png: canvas.toBuffer('image/png').toString('base64') });
+   page.cleanup();
+  }
+ } finally { await task.destroy(); }
  break;
  }
  case 'info':result={...info,path:undefined};break;

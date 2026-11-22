@@ -608,7 +608,6 @@ function runAuditor(
 		onStep,
 		neverSubmitted: "the auditor never submitted a review",
 		extraTools: tools,
-		maxTurns: 16,
 		prepareArguments: healStringifiedArrays,
 	});
 }

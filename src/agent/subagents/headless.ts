@@ -35,9 +35,23 @@ export interface RenderSvgOptions {
 }
 
 export interface RenderPdfOptions {
-	/** Render DPI — 72 is 100% zoom; the skill's guidance is 100/150/200. */
+	/** Render DPI — 72 is 100% zoom; the skill's guidance is 100/150/200.
+	 *  With fitLongSide it is the ceiling instead. */
 	dpi?: number;
 	signal?: AbortSignal;
+	/** Rasterize only this part of the page (fractions of the page as
+	 *  displayed, after rotation, from the top-left corner). */
+	crop?: PdfCrop;
+	/** Scale so the rendered region's longer side is about this many pixels,
+	 *  never above dpi. */
+	fitLongSide?: number;
+}
+
+export interface PdfCrop {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
 }
 
 export interface RenderedPdfPage {
@@ -56,7 +70,7 @@ export interface HeadlessApi {
 	runDemo(html: string, opts?: RunDemoOptions): Promise<DemoRunResult>;
 	/** Rasterize an SVG to a PNG buffer (for verify-by-looking). */
 	renderSvg(svg: string, opts?: RenderSvgOptions): Promise<Buffer>;
-	/** Render PDF pages to PNGs natively (pdfjs + Skia) for the pdf-reader. */
+	/** Render approved PDF pages through the isolated worker. */
 	renderPdfPages(pdfPath: string, pages: number[], opts?: RenderPdfOptions): Promise<RenderedPdfPage[]>;
 }
 
@@ -215,14 +229,21 @@ export function pdfCanvasGeometry(baseWidth: number, baseHeight: number, dpi: nu
 	return { scale, ...dimensions(scale) };
 }
 
-/** Render PDF pages to PNGs — the sources-v0 pdf-reader's eyes.
- *
- *  History: pdfjs ALWAYS painted the pages (scale = dpi/72, the skill's
- *  zoom arithmetic) — first inside a headless Chrome tab (canvas shim,
- *  toDataURL, 2026-09-19), now into @napi-rs/canvas in this process (Wave
- *  E, 2026-10-10). The paint engine never changed; only the canvas host:
- *  Skia in-process via pdfjs-dist v6's own Node integration. No browser,
- *  no temp files, no base64 hop. */
+/** Crop one page of an approved PDF snapshot in the isolated renderer. */
+export async function renderOpenPdfPage(
+	source: { pdf: string; page: number },
+	opts: RenderPdfOptions = {},
+	signal?: AbortSignal,
+): Promise<Buffer> {
+	const [image] = await isolatedRender<Awaited<ReturnType<typeof renderPdfRasters>>>({
+		op: "render", pdf: source.pdf, pages: [source.page], dpi: opts.dpi ?? 150,
+		crop: opts.crop, fitLongSide: opts.fitLongSide,
+	}, { signal: signal ?? opts.signal });
+	if (image?.page !== source.page || typeof image.png !== "string" || !image.png) {
+		throw new Error("Invalid renderer response.");
+	}
+	return providerSafePng(Buffer.from(image.png, "base64"));
+}
 
 const BROWSER_DISABLED_MESSAGE = "Browser execution is disabled by deployment policy.";
 export function browserServiceBinary(): string | null { return null; }
