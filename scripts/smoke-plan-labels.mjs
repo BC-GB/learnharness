@@ -293,7 +293,9 @@ async function installRegressionFonts(page) {
 			for (const sheet of document.styleSheets) {
 				for (const rule of sheet.cssRules) {
 					if (!(rule instanceof CSSFontFaceRule) || rule.style.fontFamily.replace(/["']/g, "") !== family) continue;
-					const hasW = rule.style.unicodeRange.split(",").some((range) => {
+					// The fork bundles full local fonts with no unicode-range descriptor.
+					const ranges = rule.style.unicodeRange || "U+0-10FFFF";
+					const hasW = ranges.split(",").some((range) => {
 						const [lo, hi = lo] = range.trim().replace(/^U\+/i, "").split("-");
 						return parseInt(lo.replace(/\?/g, "0"), 16) <= 0x57 && parseInt(hi.replace(/\?/g, "F"), 16) >= 0x57;
 					});
