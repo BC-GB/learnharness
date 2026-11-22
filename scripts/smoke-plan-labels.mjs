@@ -374,21 +374,23 @@ async function checkFontInvalidation(page, origin, fontRequest) {
 	// Hold just this local font request so fallback is measured before the
 	// real W glyph loads. No further setting, resize or reload may rescue it.
 	const { promise: gate, resolve: release } = Promise.withResolvers();
-	fontRequest.url = delayedUrl;
-	fontRequest.gate = gate;
+	const { promise: started, resolve: markStarted } = Promise.withResolvers();
+	fontRequest.current = { url: delayedUrl, gate, markStarted };
+	let timer;
 	try {
 		await pickReadingFont(page, "PlanRegressionDelayed");
 		await settle(page); // the hook's initial document.fonts.ready has resolved
 		const fallback = await planSnapshot(page);
 		assert.deepEqual(fallback.sentinel, mono.sentinel, "fallback leaves the sentinel unchanged");
 		assert.notDeepEqual(fallback.lines, mono.lines, "delayed W is still using the wider fallback");
-		const requested = page.waitForRequest((r) => r.url() === delayedUrl);
 		await page.evaluate((url) => {
 			const face = new FontFace("PlanRegressionDelayed", `url("${url}")`, { weight: "200 800", unicodeRange: "U+57", display: "swap" });
 			document.fonts.add(face);
 			void face.load();
 		}, delayedUrl);
-		await requested;
+		await Promise.race([started, new Promise((_, reject) => {
+			timer = setTimeout(() => reject(new Error("The delayed local font was not requested")), 10_000);
+		})]);
 		release();
 		await settle(page);
 		const loaded = await planSnapshot(page);
@@ -397,8 +399,9 @@ async function checkFontInvalidation(page, origin, fontRequest) {
 		expectLayout("font load restores the measured monospace boxes", loaded.boxes, mono.boxes);
 		check("unchanged sentinel · delayed font load", await measureLabels(page, "[data-testid=plan-block-full]"));
 	} finally {
+		clearTimeout(timer);
 		release();
-		fontRequest.url = null;
+		fontRequest.current = null;
 	}
 }
 
@@ -447,13 +450,17 @@ async function main() {
 	});
 	try {
 		const page = await browser.newPage();
-		const fontRequest = { url: null, gate: null };
+		const fontRequest = { current: null };
 		await page.setRequestInterception(true);
 		page.on("request", async (request) => {
 			const url = new URL(request.url());
 			if (url.protocol === "data:" || url.protocol === "blob:") return request.continue();
 			if (url.origin !== origin) return request.abort();
-			if (request.url() === fontRequest.url) await fontRequest.gate;
+			const held = fontRequest.current;
+			if (request.url() === held?.url) {
+				held.markStarted();
+				await held.gate;
+			}
 			return request.continue({ headers: { ...request.headers(), ...capabilityHeaders } });
 		});
 		page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text()));
