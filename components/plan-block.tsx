@@ -222,6 +222,16 @@ export function usePlanLayout(plan: { nodes: readonly LayoutNode[]; edges: Reado
 		fonts?.addEventListener("loadingdone", remeasure);
 		let active = true;
 		void fonts?.ready.then(() => { if (active) remeasure(); });
+		// The root's inherited font can change without resizing the sentinel.
+		// Capture the effective family so a theme-only change keeps the same layout.
+		let family = getComputedStyle(el).fontFamily;
+		const fontObserver = typeof MutationObserver === "undefined" ? undefined : new MutationObserver(() => {
+			const nextFamily = getComputedStyle(el).fontFamily;
+			if (nextFamily === family) return;
+			family = nextFamily;
+			remeasure();
+		});
+		fontObserver?.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
 		let observer: ResizeObserver | undefined;
 		if (typeof ResizeObserver !== "undefined") {
 			let seen = watch.getBBox();
@@ -237,6 +247,7 @@ export function usePlanLayout(plan: { nodes: readonly LayoutNode[]; edges: Reado
 			active = false;
 			cancelAnimationFrame(frame);
 			fonts?.removeEventListener("loadingdone", remeasure);
+			fontObserver?.disconnect();
 			observer?.disconnect();
 		};
 	}, [nodes, edges, fontFamily]);
