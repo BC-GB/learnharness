@@ -1,5 +1,4 @@
-import { brokerEnabled } from "@/src/agent/broker-fetch";
-import { courseRoute, modelCatalog, refreshConnectionCatalog, refreshModelCatalog } from "@/src/server";
+import { brokerEnabled, courseRoute, modelCatalog, refreshConnectionCatalog, refreshModelCatalog } from "@/src/server";
 import type { ModelCatalogRefreshResponse } from "@/src/core";
 
 const headers = { "Cache-Control": "no-store" };

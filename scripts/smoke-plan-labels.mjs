@@ -280,7 +280,13 @@ async function pickReadingFont(page, family) {
 	await page.keyboard.press("Enter");
 	await saved;
 	await page.keyboard.press("Escape");
-	await page.waitForFunction((f) => getComputedStyle(document.querySelector('[data-testid=plan-block-full] svg[aria-label="Plan diagram"]')).fontFamily.includes(f), {}, family);
+	await page.waitForFunction((requested) => {
+		const plan = document.querySelector('[data-testid=plan-block-full] svg[aria-label="Plan diagram"]');
+		const expected = requested === "Source Sans 3"
+			? getComputedStyle(document.documentElement).getPropertyValue("--font-sans3").split(",")[0].trim().replace(/["']/g, "")
+			: requested;
+		return !!plan && !!expected && getComputedStyle(plan).fontFamily.includes(expected);
+	}, {}, family);
 	await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
 
